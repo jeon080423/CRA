@@ -58,18 +58,34 @@ def _is_quota_error(error: Exception) -> bool:
     return any(kw in err_str for kw in QUOTA_ERROR_KEYWORDS)
 
 
-def init_model(model_name: str = DEFAULT_MODEL):
-    """Gemini 모델 초기화"""
-    api_key = get_api_key()
-    if not api_key:
-        return None, "❌ API 키를 찾을 수 없습니다."
-    try:
+import threading
+_genai_lock = threading.Lock()  # genai.configure()는 전역 상태 — 초기화 시 직렬화 필요
+
+
+def _make_model(api_key: str, model_name: str):
+    """
+    스레드 안전한 Gemini 모델 인스턴스 생성.
+    genai.configure()는 전역 상태를 변경하므로 Lock으로 직렬화.
+    실제 generate_content() 호출은 Lock 밖에서 병렬 실행됨.
+    """
+    with _genai_lock:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
             model_name=model_name,
             system_instruction=SYSTEM_PROMPT,
             generation_config=GENERATION_CONFIG,
         )
+    return model  # 이 객체는 스레드 안전하게 사용 가능
+
+
+def init_model(model_name: str = DEFAULT_MODEL, api_key: str | None = None):
+    """Gemini 모델 초기화 (스레드 안전)"""
+    if api_key is None:
+        api_key = get_api_key()
+    if not api_key:
+        return None, "❌ API 키를 찾을 수 없습니다."
+    try:
+        model = _make_model(api_key, model_name)
         return model, None
     except Exception as e:
         return None, f"❌ 모델 초기화 오류: {e}"
