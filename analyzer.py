@@ -7,13 +7,14 @@ Gemini API 분석 모듈
 """
 import random
 import concurrent.futures
+import threading
 import streamlit as st
 import google.generativeai as genai
-from config import (
-    GENERATION_CONFIG, AVAILABLE_MODELS, DEFAULT_MODEL,
-    AUTO_MODEL_PRIORITY, QUOTA_ERROR_KEYWORDS, STEP_TEXT_RATIO,
-    STEP_MODEL_MAP,
-)
+
+# ──────────────────────────────────────────────
+# 설정 및 상수를 config 모듈에서 직접 참조
+# ──────────────────────────────────────────────
+import config
 from file_processor import slice_text_for_step
 from prompts import (
     SYSTEM_PROMPT,
@@ -24,13 +25,12 @@ from prompts import (
     FULL_ANALYSIS_PROMPT,
 )
 
+# genai.configure()는 전역 상태 — 초기화 시 직렬화 필요
+_genai_lock = threading.Lock()
+
 
 def get_api_keys() -> list[str]:
-    """
-    Streamlit Cloud secrets에서 Gemini API 키 목록을 가져옵니다.
-    - GEMINI_API_KEYS = ["key1", "key2", ...] (다중 키, 권장)
-    - GEMINI_API_KEY = "key1"                  (단일 키, 하위 호환)
-    """
+    """Streamlit Cloud secrets에서 Gemini API 키 목록을 가져옵니다."""
     try:
         keys = st.secrets["GEMINI_API_KEYS"]
         if isinstance(keys, str):
@@ -56,31 +56,25 @@ def get_api_key() -> str | None:
 def _is_quota_error(error: Exception) -> bool:
     """할당량·레이트리밋 관련 에러인지 확인합니다."""
     err_str = str(error).lower()
-    return any(kw in err_str for kw in QUOTA_ERROR_KEYWORDS)
-
-
-import threading
-_genai_lock = threading.Lock()  # genai.configure()는 전역 상태 — 초기화 시 직렬화 필요
+    return any(kw in err_str for kw in config.QUOTA_ERROR_KEYWORDS)
 
 
 def _make_model(api_key: str, model_name: str):
-    """
-    스레드 안전한 Gemini 모델 인스턴스 생성.
-    genai.configure()는 전역 상태를 변경하므로 Lock으로 직렬화.
-    실제 generate_content() 호출은 Lock 밖에서 병렬 실행됨.
-    """
+    """스레드 안전한 Gemini 모델 인스턴스 생성."""
     with _genai_lock:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
             model_name=model_name,
             system_instruction=SYSTEM_PROMPT,
-            generation_config=GENERATION_CONFIG,
+            generation_config=config.GENERATION_CONFIG,
         )
-    return model  # 이 객체는 스레드 안전하게 사용 가능
+    return model
 
 
-def init_model(model_name: str = DEFAULT_MODEL, api_key: str | None = None):
+def init_model(model_name: str = None, api_key: str | None = None):
     """Gemini 모델 초기화 (스레드 안전)"""
+    if model_name is None:
+        model_name = config.DEFAULT_MODEL
     if api_key is None:
         api_key = get_api_key()
     if not api_key:
@@ -93,17 +87,13 @@ def init_model(model_name: str = DEFAULT_MODEL, api_key: str | None = None):
 
 
 def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mode: bool, step_num: int = 0) -> tuple[str, str | None]:
-    """
-    단일 프롬프트를 비스트리밍으로 실행 (병렬 호출용 내부 함수).
-    - step_num이 제공되면 STEP_MODEL_MAP에 따라 해당 단계에 최적화된 모델부터 시도.
-    """
+    """단일 프롬프트를 비스트리밍으로 실행 (병렬 호출용 내부 함수)."""
     prompt = prompt_template.format(report_text=report_text)
     
     if auto_mode:
-        # 단계별 전용 모델 리스트가 있으면 그것을 우선 사용, 없으면 전체 리스트 사용
-        candidates = STEP_MODEL_MAP.get(step_num, AUTO_MODEL_PRIORITY)
+        candidates = config.STEP_MODEL_MAP.get(step_num, config.AUTO_MODEL_PRIORITY)
     else:
-        candidates = [model_name]
+        candidates = [model_name if model_name else config.DEFAULT_MODEL]
 
     for candidate in candidates:
         model, init_err = init_model(candidate)
@@ -117,20 +107,18 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
                 continue
             return "", f"❌ 분석 오류 ({candidate}): {e}"
 
-    return "", "❌ 모든 모델의 할당량이 초과되었습니다. 잠시 후 다시 시도하세요."
+    return "", "❌ 모든 모델의 할당량이 초과되었습니다."
 
 
 def run_parallel_steps(
     report_text: str,
-    model_name: str = DEFAULT_MODEL,
+    model_name: str = None,
     auto_mode: bool = True,
     steps: list[int] | None = None,
 ) -> dict[int, tuple[str, str | None]]:
-    """
-    지정한 단계(기본: 1~4)를 ThreadPoolExecutor로 병렬 실행.
-    각 단계마다 STEP_TEXT_RATIO에 따라 텍스트 구간을 슬라이스하여 전달.
-    Returns: {step_num: (result_text, error_or_None)}
-    """
+    """지정한 단계를 병렬 실행."""
+    if model_name is None:
+        model_name = config.DEFAULT_MODEL
     if steps is None:
         steps = [1, 2, 3, 4]
 
@@ -142,10 +130,10 @@ def run_parallel_steps(
             executor.submit(
                 _run_single,
                 step_prompts[s],
-                slice_text_for_step(report_text, s, STEP_TEXT_RATIO),  # 단계별 슬라이스
+                slice_text_for_step(report_text, s, config.STEP_TEXT_RATIO),
                 model_name,
                 auto_mode,
-                s  # step_num 전달
+                s
             ): s
             for s in steps
         }
@@ -162,16 +150,14 @@ def run_parallel_steps(
 def run_analysis_stream(
     prompt_template: str,
     report_text: str,
-    model_name: str = DEFAULT_MODEL,
+    model_name: str = None,
     auto_mode: bool = False,
 ):
-    """
-    스트리밍 방식으로 분석 실행 (단일 프롬프트).
-    auto_mode=True 이면 AUTO_MODEL_PRIORITY 순서로 할당량 초과 시 자동 전환.
-    Yields (chunk_text, is_error, used_model) tuples.
-    """
+    """스트리밍 방식으로 분석 실행."""
+    if model_name is None:
+        model_name = config.DEFAULT_MODEL
     prompt = prompt_template.format(report_text=report_text)
-    candidates = AUTO_MODEL_PRIORITY if auto_mode else [model_name]
+    candidates = config.AUTO_MODEL_PRIORITY if auto_mode else [model_name]
 
     last_error = None
     for candidate in candidates:
@@ -201,13 +187,12 @@ def run_analysis_stream(
 def run_analysis(
     prompt_template: str,
     report_text: str,
-    model_name: str = DEFAULT_MODEL,
+    model_name: str = None,
     auto_mode: bool = False,
 ) -> tuple[str, str | None]:
-    """
-    비스트리밍 분석 실행.
-    Returns: (result_text, error_message or None)
-    """
+    """비스트리밍 분석 실행."""
+    if model_name is None:
+        model_name = config.DEFAULT_MODEL
     text, err = _run_single(prompt_template, report_text, model_name, auto_mode)
     return text, err
 
