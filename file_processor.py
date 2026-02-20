@@ -29,25 +29,23 @@ def compress_text(text: str) -> str:
         return ""
     # 탭 → 공백 2칸
     text = text.replace('\t', '  ')
-    # 줄 단위로 처리
-    lines = text.splitlines()
-    compressed = []
-    prev_blank = False
-    for line in lines:
-        stripped = line.rstrip()
-        is_blank = stripped == ''
-        # 연속 빈 줄은 하나로
-        if is_blank:
-            if not prev_blank:
-                compressed.append('')
-            prev_blank = True
-        else:
-            compressed.append(stripped)
-            prev_blank = False
-    # 과도한 공백 반복 제거 (단어 사이 공백 2개 이상 → 1개)
-    result = '\n'.join(compressed)
-    result = re.sub(r'  +', ' ', result)
-    return result.strip()
+    
+    # 줄 단위 최적화 처리
+    lines = [line.rstrip() for line in text.splitlines()]
+    
+    # 연속 빈 줄 제거 로직 (더 효율적인 방식)
+    cleaned_lines = []
+    if lines:
+        cleaned_lines.append(lines[0])
+        for i in range(1, len(lines)):
+            # 현재 줄과 이전 줄이 모두 비어있으면 건너뜀
+            if not lines[i] and not lines[i-1]:
+                continue
+            cleaned_lines.append(lines[i])
+            
+    result = '\n'.join(cleaned_lines)
+    # 과도한 단어 사이 공백 축소 (연속된 공백 2개 이상 -> 1개)
+    return re.sub(r' +', ' ', result).strip()
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> tuple[str, int]:

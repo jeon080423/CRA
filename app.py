@@ -485,7 +485,8 @@ else:
                             STEP_PROMPTS[s], 
                             slice_text_for_step(st.session_state["report_text"], s, STEP_TEXT_RATIO),
                             _model, 
-                            _auto
+                            _auto,
+                            s  # 단계 번호 인자 추가
                         ): s for s in range(1, 5)
                     }
 

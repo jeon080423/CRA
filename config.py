@@ -45,6 +45,19 @@ AUTO_MODEL_PRIORITY = [
     "gemini-1.5-flash",
 ]
 
+# ──────────────────────────────────────────────
+# 단계별 최적 모델 맵 (속도 vs 품질 밸런스)
+# 1, 4단계: 속도 우선 (Flash)
+# 2, 3단계: 품질 우선 (Pro)
+# ──────────────────────────────────────────────
+STEP_MODEL_MAP = {
+    1: ["gemini-2.0-flash", "gemini-2.5-flash-preview-04-17", "gemini-1.5-flash"],
+    2: ["gemini-2.5-pro-exp-03-25", "gemini-2.0-pro-exp-02-05", "gemini-1.5-pro"],
+    3: ["gemini-2.5-pro-exp-03-25", "gemini-2.0-pro-exp-02-05", "gemini-1.5-pro"],
+    4: ["gemini-2.0-flash", "gemini-2.5-flash-preview-04-17", "gemini-1.5-flash"],
+}
+
+
 # 기본 모델 (수동 선택 시 초기값)
 DEFAULT_MODEL = "gemini-2.0-flash"
 

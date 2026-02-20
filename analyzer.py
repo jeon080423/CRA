@@ -10,8 +10,8 @@ import concurrent.futures
 import streamlit as st
 import google.generativeai as genai
 from config import (
-    GENERATION_CONFIG, AVAILABLE_MODELS, DEFAULT_MODEL,
     AUTO_MODEL_PRIORITY, QUOTA_ERROR_KEYWORDS, STEP_TEXT_RATIO,
+    STEP_MODEL_MAP,
 )
 from file_processor import slice_text_for_step
 from prompts import (
@@ -91,13 +91,18 @@ def init_model(model_name: str = DEFAULT_MODEL, api_key: str | None = None):
         return None, f"❌ 모델 초기화 오류: {e}"
 
 
-def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mode: bool) -> tuple[str, str | None]:
+def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mode: bool, step_num: int = 0) -> tuple[str, str | None]:
     """
     단일 프롬프트를 비스트리밍으로 실행 (병렬 호출용 내부 함수).
-    Returns: (result_text, error_or_None)
+    - step_num이 제공되면 STEP_MODEL_MAP에 따라 해당 단계에 최적화된 모델부터 시도.
     """
     prompt = prompt_template.format(report_text=report_text)
-    candidates = AUTO_MODEL_PRIORITY if auto_mode else [model_name]
+    
+    if auto_mode:
+        # 단계별 전용 모델 리스트가 있으면 그것을 우선 사용, 없으면 전체 리스트 사용
+        candidates = STEP_MODEL_MAP.get(step_num, AUTO_MODEL_PRIORITY)
+    else:
+        candidates = [model_name]
 
     for candidate in candidates:
         model, init_err = init_model(candidate)
@@ -139,6 +144,7 @@ def run_parallel_steps(
                 slice_text_for_step(report_text, s, STEP_TEXT_RATIO),  # 단계별 슬라이스
                 model_name,
                 auto_mode,
+                s  # step_num 전달
             ): s
             for s in steps
         }
