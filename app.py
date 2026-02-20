@@ -471,7 +471,7 @@ else:
                     "\uc885\ud569 \ubcf4\uace0\uc11c"
                 ]
                 for i, name in enumerate(step_names, 1):
-                    placeholders[i].markdown(f"\U0001f504 `{i}\ub2e8\uacc4` {name}...")
+                    placeholders[i].markdown(f"**[{i}\ub2e8\uacc4]** {name}...")
 
                 # 실시간 병렬 처리 실행
                 results = {}
