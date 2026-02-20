@@ -1,0 +1,204 @@
+"""
+Gemini API 분석 모듈
+- 다중 API 키(GEMINI_API_KEYS) 랜덤 선택
+- 자동 최적화 모드: 할당량 초과 시 AUTO_MODEL_PRIORITY 순서로 모델 순차 전환
+- 병렬 실행: 4단계를 ThreadPoolExecutor로 동시 처리
+- 토큰 절약: 단계별 텍스트 슬라이스 적용
+"""
+import random
+import concurrent.futures
+import streamlit as st
+import google.generativeai as genai
+from config import (
+    GENERATION_CONFIG, AVAILABLE_MODELS, DEFAULT_MODEL,
+    AUTO_MODEL_PRIORITY, QUOTA_ERROR_KEYWORDS, STEP_TEXT_RATIO,
+)
+from file_processor import slice_text_for_step
+from prompts import (
+    SYSTEM_PROMPT,
+    STEP1_PROMPT,
+    STEP2_PROMPT,
+    STEP3_PROMPT,
+    STEP4_PROMPT,
+    FULL_ANALYSIS_PROMPT,
+)
+
+
+def get_api_keys() -> list[str]:
+    """
+    Streamlit Cloud secrets에서 Gemini API 키 목록을 가져옵니다.
+    - GEMINI_API_KEYS = ["key1", "key2", ...] (다중 키, 권장)
+    - GEMINI_API_KEY = "key1"                  (단일 키, 하위 호환)
+    """
+    try:
+        keys = st.secrets["GEMINI_API_KEYS"]
+        if isinstance(keys, str):
+            keys = [k.strip() for k in keys.split(",") if k.strip()]
+        return [k for k in keys if k]
+    except (KeyError, AttributeError, FileNotFoundError):
+        pass
+    try:
+        key = st.secrets["GEMINI_API_KEY"]
+        if key:
+            return [key]
+    except (KeyError, AttributeError, FileNotFoundError):
+        pass
+    return []
+
+
+def get_api_key() -> str | None:
+    """API 키 목록에서 랜덤으로 하나 선택해 반환합니다."""
+    keys = get_api_keys()
+    return random.choice(keys) if keys else None
+
+
+def _is_quota_error(error: Exception) -> bool:
+    """할당량·레이트리밋 관련 에러인지 확인합니다."""
+    err_str = str(error).lower()
+    return any(kw in err_str for kw in QUOTA_ERROR_KEYWORDS)
+
+
+def init_model(model_name: str = DEFAULT_MODEL):
+    """Gemini 모델 초기화"""
+    api_key = get_api_key()
+    if not api_key:
+        return None, "❌ API 키를 찾을 수 없습니다."
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=SYSTEM_PROMPT,
+            generation_config=GENERATION_CONFIG,
+        )
+        return model, None
+    except Exception as e:
+        return None, f"❌ 모델 초기화 오류: {e}"
+
+
+def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mode: bool) -> tuple[str, str | None]:
+    """
+    단일 프롬프트를 비스트리밍으로 실행 (병렬 호출용 내부 함수).
+    Returns: (result_text, error_or_None)
+    """
+    prompt = prompt_template.format(report_text=report_text)
+    candidates = AUTO_MODEL_PRIORITY if auto_mode else [model_name]
+
+    for candidate in candidates:
+        model, init_err = init_model(candidate)
+        if init_err:
+            continue
+        try:
+            response = model.generate_content(prompt)
+            return response.text, None
+        except Exception as e:
+            if _is_quota_error(e):
+                continue
+            return "", f"❌ 분석 오류 ({candidate}): {e}"
+
+    return "", "❌ 모든 모델의 할당량이 초과되었습니다. 잠시 후 다시 시도하세요."
+
+
+def run_parallel_steps(
+    report_text: str,
+    model_name: str = DEFAULT_MODEL,
+    auto_mode: bool = True,
+    steps: list[int] | None = None,
+) -> dict[int, tuple[str, str | None]]:
+    """
+    지정한 단계(기본: 1~4)를 ThreadPoolExecutor로 병렬 실행.
+    각 단계마다 STEP_TEXT_RATIO에 따라 텍스트 구간을 슬라이스하여 전달.
+    Returns: {step_num: (result_text, error_or_None)}
+    """
+    if steps is None:
+        steps = [1, 2, 3, 4]
+
+    step_prompts = {1: STEP1_PROMPT, 2: STEP2_PROMPT, 3: STEP3_PROMPT, 4: STEP4_PROMPT}
+
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(steps)) as executor:
+        future_map = {
+            executor.submit(
+                _run_single,
+                step_prompts[s],
+                slice_text_for_step(report_text, s, STEP_TEXT_RATIO),  # 단계별 슬라이스
+                model_name,
+                auto_mode,
+            ): s
+            for s in steps
+        }
+        for future in concurrent.futures.as_completed(future_map):
+            step = future_map[future]
+            try:
+                results[step] = future.result()
+            except Exception as e:
+                results[step] = ("", f"❌ 실행 오류: {e}")
+
+    return results
+
+
+def run_analysis_stream(
+    prompt_template: str,
+    report_text: str,
+    model_name: str = DEFAULT_MODEL,
+    auto_mode: bool = False,
+):
+    """
+    스트리밍 방식으로 분석 실행 (단일 프롬프트).
+    auto_mode=True 이면 AUTO_MODEL_PRIORITY 순서로 할당량 초과 시 자동 전환.
+    Yields (chunk_text, is_error, used_model) tuples.
+    """
+    prompt = prompt_template.format(report_text=report_text)
+    candidates = AUTO_MODEL_PRIORITY if auto_mode else [model_name]
+
+    last_error = None
+    for candidate in candidates:
+        model, init_err = init_model(candidate)
+        if init_err:
+            last_error = init_err
+            continue
+        try:
+            response = model.generate_content(prompt, stream=True)
+            yield f"\n\n> 🤖 **사용 모델:** `{candidate}`\n\n", False, candidate
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text, False, candidate
+            return
+        except Exception as e:
+            if _is_quota_error(e):
+                last_error = f"⚠️ `{candidate}` 할당량 초과 — 다음 모델로 전환 중..."
+                yield last_error + "\n\n", False, candidate
+                continue
+            else:
+                yield f"❌ 분석 오류 ({candidate}): {e}", True, candidate
+                return
+
+    yield f"❌ 모든 모델의 할당량이 초과되었습니다.\n마지막 오류: {last_error}", True, ""
+
+
+def run_analysis(
+    prompt_template: str,
+    report_text: str,
+    model_name: str = DEFAULT_MODEL,
+    auto_mode: bool = False,
+) -> tuple[str, str | None]:
+    """
+    비스트리밍 분석 실행.
+    Returns: (result_text, error_message or None)
+    """
+    text, err = _run_single(prompt_template, report_text, model_name, auto_mode)
+    return text, err
+
+
+STEP_PROMPTS = {
+    1: STEP1_PROMPT,
+    2: STEP2_PROMPT,
+    3: STEP3_PROMPT,
+    4: STEP4_PROMPT,
+}
+
+STEP_LABELS = {
+    1: "📋 1단계: 조사 설계 요약",
+    2: "🔍 2단계: 부문별 정밀 검수",
+    3: "⚠️ 3단계: 오류 식별",
+    4: "📄 4단계: 종합 검수 보고서",
+}
