@@ -10,6 +10,7 @@ __pycache__/
 # PDF / 샘플 데이터
 *.pdf
 *.txt
+!requirements.txt
 
 # OS
 .DS_Store
