@@ -213,8 +213,8 @@ STEP_PROMPTS = {
 }
 
 STEP_LABELS = {
-    1: "📋 1단계: 조사 설계 요약",
-    2: "🔍 2단계: 부문별 정밀 검수",
-    3: "⚠️ 3단계: 오류 식별",
-    4: "📄 4단계: 종합 검수 보고서",
+    1: "\ud83d\udccb 1\ub2e8\uacc4: \uc870\uc0ac \uc124\uacc4 \uc694\uc57d",
+    2: "\ud83d\udd0d 2\ub2e8\uacc4: \ubd80\ubb38\ubcc4 \uc815\ubc00 \uac80\uc218",
+    3: "\u26a0\ufe0f 3\ub2e8\uacc4: \uc624\ub958 \uc2dd\ubca8",
+    4: "\ud83d\udcc4 4\ub2e8\uacc4: \uc885\ud569 \uac80\uc218 \ubcf4\uace0\uc11c",
 }

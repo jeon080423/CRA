@@ -395,16 +395,16 @@ else:
 <div class="qx-card" style="padding:1.25rem 1.5rem;">
     <div style="display:flex;flex-direction:column;gap:0.65rem;">
         <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.875rem;color:#2D3A50;">
-            <span style="color:#0F6CBD;font-weight:700;">01</span><span>조사 설계 요약</span>
+            <span style="color:#0F6CBD;font-weight:700;">01</span><span>\uc870\uc0ac \uc124\uacc4 \uc694\uc57d</span>
         </div>
         <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.875rem;color:#2D3A50;">
-            <span style="color:#0F6CBD;font-weight:700;">02</span><span>부문별 정밀 검수</span>
+            <span style="color:#0F6CBD;font-weight:700;">02</span><span>\ubd80\ubb38\ubcc4 \uc815\ubc00 \uac80\uc218</span>
         </div>
         <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.875rem;color:#2D3A50;">
-            <span style="color:#0F6CBD;font-weight:700;">03</span><span>5대 통합 오류 기준 점검</span>
+            <span style="color:#0F6CBD;font-weight:700;">03</span><span>5\ub300 \ud1b5\ud569 \uc624\ub958 \uae30\uc900 \uc810\uacb8</span>
         </div>
         <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.875rem;color:#2D3A50;">
-            <span style="color:#0F6CBD;font-weight:700;">04</span><span>종합 검수 보고서</span>
+            <span style="color:#0F6CBD;font-weight:700;">04</span><span>\uc885\ud569 \uac80\uc218 \ubcf4\uace0\uc11c</span>
         </div>
     </div>
 </div>
@@ -463,10 +463,15 @@ else:
                 status_cols = st.columns(4)
                 placeholders = {i+1: status_cols[i].empty() for i in range(4)}
                 
-                # 초기 상태 표시
-                step_names = ["조사 설계 요약", "부문별 검수", "오류 식별", "종합 보고서"]
+                # \ucd08\uae30 \uc0c1\ud0dc \ud45c\uc2dc
+                step_names = [
+                    "\uc870\uc0ac \uc124\uacc4 \uc694\uc57d", 
+                    "\ubd80\ubb38\ubcc4 \uac80\uc218", 
+                    "\uc624\ub958 \uc2dd\ubca8", 
+                    "\uc885\ud569 \ubcf4\uace0\uc11c"
+                ]
                 for i, name in enumerate(step_names, 1):
-                    placeholders[i].markdown(f"🔄 `{i}단계` {name}...")
+                    placeholders[i].markdown(f"\ud83d\udd04 `{i}\ub2e8\uacc4` {name}...")
 
                 # 실시간 병렬 처리 실행
                 results = {}
