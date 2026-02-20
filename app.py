@@ -3,6 +3,7 @@
 Streamlit Cloud 배포용 메인 앱
 """
 import streamlit as st
+import concurrent.futures
 from config import (
     APP_TITLE, APP_ICON, APP_DESCRIPTION,
     AVAILABLE_MODELS, DEFAULT_MODEL, MAX_TEXT_CHARS,
@@ -10,7 +11,7 @@ from config import (
 )
 from file_processor import extract_text, truncate_text
 from analyzer import (
-    run_analysis_stream, run_analysis, run_parallel_steps,
+    run_analysis_stream, run_analysis, _run_single,
     STEP_PROMPTS, STEP_LABELS,
     FULL_ANALYSIS_PROMPT, get_api_key, get_api_keys,
 )
@@ -451,43 +452,67 @@ else:
 
         if run_full:
             if not api_key:
-                st.error("킵는 API 키가 설정되지 않았습니다. Streamlit Secrets에 GEMINI_API_KEYS를 추가하세요.")
+                st.error("API 키가 설정되지 않았습니다. Streamlit Secrets에 GEMINI_API_KEYS를 추가하세요.")
             else:
                 _auto = st.session_state["auto_mode"]
                 _model = st.session_state["selected_model"]
                 st.session_state["full_result"] = ""
                 st.session_state["step_results"] = {1: "", 2: "", 3: "", 4: ""}
 
-                progress_bar = st.progress(0, text="⚙️ 4단계 병렬 실행 중...")
+                progress_bar = st.progress(0, text="⚡ 4단계 병렬 분석 실시간 진행 중...")
                 status_cols = st.columns(4)
-                placeholders = {
-                    i+1: status_cols[i].empty() for i in range(4)
-                }
-                for i, lbl in enumerate(["조사 설계 요약", "부문별 검수", "오류 식별", "종합 보고서"]):
-                    placeholders[i+1].markdown(f"🔄 `{i+1}단계` {lbl}...")
+                placeholders = {i+1: status_cols[i].empty() for i in range(4)}
+                
+                # 초기 상태 표시
+                step_names = ["조사 설계 요약", "부문별 검수", "오류 식별", "종합 보고서"]
+                for i, name in enumerate(step_names, 1):
+                    placeholders[i].markdown(f"🔄 `{i}단계` {name}...")
 
-                with st.spinner(""):
-                    parallel_results = run_parallel_steps(
-                        st.session_state["report_text"],
-                        model_name=_model,
-                        auto_mode=_auto,
-                    )
+                # 실시간 병렬 처리 실행
+                results = {}
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                    from file_processor import slice_text_for_step
+                    from config import STEP_TEXT_RATIO
+                    
+                    future_to_step = {
+                        executor.submit(
+                            _run_single, 
+                            STEP_PROMPTS[s], 
+                            slice_text_for_step(st.session_state["report_text"], s, STEP_TEXT_RATIO),
+                            _model, 
+                            _auto
+                        ): s for s in range(1, 5)
+                    }
 
+                    completed_count = 0
+                    for future in concurrent.futures.as_completed(future_to_step):
+                        step_num = future_to_step[future]
+                        completed_count += 1
+                        try:
+                            text, err = future.result()
+                            if err:
+                                placeholders[step_num].error(f"❌ {step_num}단계 실패")
+                                st.session_state["step_results"][step_num] = ""
+                            else:
+                                placeholders[step_num].success(f"✅ {step_num}단계 완료")
+                                st.session_state["step_results"][step_num] = text
+                            
+                            progress_bar.progress(completed_count / 4, text=f"분석 진행률: {completed_count}/4 단계 완료")
+                        except Exception as e:
+                            placeholders[step_num].error(f"❌ {step_num}단계 오류")
+
+                # 결과 취합
                 combined = ""
-                for step_num in range(1, 5):
-                    text, err = parallel_results.get(step_num, ("", "한 오류"))
-                    if err:
-                        placeholders[step_num].error(f"❌ {step_num}단계 실패: {err}")
-                        st.session_state["step_results"][step_num] = ""
-                    else:
-                        placeholders[step_num].success(f"✅ `{step_num}단계` 완료")
-                        st.session_state["step_results"][step_num] = text
-                        combined += f"\n\n---\n\n## {STEP_LABELS[step_num]}\n\n{text}"
-                    progress_bar.progress(step_num / 4, text=f"{step_num}/4단계 완료")
-
+                for s in range(1, 5):
+                    if st.session_state["step_results"][s]:
+                        combined += f"\n\n---\n\n## {STEP_LABELS[s]}\n\n{st.session_state['step_results'][s]}"
+                
                 st.session_state["full_result"] = combined
-                st.success("⚡ 4단계 병렬 분석 완료!")
-                st.rerun()
+                if combined:
+                    st.success("⚡ 전체 병렬 분석이 완료되었습니다!")
+                    st.rerun()
+                else:
+                    st.error("분석 결과 생성에 실패했습니다.")
 
         st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -617,4 +642,5 @@ else:
     </div>
 </div>
 """, unsafe_allow_html=True)
-# Last forced sync: 02/21/2026 05:00:22
+
+# Last forced sync: 2026-02-21 05:04:00
