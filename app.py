@@ -497,6 +497,7 @@ def show_unit_nonresponse_system():
     </div>
 </div>
 """, unsafe_allow_html=True)
+        st.markdown("<div style='margin-bottom: 20rem;'></div>", unsafe_allow_html=True) # [v4.3] 하단 잘림 방지용 대형 스페이서
         return
 
     # 데이터 로드
@@ -739,6 +740,7 @@ def show_outlier_inspection_system(mode="outlier"):
     </div>
 </div>
 """, unsafe_allow_html=True)
+        st.markdown("<div style='margin-bottom: 20rem;'></div>", unsafe_allow_html=True) # [v4.3] 하단 잘림 방지용 대형 스페이서
         return
 
     # 데이터 로드
