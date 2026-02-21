@@ -531,9 +531,6 @@ with st.sidebar:
         st.caption("파일을 업로드하면 현황이 표시됩니다.")
 
     st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown(f'<div class="qx-section-label">Matrix ID</div>', unsafe_allow_html=True)
-    st.code(config.MATRIX_APP_ID, language="text")
-    st.markdown("<hr>", unsafe_allow_html=True)
 
     if st.button("초기화", use_container_width=True):
         for k in ["report_text", "file_name", "full_result", "rfp_curr_text", "rfp_prev_text", "rfp_project_name"]:
@@ -545,7 +542,7 @@ with st.sidebar:
 
     st.markdown("<hr>", unsafe_allow_html=True)
     st.caption("개발: ㅈㅅㅎ")
-    st.caption("문의: jeon080423@gmail.com")
+    st.caption("문의: shjeon1@metrix.co.kr")
     st.caption("Powered by Google Gemini · v2.9")
 
 

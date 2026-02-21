@@ -64,7 +64,7 @@ RFP_SEC_SUMMARY = f"""{RFP_COMMON_RULES}
 
 ---
 **[분석 대상 문서 내용]**
-{report_text}
+{{report_text}}
 """
 
 # 2. 제안요청서 핵심 비교 및 전략
@@ -81,7 +81,7 @@ RFP_SEC_COMPARE = f"""{RFP_COMMON_RULES}
 
 ---
 **[분석 대상 문서 내용]**
-{report_text}
+{{report_text}}
 """
 
 # 3. 배점표 기반 승부처 분석
@@ -92,7 +92,7 @@ RFP_SEC_SCORE_ANALYSIS = f"""{RFP_COMMON_RULES}
 
 ---
 **[분석 대상 문서 내용]**
-{report_text}
+{{report_text}}
 """
 
 # 4. 과업 내용 기반 필수 수행 체크리스트
@@ -103,7 +103,7 @@ RFP_SEC_TASK_CHECKLIST = f"""{RFP_COMMON_RULES}
 
 ---
 **[분석 대상 문서 내용]**
-{report_text}
+{{report_text}}
 """
 
 # 5. 행정 서류 및 제안서 규격 체크리스트
