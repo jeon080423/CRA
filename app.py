@@ -488,7 +488,17 @@ with st.sidebar:
                     )
                     
                     ok_count = sum(1 for r in results if "정상" in r["상태"])
-                    st.success(f"진단 완료: 총 {len(results)}개 조합 중 {ok_count}개 정상")
+                    
+                    # INFO 행에서 발견된 모델 목록 추출 및 표시
+                    info_row = next((r for r in results if r["순번"] == "INFO"), None)
+                    if info_row:
+                        st.info(f"🔍 **발견된 가용 모델 ID 목록:**\n\n`{info_row['상세 내용']}`")
+                        # 분석에 사용 가능한 후보군만 따로 강조
+                        candidates = [m for m in info_row['상세 내용'].split(", ") if "flash" in m or "pro" in m]
+                        st.caption(f"이 중 분석 도구에서 활용 가능한 모델: {', '.join(candidates)}")
+
+                    st.success(f"진단 완료: 총 {len(results)-1 if info_row else len(results)}개 조합 중 {ok_count}개 정상")
+
                     if ok_count == 0:
                         st.error("사용 가능한 키/모델 조합이 없습니다. API 키를 교체해 주세요.")
                 else:
