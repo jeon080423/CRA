@@ -265,6 +265,12 @@ def do_logout():
 
 # ── 사이드바
 with st.sidebar:
+    # 로고 추가
+    try:
+        st.image("logo.png", use_container_width=True)
+    except:
+        pass
+
     st.markdown("### Research Auditor & Win Strategy")
     st.markdown("<hr>", unsafe_allow_html=True)
 
