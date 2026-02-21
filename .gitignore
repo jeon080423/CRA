@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+
+# Streamlit
+.streamlit/secrets.toml
+
+# PDF / 샘플 데이터
+*.pdf
+*.txt
+!requirements.txt
+
+# OS
+.DS_Store
+Thumbs.db
