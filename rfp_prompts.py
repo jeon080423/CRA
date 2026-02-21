@@ -114,7 +114,7 @@ RFP_SEC_ADMIN_CHECKLIST = f"""{RFP_COMMON_RULES}
 
 ---
 **[분석 대상 문서 내용]**
-{report_text}
+{{report_text}}
 """
 
 # 6. 상세 전략 및 가점 요인
@@ -128,7 +128,7 @@ RFP_SEC_STRATEGY = f"""{RFP_COMMON_RULES}
 
 ---
 **[분석 대상 문서 내용]**
-{report_text}
+{{report_text}}
 """
 
 # 7. 제안서 목차 및 구성안 (Skeleton)
@@ -139,7 +139,7 @@ RFP_SEC_SKELETON = f"""{RFP_COMMON_RULES}
 
 ---
 **[분석 대상 문서 내용]**
-{report_text}
+{{report_text}}
 """
 
 RFP_SECTIONS = [
