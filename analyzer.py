@@ -486,7 +486,7 @@ def check_key_quotas(progress_callback=None) -> list[dict]:
         for model_name in models:
             current_check += 1
             if progress_callback:
-                progress_callback(current_check, total_checks, f"Checking Key {i+1} with {model_name}...")
+                progress_callback(current_check, total_checks, f"키 {i+1} ({model_name}) 상태 확인 중...")
                 
             status = "✅ 정상"
             error_detail = ""
@@ -528,11 +528,12 @@ def check_key_quotas(progress_callback=None) -> list[dict]:
                 error_detail = str(e)
                 
             results.append({
-                "Key Index": i + 1,
-                "Key ID": key_masked,
-                "Model": model_name,
-                "Status": status,
-                "Detail": error_detail[:100] # 너무 길면 생략
+                "순번": i + 1,
+                "계정": "확인 필요",  # API 보안 정책상 직접 추출 불가 (수동 매핑 필요 시 여기에 추가)
+                "키 ID": key_masked,
+                "모델": model_name,
+                "상태": status,
+                "상세 내용": error_detail[:100] # 너무 길면 생략
             })
             
     return results

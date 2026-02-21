@@ -297,8 +297,8 @@ with st.sidebar:
 
     st.markdown("<hr>", unsafe_allow_html=True)
     
-    # API 할당량 진단 (v2.8)
-    st.markdown('<div class="qx-section-label">DIAGNOSTIC</div>', unsafe_allow_html=True)
+    # API 할당량 진단 (v2.9)
+    st.markdown('<div class="qx-section-label">진단 도구</div>', unsafe_allow_html=True)
     if st.button("🔍 API 할당량 진단 시작", use_container_width=True, key="btn_diag"):
         with st.expander("진단 결과", expanded=True):
             diag_prog = st.progress(0, text="진단 대기 중...")
@@ -320,8 +320,9 @@ with st.sidebar:
                         df, 
                         hide_index=True,
                         column_config={
-                            "Status": st.column_config.TextColumn("상태", width="medium"),
-                            "Detail": st.column_config.TextColumn("상세 내용", width="large"),
+                            "계정": st.column_config.TextColumn("계정 이메일", width="medium", help="구글 API 보안 정책으로 인해 직접 확인이 어려워 '확인 필요'로 표시됩니다."),
+                            "상태": st.column_config.TextColumn("상태", width="medium"),
+                            "상세 내용": st.column_config.TextColumn("상세 내용", width="large"),
                         },
                         use_container_width=True
                     )
@@ -336,11 +337,11 @@ with st.sidebar:
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # 모델 선택
-    st.markdown('<div class="qx-section-label">AI MODEL</div>', unsafe_allow_html=True)
+    st.markdown('<div class="qx-section-label">AI 모델 설정</div>', unsafe_allow_html=True)
     auto_mode = st.toggle(
         "🤖 자동 최적화 (권장)",
         value=st.session_state["auto_mode"],
-        help="할당량 초과 시 최적 모델로 자동 전환합니다. 우선순위: Gemini 2.5 Pro → 2.5 Flash → 2.0 Flash → ...",
+        help="할당량 초과 시 최적 모델로 자동 전환합니다. 우선순위: Gemini 2.5 Flash → 2.0 Flash → ...",
     )
     st.session_state["auto_mode"] = auto_mode
 
@@ -368,7 +369,7 @@ with st.sidebar:
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # 파일 현황
-    st.markdown('<div class="qx-section-label">FILE STATUS</div>', unsafe_allow_html=True)
+    st.markdown('<div class="qx-section-label">파일 업로드 현황</div>', unsafe_allow_html=True)
     if st.session_state["file_name"]:
         pages_info = f" · {st.session_state['file_pages']}p" if st.session_state["file_pages"] else ""
         st.markdown(
@@ -393,9 +394,9 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("<hr>", unsafe_allow_html=True)
-    st.caption("Developer: ㅈㅅㅎ")
-    st.caption("Contact: jeon080423@gmail.com")
-    st.caption("Powered by Google Gemini · v1.0")
+    st.caption("개발: ㅈㅅㅎ")
+    st.caption("문의: jeon080423@gmail.com")
+    st.caption("Powered by Google Gemini · v2.9")
 
 
 # ── 로그인 가드
