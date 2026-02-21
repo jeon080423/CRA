@@ -477,6 +477,8 @@ def check_key_quotas(progress_callback=None) -> list[dict]:
     keys = get_api_keys()
     models = config.AVAILABLE_MODELS
     results = []
+    discovered_models = set()
+
     
     total_checks = len(keys) * len(models)
     current_check = 0
@@ -492,9 +494,9 @@ def check_key_quotas(progress_callback=None) -> list[dict]:
             print(f"\n[DEBUG] [KEY {i+1}] Available Models:")
             for m in genai.list_models():
                 if 'generateContent' in m.supported_generation_methods:
-                    print(f"  - {m.name}")
-        except Exception as diag_e:
-            print(f"[DEBUG] [KEY {i+1}] List models failed: {diag_e}")
+                    discovered_models.add(m.name)
+        except Exception:
+            pass
 
         for model_name in models:
             current_check += 1
@@ -545,7 +547,18 @@ def check_key_quotas(progress_callback=None) -> list[dict]:
                 "키 ID": key_masked,
                 "모델": model_name,
                 "상태": status,
-                "상세 내용": error_detail[:100] # 너무 길면 생략
+                "상세 내용": error_detail[:100]
             })
+            
+    # 발견된 모든 모델 정보를 결과 상단에 추가
+    if discovered_models:
+        all_m_str = ", ".join(sorted(list(discovered_models)))
+        results.insert(0, {
+            "순번": "INFO", 
+            "키 ID": "시스템", 
+            "모델": "발견된 모든 API 모델", 
+            "상태": "ℹ️ 정보", 
+            "상세 내용": all_m_str
+        })
             
     return results
