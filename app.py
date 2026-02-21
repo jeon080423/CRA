@@ -225,6 +225,8 @@ def init_session():
         "rfp_prev_text": "",
         "rfp_results": {},
         "rfp_project_name": "",
+        "rfp_curr_name": "",
+        "rfp_prev_name": "",
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -282,14 +284,17 @@ def show_win_strategy_section():
         prev_file = st.file_uploader("직전 회차 제안요청서", type=["pdf", "docx", "txt"], key="rfp_prev_up")
 
     # 텍스트 추출 가이드
-    if curr_file and not st.session_state["rfp_curr_text"]:
+    if curr_file and curr_file.name != st.session_state["rfp_curr_name"]:
         with st.spinner("금년도 RFP 분석 준비 중..."):
             text, _ = extract_text(curr_file)
             st.session_state["rfp_curr_text"] = text
-    if prev_file and not st.session_state["rfp_prev_text"]:
+            st.session_state["rfp_curr_name"] = curr_file.name
+    
+    if prev_file and prev_file.name != st.session_state["rfp_prev_name"]:
         with st.spinner("직전 RFP 분석 준비 중..."):
             text, _ = extract_text(prev_file)
             st.session_state["rfp_prev_text"] = text
+            st.session_state["rfp_prev_name"] = prev_file.name
 
     st.markdown("<hr>", unsafe_allow_html=True)
     
@@ -347,13 +352,10 @@ def perform_rfp_analysis():
     for i, sec in enumerate(RFP_SECTIONS):
         status_text.info(f"⏳ **{sec['title']}** 분석 중... ({i+1}/{total})")
         
-        # API 호출
-        full_prompt = sec["prompt"].replace("{user_content}", user_content)
-        
         # analyzer의 run_analysis 활용
         result, err = run_analysis(
-            full_prompt, 
-            "", # report_text는 프롬프트에 이미 포함됨
+            sec["prompt"], 
+            user_content, # report_text 인자로 보내야 프롬프트의 {report_text}가 치환됨
             model_name=st.session_state["selected_model"],
             auto_mode=st.session_state["auto_mode"]
         )
