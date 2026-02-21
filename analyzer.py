@@ -317,9 +317,9 @@ def run_step_with_chunks(
             # 모든 조각 결과 취합
             all_results_text = "\n\n".join([f"--- 조각 {i+1} ---\n{res}" for i, res in enumerate(chunk_results) if res])
             
-            # 하이브리드 전략: 병합(Synthesis)은 고성능 모델(Pro)을 가급적 사용
-            # 하지만 2단계 병합 시에만 Pro를 강제하고 나머지는 유연하게 적용
-            synth_model = "gemini-2.5-pro" if step_num == 2 else model_name
+            # 하이브리드 전략: 병합(Synthesis)은 고성능 모델(Pro)을 사용
+            # config에 정의된 우선순위 모델 중 하나 사용 (Pro 우선)
+            synth_model = "gemini-1.5-pro" if step_num == 2 else (model_name if model_name else config.DEFAULT_MODEL)
             
             synthesis_text, synth_err = _run_single(
                 synthesis_prompt_template.replace("{chunk_results}", all_results_text),
@@ -339,7 +339,8 @@ def run_step_with_chunks(
             combined_text = "\n\n---\n\n".join(filter(None, chunk_results))
     # 5. 내결함성(Fault Tolerance): 성공한 조각이 하나라도 있으면 결과 반환
     if not any(chunk_results):
-        return "", f"❌ 모든 조각 분석 실패: {'; '.join(errors[:3])}"
+        err_detail = "; ".join(errors[:3])
+        return "", f"❌ 모든 조각 분석 실패: {err_detail}"
         
     final_err = "; ".join(errors) if errors else None
     return combined_text, final_err
