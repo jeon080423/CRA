@@ -320,7 +320,6 @@ with st.sidebar:
                         df, 
                         hide_index=True,
                         column_config={
-                            "계정": st.column_config.TextColumn("계정 이메일", width="medium", help="구글 API 보안 정책으로 인해 직접 확인이 어려워 '확인 필요'로 표시됩니다."),
                             "상태": st.column_config.TextColumn("상태", width="medium"),
                             "상세 내용": st.column_config.TextColumn("상세 내용", width="large"),
                         },

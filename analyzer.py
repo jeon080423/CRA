@@ -516,9 +516,9 @@ def check_key_quotas(progress_callback=None) -> list[dict]:
                         _ = _resolve_text(response)
                     except Exception as e:
                         if _is_daily_limit(e):
-                            status = "🚫 일일 한도 초과"
+                            status = "🚫 일일 한도 초과 (RPD)"
                         elif _is_quota_error(e):
-                            status = "⏳ 레이트리밋(RPM)"
+                            status = "⏳ 분당 요청 제한 (RPM)"
                         elif "404" in str(e) or "not found" in str(e).lower():
                             status = "❓ 모델 미지원"
                         elif "policy" in str(e).lower() or "blocked" in str(e).lower():
@@ -532,7 +532,6 @@ def check_key_quotas(progress_callback=None) -> list[dict]:
                 
             results.append({
                 "순번": i + 1,
-                "계정": "확인 필요",  # API 보안 정책상 직접 추출 불가 (수동 매핑 필요 시 여기에 추가)
                 "키 ID": key_masked,
                 "모델": model_name,
                 "상태": status,
