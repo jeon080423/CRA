@@ -389,7 +389,12 @@ with st.sidebar:
 
     # 내비게이션
     st.markdown('<div class="qx-section-label">NAVIGATION</div>', unsafe_allow_html=True)
-    menu_options = ["과업 내용 체크 리스트", "이상치 확인 및 무응답 검토", "보고서 검수 AI Tools"]
+    menu_options = [
+        "과업 내용 체크 리스트", 
+        "AI 이상치 검토 (Call Back, Data Adjustment)", 
+        "AI 결측치 검토 (Call Back, Imputation)",
+        "보고서 검수 AI Tools"
+    ]
     
     # 세션 상태에 저장된 메뉴가 옵션에 없으면 기본값(첫 번째) 사용
     try:
@@ -579,16 +584,27 @@ else:
         show_win_strategy_section()
         # End Win Strategy here (early return or just wrap)
         st.stop()
-    elif st.session_state["menu_selection"] == "이상치 확인 및 무응답 검토":
+    elif st.session_state["menu_selection"] == "AI 이상치 검토 (Call Back, Data Adjustment)":
         st.markdown("""
     <div class="qx-topbar">
-        <span class="qx-topbar-logo">이상치 확인 및 무응답 검토</span>
+        <span class="qx-topbar-logo">AI 이상치 검토</span>
         <span class="qx-topbar-sep"></span>
         <span class="qx-topbar-title">데이터 품질 진단 솔루션</span>
-        <span class="qx-topbar-badge">Data Quality Audit</span>
+        <span class="qx-topbar-badge">Call Back, Data Adjustment</span>
     </div>
     """, unsafe_allow_html=True)
-        st.info("📊 데이터의 이상치 및 무응답 패턴을 분석하는 기능입니다. 세부 기능은 준비 중입니다.")
+        st.info("📊 데이터의 이상치를 분석하고 재확인(Call Back) 및 조정(Adjustment)하는 기능입니다. 세부 기능은 준비 중입니다.")
+        st.stop()
+    elif st.session_state["menu_selection"] == "AI 결측치 검토 (Call Back, Imputation)":
+        st.markdown("""
+    <div class="qx-topbar">
+        <span class="qx-topbar-logo">AI 결측치 검토</span>
+        <span class="qx-topbar-sep"></span>
+        <span class="qx-topbar-title">데이터 품질 진단 솔루션</span>
+        <span class="qx-topbar-badge">Call Back, Imputation</span>
+    </div>
+    """, unsafe_allow_html=True)
+        st.info("📊 무응답 패턴을 분석하고 재확인(Call Back) 및 대체(Imputation)하는 기능입니다. 세부 기능은 준비 중입니다.")
         st.stop()
 
     # 파일 업로드 + 검수 항목
