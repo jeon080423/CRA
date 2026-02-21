@@ -63,12 +63,21 @@ def get_api_keys() -> list[str]:
         return []
 
 
+# 전역 로테이션 변수 (Round-Robin 보장)
+_api_key_index = 0
+_api_key_lock = threading.Lock()
+
 def get_api_key() -> str | None:
-    """API 키 목록에서 하나를 선택하여 반드시 문자열로 반환합니다."""
+    """API 키 목록에서 골고루 선택(Round-Robin)하여 반환합니다."""
+    global _api_key_index
     keys = get_api_keys()
     if not keys:
         return None
-    key = random.choice(keys)
+    
+    with _api_key_lock:
+        key = keys[_api_key_index % len(keys)]
+        _api_key_index += 1 # 순차 증가
+        
     # 최종 결과물도 리스트일 경우 첫 번째 요소 선택 (이중 방어)
     if isinstance(key, (list, tuple)):
         key = key[0] if key else None
@@ -200,13 +209,21 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
             time.sleep(0.5)
             
             print(f"[PROCESS] [STEP {step_num}] Requesting -> {candidate} (Key: {current_api_key[:8] if current_api_key else 'None'}...)", flush=True)
-            model, init_err = init_model(candidate, api_key=current_api_key)
-            if init_err:
-                # 초기화 실패 시 즉시 키 교체 시도
-                current_api_key = get_api_key()
-                continue
-                
             try:
+                model, init_err = init_model(candidate, api_key=current_api_key)
+                if init_err:
+                    # 초기화 실패 시 (잘못된 키 등) 즉시 키 교체 시도
+                    err_low = str(init_err).lower()
+                    if any(kw in err_low for kw in ["api_key", "401", "403", "unauthorized", "invalid"]):
+                        new_key = get_api_key()
+                        print(f"[WARN] [INIT_FAILED] Key issue detected. Rotating: {current_api_key[:8]} -> {new_key[:8]}", flush=True)
+                        current_api_key = new_key
+                        continue
+                    else:
+                        # 모델 자체가 없는 경우(404) 등은 다음 후보 모델로 전환
+                        print(f"[WARN] [INIT_FAILED] Model/Path issue: {init_err}. Jumping model...", flush=True)
+                        break
+                
                 # 타임아웃 120초로 여유 있게 설정
                 response = model.generate_content(
                     prompt, 
@@ -220,12 +237,16 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
                     # 원본 텍스트(clean_text)를 사용하여 더 추상적으로 변환하여 필터 우회 시도
                     safe_prompt = f"다음 텍스트에서 정책적으로 민감할 수 있는 실명, 고유 명사, 구체적 문장을 제외하고 핵심 내용만 아주 짧게 요약해줘.\n\n{clean_text[:5000]}"
                     # 더 안정적인 모델로 교체하여 재시도
-                    model_safe, _ = init_model("gemini-2.0-flash", api_key=current_api_key)
-                    if model_safe:
-                        response_safe = model_safe.generate_content(safe_prompt)
-                        text_safe = _resolve_text(response_safe)
-                        if text_safe and not text_safe.startswith("["):
-                            return f"(세이프 모드 분석 결과) {text_safe}", None
+                    for safe_model_name in ["gemini-1.5-flash", "gemini-2.0-flash"]:
+                        model_safe, _ = init_model(safe_model_name, api_key=current_api_key)
+                        if model_safe:
+                            try:
+                                response_safe = model_safe.generate_content(safe_prompt)
+                                text_safe = _resolve_text(response_safe)
+                                if text_safe and not text_safe.startswith("["):
+                                    return f"(세이프 모드 분석 결과) {text_safe}", None
+                            except:
+                                continue
                 
                 if text and not text.startswith("["):
                     return text, None
@@ -240,10 +261,10 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
                 err_msg = str(e).lower()
                 print(f"[ERROR] [STEP {step_num}] API Error ({candidate}): {err_msg}", flush=True)
                 
-                # 할당량 초과(Quota Error)인 경우 키를 즉시 교체하고 재시도
+                # 할당량 초과(Quota Error) 또는 권한/인증 오류인 경우 키를 즉시 교체하고 재시도
                 if _is_quota_error(e):
                     new_key = get_api_key()
-                    print(f"[INFO] [STEP {step_num}] Quota hit for {candidate}. Rotating key: {current_api_key[:8]} -> {new_key[:8]}", flush=True)
+                    print(f"[INFO] [STEP {step_num}] Key-related error (Quota/Auth). Rotating key: {current_api_key[:8]} -> {new_key[:8]}", flush=True)
                     current_api_key = new_key
                     continue  # 동일 모델에 대해 새 키로 재시도
                 
@@ -254,11 +275,12 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
                     "timeout" in err_msg or
                     "404" in err_msg or
                     "not found" in err_msg or
-                    "overloaded" in err_msg
+                    "overloaded" in err_msg or
+                    "bad request" in err_msg
                 )
                 
                 if should_jump_model:
-                    print(f"[INFO] [STEP {step_num}] Jumping to next model due to server/path error...", flush=True)
+                    print(f"[INFO] [STEP {step_num}] Jumping to next model due to server/path error: {err_msg[:50]}...", flush=True)
                     break # 내부 키 루프 탈출 -> 다음 candidate 모델 시도
                 
                 return "", f"❌ 분석 오류 ({candidate}): {e}"

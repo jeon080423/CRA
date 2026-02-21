@@ -8,45 +8,39 @@ APP_DESCRIPTION = "국가승인통계, 공공기관 만족도 조사, 정책 평
 # Gemini 모델 목록 (사용자가 수동 선택 가능한 전체 목록)
 # ──────────────────────────────────────────────
 AVAILABLE_MODELS = [
-    "gemini-3-flash-preview",          # Gemini 3.0 Flash (Next-Gen Speed)
-    "gemini-2.5-pro",                  # Gemini 2.5 Pro (State-of-the-art)
-    "gemini-2.5-flash",                # Gemini 2.5 Flash
-    "gemini-2.5-flash-lite",           # Gemini 2.5 Flash Lite
-    "gemini-2.0-pro-exp-02-05",        # Gemini 2.0 Pro Exp
-    "gemini-2.0-flash",                # Gemini 2.0 Flash
-    "gemini-2.0-flash-exp",            # Gemini 2.0 Flash Exp
-    "gemini-2.0-flash-lite",           # Gemini 2.0 Flash Lite
+    "gemini-2.0-flash",                # Gemini 2.0 Flash (Stable)
+    "gemini-1.5-pro",                  # Gemini 1.5 Pro (Powerful)
+    "gemini-1.5-flash",                # Gemini 1.5 Flash (Fast)
+    "gemini-2.0-pro-exp-02-05",        # Gemini 2.0 Pro Experimental
+    "gemini-1.5-flash-8b",             # Gemini 1.5 Flash 8B (Super Fast)
 ]
 
 # 모델 표시 이름 매핑
 MODEL_DISPLAY_NAMES = {
-    "gemini-3-flash-preview":           "Gemini 3.0 Flash (Preview)",
-    "gemini-2.5-pro":                   "Gemini 2.5 Pro (Stable)",
-    "gemini-2.5-flash":                 "Gemini 2.5 Flash (Stable)",
-    "gemini-2.5-flash-lite":            "Gemini 2.5 Flash Lite",
-    "gemini-2.0-pro-exp-02-05":         "Gemini 2.0 Pro (Experimental)",
     "gemini-2.0-flash":                 "Gemini 2.0 Flash (Stable)",
-    "gemini-2.0-flash-exp":             "Gemini 2.0 Flash (Experimental)",
-    "gemini-2.0-flash-lite":            "Gemini 2.0 Flash Lite",
+    "gemini-1.5-pro":                   "Gemini 1.5 Pro (Stable)",
+    "gemini-1.5-flash":                 "Gemini 1.5 Flash (Stable)",
+    "gemini-2.0-pro-exp-02-05":         "Gemini 2.0 Pro (Experimental)",
+    "gemini-1.5-flash-8b":              "Gemini 1.5 Flash 8B",
 }
 
 # ──────────────────────────────────────────────
 # 자동 최적화 모드: 할당량 초과 시 순서대로 폴백
 # ──────────────────────────────────────────────
 AUTO_MODEL_PRIORITY = [
-    "gemini-2.0-flash",                 # 1순위: 안정적인 최신 고속 모델
-    "gemini-2.5-flash",                 # 2순위: 고기능 고속 모델
-    "gemini-2.5-pro",                   # 3순위: 최고 수준의 정밀도
-    "gemini-3-flash-preview",           # 4순위: 압도적인 차세대 속도
+    "gemini-2.0-flash",                 # 1순위: 압도적 속도 및 안정성
+    "gemini-1.5-pro",                   # 2순위: 최고 수준의 분석력
+    "gemini-1.5-flash",                 # 3순위: 안정적인 고속 모델
+    "gemini-2.0-pro-exp-02-05",         # 4순위: 실험적 고성능 모델
 ]
 
 # ──────────────────────────────────────────────
 # 단계별 최적 모델 맵 (속도 vs 품질 밸런스)
 # ──────────────────────────────────────────────
 STEP_MODEL_MAP = {
-    1: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-3-flash-preview"],
-    2: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-3-flash-preview"], 
-    3: ["gemini-2.5-pro", "gemini-2.0-pro-exp-02-05", "gemini-2.0-flash"], 
+    1: ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"],
+    2: ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"], 
+    3: ["gemini-1.5-pro", "gemini-2.0-pro-exp-02-05", "gemini-2.0-flash"], 
 }
 
 
@@ -70,7 +64,6 @@ SAFETY_SETTINGS = [
     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": "BLOCK_NONE"},
 ]
 
 # 파일 업로드 설정
@@ -100,5 +93,6 @@ STEP_TEXT_RATIO = {
 QUOTA_ERROR_KEYWORDS = [
     "quota", "rate limit", "429", "resource exhausted",
     "too many requests", "resourceexhausted",
-    "500", "503", "overloaded", "deadline", "unavailable"
+    "500", "503", "overloaded", "deadline", "unavailable",
+    "401", "403", "unauthorized", "api_key_invalid", "permission_denied", "invalid api key"
 ]
