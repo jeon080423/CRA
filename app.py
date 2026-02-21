@@ -23,7 +23,7 @@ import rfp_utils
 import io
 import pandas as pd
 import numpy as np
-from data_cleaner import DataImputer
+from data_cleaner import DataImputer, WeightCalculator
 import plotly.express as px
 try:
     from docx import Document
@@ -425,6 +425,131 @@ def perform_rfp_analysis():
 
 
 
+
+def show_unit_nonresponse_system():
+    """AI 단위 무응답 검토 및 가중치 조정(Weighting) 시스템 UI"""
+    st.markdown("""
+    <div class="qx-topbar">
+        <span class="qx-topbar-logo">AI 단위 무응답 검토</span>
+        <span class="qx-topbar-sep"></span>
+        <span class="qx-topbar-title">표본 편향 교정 솔루션</span>
+        <span class="qx-topbar-badge">Raking, Weighting</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # [v4.0 추가] 가이드
+    with st.expander("📘 AI 단위 무응답(가중치) 검토 가이드", expanded=False):
+        st.markdown("""
+        ### 🛠️ AI 단위 무응답 교정 가이드
+        1. **데이터 업로드:** 응답이 완료된 원본 설문 데이터를 업로드합니다.
+        2. **변수 및 목표 설정:** 성별, 연령대 등 가중치 조정 기준 변수를 선택하고 모집단 분포(비율)를 입력합니다.
+        3. **Raking 실행:** RIM Weighting 알고리즘을 통해 반복적으로 적정 가중치를 산출합니다.
+        4. **품질 검정:** 가중치 분포와 설계효과(Deff)를 확인하여 표본의 대표성을 검토합니다.
+        """)
+
+    # 빈 상태 안내
+    st.markdown('<div class="qx-section-label">1. 데이터 업로드 (Survey Data)</div>', unsafe_allow_html=True)
+    df_file = st.file_uploader("가중치 조정을 수행할 데이터를 업로드하세요", type=["xlsx", "csv"], label_visibility="collapsed", key="uploader_unit")
+
+    if not df_file:
+        st.markdown("""
+<div class="qx-card" style="text-align:center; padding:3.5rem 2rem; margin-top: 1rem;">
+    <div style="font-size:3rem; margin-bottom:1rem;">⚖️</div>
+    <div style="font-size:1.1rem; font-weight:600; color:#1A2237; margin-bottom:0.5rem;">
+        무응답 교정을 위한 데이터를 업로드하세요
+    </div>
+    <div style="font-size:0.87rem; color:#8B96A9; margin-bottom:2rem;">
+        응답 표본과 모집단 간의 차이를 분석하고 통계적 가중치(Weighting)를 부여합니다.
+    </div>
+    <div style="display:flex; justify-content:center; gap:1.5rem; flex-wrap:wrap;">
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
+            <div style="font-size:1.4rem;">📊</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">편향 진단</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
+            <div style="font-size:1.4rem;">🔢</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">Raking 보정</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
+            <div style="font-size:1.4rem;">📉</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">Deff 평가</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+        return
+
+    # 데이터 로드
+    try:
+        df = pd.read_csv(df_file) if df_file.name.endswith(".csv") else pd.read_excel(df_file)
+        st.success(f"데이터 로드 완료: {len(df)} 행")
+    except Exception as e:
+        st.error(f"로드 중 오류: {e}")
+        return
+
+    # 변수 선택
+    st.markdown('<div class="qx-section-label">2. 가중치 보정 변수 설정</div>', unsafe_allow_html=True)
+    weight_vars = st.multiselect("가중치를 부여할 기준 변수를 선택하세요 (예: 성별, 연령)", options=df.columns.tolist())
+
+    if not weight_vars:
+        st.info("변수를 선택하면 모집단 비율 입력란이 나타납니다.")
+        return
+
+    # 목표 비율 입력
+    targets = {}
+    st.markdown("##### 📍 모집단 목표 분포 입력 (%)")
+    for var in weight_vars:
+        with st.expander(f"변수: {var}", expanded=True):
+            unique_vals = df[var].dropna().unique().tolist()
+            targets[var] = {}
+            cols = st.columns(len(unique_vals))
+            for i, val in enumerate(unique_vals):
+                with cols[i]:
+                    prop = st.number_input(f"{val} 비율", min_value=0.0, max_value=100.0, value=100.0/len(unique_vals), key=f"target_{var}_{val}")
+                    targets[var][val] = prop / 100.0
+            
+            # 합계 체크
+            total_p = sum(targets[var].values())
+            if abs(total_p - 1.0) > 0.001:
+                st.warning(f"합계가 {total_p*100:.1f}%입니다. 100%가 되도록 조정하세요.")
+
+    # 실행
+    st.markdown("<hr>", unsafe_allow_html=True)
+    if st.button("🚀 가중치 산출(Raking) 실행", type="primary", use_container_width=True):
+        calculator = WeightCalculator(df)
+        with st.spinner("RIM Weighting 알고리즘 가동 중..."):
+            iters, diff = calculator.apply_raking(targets)
+            st.session_state["weighted_df"] = calculator.df
+            st.session_state["weight_diag"] = calculator.get_diagnostics()
+            st.success(f"가중치 산출 완료! (반복 횟수: {iters}, 최종 수렴 오차: {diff:.6f})")
+
+    # 결과 표시
+    if "weighted_df" in st.session_state:
+        st.markdown('<div class="qx-section-label">3. 가중치 검정 및 다운로드</div>', unsafe_allow_html=True)
+        diag = st.session_state["weight_diag"]
+        
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("가중치 범위", f"{diag['min']:.2f} ~ {diag['max']:.2f}")
+        m2.metric("평균 가중치", f"{diag['mean']:.2f}")
+        m3.metric("설계효과 (Deff)", f"{diag['deff']:.3f}")
+        m4.metric("유효 표본 (ESS)", f"{int(diag['ess'])}명")
+
+        # 가중치 분포 시각화
+        fig = px.histogram(st.session_state["weighted_df"], x="weight", title="가중치 분포 히스토그램",
+                          template="plotly_white", nbins=30)
+        fig.update_traces(marker_color="#0F6CBD")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # 다운로드
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            st.session_state["weighted_df"].to_excel(writer, index=False, sheet_name='WeightedData')
+        output.seek(0)
+        
+        st.download_button("📥 가중치 포함 데이터 다운로드 (Excel)", data=output, 
+                           file_name=f"가중치보정_{df_file.name}", use_container_width=True)
+
+
 def show_outlier_inspection_system(mode="outlier"):
     """AI 이상치/결측치 검토 및 보완 시스템 UI"""
     st.markdown(f"""
@@ -799,6 +924,7 @@ with st.sidebar:
         "과업 내용 체크 리스트", 
         "AI 이상치 검토 (Call Back, Data Adjustment)", 
         "AI 결측치 검토 (Call Back, Imputation)",
+        "AI 단위 무응답 검토",
         "보고서 검수 AI Tools"
     ]
     
@@ -1140,6 +1266,9 @@ else:
         st.stop()
     elif st.session_state["menu_selection"] == "AI 결측치 검토 (Call Back, Imputation)":
         show_outlier_inspection_system(mode="imputation")
+        st.stop()
+    elif st.session_state["menu_selection"] == "AI 단위 무응답 검토":
+        show_unit_nonresponse_system()
         st.stop()
 
     # 파일 업로드 + 검수 항목

@@ -109,3 +109,61 @@ class DataImputer:
                 pd.DataFrame(self.audit_log).to_excel(writer, index=False, sheet_name='AuditLog')
         output.seek(0)
         return output
+
+class WeightCalculator:
+    """단위 무응답 교정을 위한 통계적 가중치(Weighting) 엔진"""
+    
+    def __init__(self, df: pd.DataFrame):
+        self.df = df.copy()
+        if 'weight' not in self.df.columns:
+            self.df['weight'] = 1.0
+            
+    def apply_raking(self, targets: dict, max_iter=50, tolerance=1e-4):
+        """
+        RIM Weighting (Raking) 알고리즘 수행
+        targets: { '변수명': { '값1': 목표비율1, '값2': 목표비율2 }, ... }
+        """
+        import pandas as pd
+        curr_df = self.df.copy()
+        
+        for i in range(max_iter):
+            max_diff = 0
+            for col, target_dist in targets.items():
+                if col not in curr_df.columns:
+                    continue
+                    
+                current_weighted_sums = curr_df.groupby(col)['weight'].sum()
+                total_weight = current_weighted_sums.sum()
+                
+                for val, target_prop in target_dist.items():
+                    actual_sum = current_weighted_sums.get(val, 0)
+                    if actual_sum == 0: continue
+                    
+                    target_sum = total_weight * target_prop
+                    factor = target_sum / actual_sum
+                    
+                    curr_df.loc[curr_df[col] == val, 'weight'] *= factor
+                    max_diff = max(max_diff, abs(1 - factor))
+            
+            if max_diff < tolerance:
+                break
+                
+        curr_df['weight'] = curr_df['weight'] / curr_df['weight'].mean()
+        self.df = curr_df
+        return i + 1, max_diff
+
+    def get_diagnostics(self):
+        """가중치 품질 진단 데이터 산출"""
+        ws = self.df['weight']
+        n = len(ws)
+        deff = n * (ws**2).sum() / (ws.sum()**2)
+        ess = n / deff
+        
+        return {
+            "min": ws.min(),
+            "max": ws.max(),
+            "mean": ws.mean(),
+            "std": ws.std(),
+            "deff": deff,
+            "ess": ess
+        }
