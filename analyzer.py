@@ -485,6 +485,17 @@ def check_key_quotas(progress_callback=None) -> list[dict]:
     
     for i, key in enumerate(keys):
         key_masked = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else "Invalid Key"
+        
+        # [DEBUG] 해당 키로 사용 가능한 모든 모델 목록 출력
+        try:
+            genai.configure(api_key=key)
+            print(f"\n[DEBUG] [KEY {i+1}] Available Models:")
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    print(f"  - {m.name}")
+        except Exception as diag_e:
+            print(f"[DEBUG] [KEY {i+1}] List models failed: {diag_e}")
+
         for model_name in models:
             current_check += 1
             if progress_callback:
