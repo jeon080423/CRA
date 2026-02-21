@@ -10,7 +10,6 @@ APP_DESCRIPTION = "국가승인통계, 공공기관 만족도 조사, 정책 평
 AVAILABLE_MODELS = [
     "gemini-2.0-flash",                # Gemini 2.0 Flash (Stable)
     "gemini-2.5-flash",                # Gemini 2.5 Flash
-    "gemini-2.0-pro-exp-02-05",        # Gemini 2.0 Pro Experimental
     "gemini-2.0-flash-lite",           # Gemini 2.0 Flash Lite (Fast)
 ]
 
@@ -18,7 +17,6 @@ AVAILABLE_MODELS = [
 MODEL_DISPLAY_NAMES = {
     "gemini-2.0-flash":                 "Gemini 2.0 Flash (Stable)",
     "gemini-2.5-flash":                 "Gemini 2.5 Flash (Stable)",
-    "gemini-2.0-pro-exp-02-05":         "Gemini 2.0 Pro (Experimental)",
     "gemini-2.0-flash-lite":            "Gemini 2.0 Flash Lite",
 }
 
@@ -28,8 +26,7 @@ MODEL_DISPLAY_NAMES = {
 AUTO_MODEL_PRIORITY = [
     "gemini-2.0-flash",                 # 1순위
     "gemini-2.5-flash",                 # 2순위 (안정성 보완)
-    "gemini-2.0-pro-exp-02-05",         # 3순위
-    "gemini-2.0-flash-lite",            # 4순위
+    "gemini-2.0-flash-lite",            # 3순위
 ]
 
 # ──────────────────────────────────────────────
@@ -37,8 +34,8 @@ AUTO_MODEL_PRIORITY = [
 # ──────────────────────────────────────────────
 STEP_MODEL_MAP = {
     1: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite"],
-    2: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-pro-exp-02-05"], 
-    3: ["gemini-2.5-flash", "gemini-2.0-pro-exp-02-05", "gemini-2.0-flash"], 
+    2: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite"], 
+    3: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"], 
 }
 
 
