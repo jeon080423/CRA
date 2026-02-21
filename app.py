@@ -382,7 +382,7 @@ with st.sidebar:
             st.image("logo.png", width=180)
     except:
         pass
-    st.markdown("### 보고서 검수 AI Tools & 과업 내용 체크 리스트")
+    st.markdown("### AI 과업 관리 솔루션")
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # 내비게이션
