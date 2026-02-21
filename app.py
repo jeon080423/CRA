@@ -263,6 +263,116 @@ def do_logout():
     st.session_state["login_error"] = ""
 
 
+def show_win_strategy_section():
+    st.markdown("""
+    <div class="qx-topbar">
+        <span class="qx-topbar-logo">과업 내용 체크 리스트</span>
+        <span class="qx-topbar-sep"></span>
+        <span class="qx-topbar-title">RFP 심층 분석 솔루션</span>
+        <span class="qx-topbar-badge">Winning RFP Analysis</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown('<div class="qx-section-label">1. 금년도 RFP (필수)</div>', unsafe_allow_html=True)
+        curr_file = st.file_uploader("올해 제안요청서", type=["pdf", "docx", "txt"], key="rfp_curr_up")
+    with col2:
+        st.markdown('<div class="qx-section-label">2. 직전 RFP (선택)</div>', unsafe_allow_html=True)
+        prev_file = st.file_uploader("직전 회차 제안요청서", type=["pdf", "docx", "txt"], key="rfp_prev_up")
+
+    # 텍스트 추출 가이드
+    if curr_file and not st.session_state["rfp_curr_text"]:
+        with st.spinner("금년도 RFP 분석 준비 중..."):
+            text, _ = extract_text(curr_file)
+            st.session_state["rfp_curr_text"] = text
+    if prev_file and not st.session_state["rfp_prev_text"]:
+        with st.spinner("직전 RFP 분석 준비 중..."):
+            text, _ = extract_text(prev_file)
+            st.session_state["rfp_prev_text"] = text
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+    
+    if st.button("🚀 RFP 심층 분석 시작", type="primary", use_container_width=True):
+        if not st.session_state["rfp_curr_text"]:
+            st.error("금년도 RFP 문서를 먼저 업로드해 주세요.")
+        else:
+            perform_rfp_analysis()
+
+    # 결과 표시 영역
+    if st.session_state["rfp_results"]:
+        st.success(f"✅ **[{st.session_state['rfp_project_name']}]** 분석 완료")
+        
+        # 탭으로 결과 표시
+        tab_names = [s["title"] for s in RFP_SECTIONS]
+        tabs = st.tabs(tab_names)
+        
+        for i, sec in enumerate(RFP_SECTIONS):
+            with tabs[i]:
+                res = st.session_state["rfp_results"].get(sec["id"], "분석 결과가 없습니다.")
+                st.markdown(res, unsafe_allow_html=True)
+        
+        # 워드 다운로드 (RFP용)
+        st.markdown("<hr>", unsafe_allow_html=True)
+        if st.button("📝 RFP 분석 결과 워드 다운로드", use_container_width=True):
+            rfp_md = f"# RFP 분석 보고서: {st.session_state['rfp_project_name']}\n\n"
+            for sec in RFP_SECTIONS:
+                rfp_md += f"## {sec['title']}\n\n{st.session_state['rfp_results'].get(sec['id'], '')}\n\n"
+            
+            docx_file = export_to_docx(rfp_md)
+            st.download_button(
+                label="📥 클릭하여 워드 파일 저장",
+                data=docx_file,
+                file_name=f"{st.session_state['rfp_project_name']}_RFP분석.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True
+            )
+
+
+def perform_rfp_analysis():
+    curr_text = st.session_state["rfp_curr_text"]
+    prev_text = st.session_state["rfp_prev_text"]
+    
+    # 컨텍스트 구성
+    user_content = f"[금년도 문서]\n{rfp_utils.get_balanced_context(curr_text, 25000)}\n\n[직전 회차 문서]\n{rfp_utils.get_balanced_context(prev_text, 10000) if prev_text else '없음'}"
+    
+    # 사업명 감지
+    project_name = rfp_utils.detect_project_name(curr_text)
+    st.session_state["rfp_project_name"] = project_name
+    
+    progress_bar = st.progress(0, text="RFP 심층 분석 시작...")
+    status_text = st.empty()
+    
+    total = len(RFP_SECTIONS)
+    for i, sec in enumerate(RFP_SECTIONS):
+        status_text.info(f"⏳ **{sec['title']}** 분석 중... ({i+1}/{total})")
+        
+        # API 호출
+        full_prompt = sec["prompt"].replace("{user_content}", user_content)
+        
+        # analyzer의 run_analysis 활용
+        result, err = run_analysis(
+            full_prompt, 
+            "", # report_text는 프롬프트에 이미 포함됨
+            model_name=st.session_state["selected_model"],
+            auto_mode=st.session_state["auto_mode"]
+        )
+        
+        if err:
+            st.error(f"Error in {sec['title']}: {err}")
+            st.session_state["rfp_results"][sec["id"]] = f"⚠️ 분석 실패: {err}"
+        else:
+            # 후처리: <blue> 태그 등을 마크다운으로 변환하거나 보존 (Word export에서 지원하도록 수정됨)
+            st.session_state["rfp_results"][sec["id"]] = result
+        
+        progress_bar.progress((i + 1) / total)
+    
+    status_text.empty()
+    progress_bar.empty()
+    st.rerun()
+
+
+
 # ── 사이드바
 with st.sidebar:
     # 로고 추가 (가운데 정렬)
@@ -272,14 +382,14 @@ with st.sidebar:
             st.image("logo.png", width=180)
     except:
         pass
-    st.markdown("### 보고서 검수 AI Tools & 과업 내용 체크")
+    st.markdown("### 보고서 검수 AI Tools & 과업 내용 체크 리스트")
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # 내비게이션
     st.markdown('<div class="qx-section-label">NAVIGATION</div>', unsafe_allow_html=True)
     menu = st.radio(
         "메뉴를 선택하세요",
-        ["보고서 검수 AI Tools", "과업 내용 체크"],
+        ["보고서 검수 AI Tools", "과업 내용 체크 리스트"],
         index=0 if st.session_state["menu_selection"] == "보고서 검수 AI Tools" else 1,
         label_visibility="collapsed",
         key="nav_radio"
@@ -458,7 +568,7 @@ else:
         <span class="qx-topbar-badge">AI-Powered Quality Check</span>
     </div>
     """, unsafe_allow_html=True)
-    elif st.session_state["menu_selection"] == "과업 내용 체크":
+    elif st.session_state["menu_selection"] == "과업 내용 체크 리스트":
         show_win_strategy_section()
         # End Win Strategy here (early return or just wrap)
         st.stop()
@@ -930,111 +1040,4 @@ else:
 </div>
 """, unsafe_allow_html=True)
 
-# Last forced sync: 2026-02-21 05:25:30
-
-def show_win_strategy_section():
-    st.markdown("""
-    <div class="qx-topbar">
-        <span class="qx-topbar-logo">과업 내용 체크</span>
-        <span class="qx-topbar-sep"></span>
-        <span class="qx-topbar-title">RFP 심층 분석 솔루션</span>
-        <span class="qx-topbar-badge">Winning RFP Analysis</span>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown('<div class="qx-section-label">1. 금년도 RFP (필수)</div>', unsafe_allow_html=True)
-        curr_file = st.file_uploader("올해 제안요청서", type=["pdf", "docx", "txt"], key="rfp_curr_up")
-    with col2:
-        st.markdown('<div class="qx-section-label">2. 직전 RFP (선택)</div>', unsafe_allow_html=True)
-        prev_file = st.file_uploader("직전 회차 제안요청서", type=["pdf", "docx", "txt"], key="rfp_prev_up")
-
-    # 텍스트 추출 가이드
-    if curr_file and not st.session_state["rfp_curr_text"]:
-        with st.spinner("금년도 RFP 분석 준비 중..."):
-            text, _ = extract_text(curr_file)
-            st.session_state["rfp_curr_text"] = text
-    if prev_file and not st.session_state["rfp_prev_text"]:
-        with st.spinner("직전 RFP 분석 준비 중..."):
-            text, _ = extract_text(prev_file)
-            st.session_state["rfp_prev_text"] = text
-
-    st.markdown("<hr>", unsafe_allow_html=True)
-    
-    if st.button("🚀 RFP 심층 분석 시작", type="primary", use_container_width=True):
-        if not st.session_state["rfp_curr_text"]:
-            st.error("금년도 RFP 문서를 먼저 업로드해 주세요.")
-        else:
-            perform_rfp_analysis()
-
-    # 결과 표시 영역
-    if st.session_state["rfp_results"]:
-        st.success(f"✅ **[{st.session_state['rfp_project_name']}]** 분석 완료")
-        
-        # 탭으로 결과 표시
-        tab_names = [s["title"] for s in RFP_SECTIONS]
-        tabs = st.tabs(tab_names)
-        
-        for i, sec in enumerate(RFP_SECTIONS):
-            with tabs[i]:
-                res = st.session_state["rfp_results"].get(sec["id"], "분석 결과가 없습니다.")
-                st.markdown(res, unsafe_allow_html=True)
-        
-        # 워드 다운로드 (RFP용)
-        st.markdown("<hr>", unsafe_allow_html=True)
-        if st.button("📝 RFP 분석 결과 워드 다운로드", use_container_width=True):
-            rfp_md = f"# RFP 분석 보고서: {st.session_state['rfp_project_name']}\n\n"
-            for sec in RFP_SECTIONS:
-                rfp_md += f"## {sec['title']}\n\n{st.session_state['rfp_results'].get(sec['id'], '')}\n\n"
-            
-            docx_file = export_to_docx(rfp_md)
-            st.download_button(
-                label="📥 클릭하여 워드 파일 저장",
-                data=docx_file,
-                file_name=f"{st.session_state['rfp_project_name']}_RFP분석.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True
-            )
-
-def perform_rfp_analysis():
-    curr_text = st.session_state["rfp_curr_text"]
-    prev_text = st.session_state["rfp_prev_text"]
-    
-    # 컨텍스트 구성
-    user_content = f"[금년도 문서]\n{rfp_utils.get_balanced_context(curr_text, 25000)}\n\n[직전 회차 문서]\n{rfp_utils.get_balanced_context(prev_text, 10000) if prev_text else '없음'}"
-    
-    # 사업명 감지
-    project_name = rfp_utils.detect_project_name(curr_text)
-    st.session_state["rfp_project_name"] = project_name
-    
-    progress_bar = st.progress(0, text="RFP 심층 분석 시작...")
-    status_text = st.empty()
-    
-    total = len(RFP_SECTIONS)
-    for i, sec in enumerate(RFP_SECTIONS):
-        status_text.info(f"⏳ **{sec['title']}** 분석 중... ({i+1}/{total})")
-        
-        # API 호출
-        full_prompt = sec["prompt"].replace("{user_content}", user_content)
-        
-        # analyzer의 run_analysis 활용
-        result, err = run_analysis(
-            full_prompt, 
-            "", # report_text는 프롬프트에 이미 포함됨
-            model_name=st.session_state["selected_model"],
-            auto_mode=st.session_state["auto_mode"]
-        )
-        
-        if err:
-            st.error(f"Error in {sec['title']}: {err}")
-            st.session_state["rfp_results"][sec["id"]] = f"⚠️ 분석 실패: {err}"
-        else:
-            # 후처리: <blue> 태그 등을 마크다운으로 변환하거나 보존 (Word export에서 지원하도록 수정됨)
-            st.session_state["rfp_results"][sec["id"]] = result
-        
-        progress_bar.progress((i + 1) / total)
-    
-    status_text.empty()
-    progress_bar.empty()
-    st.rerun()
+# Last forced sync: 2026-02-21 22:32:00
