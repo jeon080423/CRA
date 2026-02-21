@@ -272,14 +272,14 @@ with st.sidebar:
             st.image("logo.png", width=180)
     except:
         pass
-    st.markdown("### Research Auditor & Strategic Partner")
+    st.markdown("### Research Auditor & 과업 내용 체크")
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # 내비게이션
     st.markdown('<div class="qx-section-label">NAVIGATION</div>', unsafe_allow_html=True)
     menu = st.radio(
         "메뉴를 선택하세요",
-        ["보고서 분석기 (Auditor)", "Win Strategic Partner"],
+        ["보고서 분석기 (Auditor)", "과업 내용 체크"],
         index=0 if st.session_state["menu_selection"] == "보고서 분석기 (Auditor)" else 1,
         label_visibility="collapsed",
         key="nav_radio"
@@ -458,7 +458,7 @@ else:
         <span class="qx-topbar-badge">AI-Powered Quality Check</span>
     </div>
     """, unsafe_allow_html=True)
-    elif st.session_state["menu_selection"] == "Win Strategic Partner":
+    elif st.session_state["menu_selection"] == "과업 내용 체크":
         show_win_strategy_section()
         # End Win Strategy here (early return or just wrap)
         st.stop()
@@ -935,7 +935,7 @@ else:
 def show_win_strategy_section():
     st.markdown("""
     <div class="qx-topbar">
-        <span class="qx-topbar-logo">Win Strategic Partner</span>
+        <span class="qx-topbar-logo">과업 내용 체크</span>
         <span class="qx-topbar-sep"></span>
         <span class="qx-topbar-title">RFP 심층 분석 솔루션</span>
         <span class="qx-topbar-badge">Winning RFP Analysis</span>
