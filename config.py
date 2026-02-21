@@ -50,6 +50,12 @@ STEP_MODEL_MAP = {
 # 기본 모델 (수동 선택 시 초기값)
 DEFAULT_MODEL = "gemini-2.0-flash"
 
+# ── 기타 설정
+import streamlit as st
+MAX_TEXT_CHARS = 100000
+DEFAULT_AUTO_MODEL = "gemini-2.0-flash"
+MATRIX_APP_ID = st.secrets.get("MATRIX_APP_ID", "Not Configured")
+
 # 자동 최적화 모드 레이블
 AUTO_MODE_LABEL = "🤖 자동 최적화 (권장)"
 
