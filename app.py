@@ -389,10 +389,18 @@ with st.sidebar:
 
     # 내비게이션
     st.markdown('<div class="qx-section-label">NAVIGATION</div>', unsafe_allow_html=True)
+    menu_options = ["보고서 검수 AI Tools", "과업 내용 체크 리스트", "이상치 및 무응답 현황"]
+    
+    # 세션 상태에 저장된 메뉴가 옵션에 없으면 기본값(첫 번째) 사용
+    try:
+        current_idx = menu_options.index(st.session_state["menu_selection"])
+    except (ValueError, KeyError):
+        current_idx = 0
+
     menu = st.radio(
         "메뉴를 선택하세요",
-        ["보고서 검수 AI Tools", "과업 내용 체크 리스트"],
-        index=0 if st.session_state["menu_selection"] == "보고서 검수 AI Tools" else 1,
+        menu_options,
+        index=current_idx,
         label_visibility="collapsed",
         key="nav_radio"
     )
@@ -573,6 +581,17 @@ else:
     elif st.session_state["menu_selection"] == "과업 내용 체크 리스트":
         show_win_strategy_section()
         # End Win Strategy here (early return or just wrap)
+        st.stop()
+    elif st.session_state["menu_selection"] == "이상치 및 무응답 현황":
+        st.markdown("""
+    <div class="qx-topbar">
+        <span class="qx-topbar-logo">이상치 및 무응답 현황</span>
+        <span class="qx-topbar-sep"></span>
+        <span class="qx-topbar-title">데이터 품질 진단 솔루션</span>
+        <span class="qx-topbar-badge">Data Quality Audit</span>
+    </div>
+    """, unsafe_allow_html=True)
+        st.info("📊 데이터의 이상치 및 무응답 패턴을 분석하는 기능입니다. 세부 기능은 준비 중입니다.")
         st.stop()
 
     # 파일 업로드 + 검수 항목
