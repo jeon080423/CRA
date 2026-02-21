@@ -493,7 +493,11 @@ def check_key_quotas(progress_callback=None) -> list[dict]:
             genai.configure(api_key=key)
             for m in genai.list_models():
                 if 'generateContent' in m.supported_generation_methods:
-                    discovered_models.add(m.name)
+                    m_name = m.name
+                    # 텍스트 모델만 필터링 (TTS, Image, Robotics 등 제외)
+                    excludes = ["-tts", "-image", "robotics", "vision", "audio", "video"]
+                    if not any(ex in m_name.lower() for ex in excludes):
+                        discovered_models.add(m_name)
         except Exception:
             pass
 
