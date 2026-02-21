@@ -437,6 +437,17 @@ def show_unit_nonresponse_system():
     </div>
     """, unsafe_allow_html=True)
 
+    # [v4.2 고도화] 실무용 이용 가이드
+    with st.expander("📘 AI 단위 무응답(가중치) 검토 - 이용 방법 안내", expanded=False):
+        st.markdown("""
+        ### 🛠️ 이용 방법 및 단계
+        1. **데이터 업로드:** 가중치 산출이 필요한 설문 완료 데이터를 업로드합니다.
+        2. **가중치 변수 선택:** 가중치를 적용할 기준 변수(성별, 연령, 지역 등)를 다중 선택합니다.
+        3. **모집단 비율 입력:** 선택한 각 변수 계층별 모집단(Target) 분포 비율(%)을 입력합니다. (합계 100% 필수)
+        4. **가중치 산출:** '가중치 산출 실행' 버튼을 클릭하여 Raking 알고리즘을 가동합니다.
+        5. **결과 검정:** 설계효과(Deff)와 유효 표본 크기를 확인하고 데이터를 엑셀로 다운로드합니다.
+        """)
+
     # [v4.1 고도화] 전문가용 가이드 (수식 포함)
     with st.expander("📘 AI 단위 무응답(가중치) 검토 - 통계적 모델 설계 및 수식 안내", expanded=False):
         st.markdown("""
@@ -569,6 +580,27 @@ def show_outlier_inspection_system(mode="outlier"):
         <span class="qx-topbar-badge">Call Back, {'Adjustment' if mode == 'outlier' else 'Imputation'}</span>
     </div>
     """, unsafe_allow_html=True)
+
+    # [v4.2 고도화] 실무용 이용 가이드
+    with st.expander(f"📘 AI {'이상치' if mode == 'outlier' else '결측치'} 검토 - 이용 방법 안내", expanded=False):
+        if mode == "outlier":
+            st.markdown("""
+            ### 🛠️ 이용 방법 및 단계
+            1. **시각적 탐색:** 상단의 산점도 및 바이올린 플롯을 통해 데이터의 전반적인 분포와 이상 의심치를 확인합니다.
+            2. **검토 변수 선택:** 이상치 탐지가 필요한 수치형/범주형 변수를 선택합니다.
+            3. **보완 방법 설정:** 'AI 추천'을 통해 제안을 받거나, 직접 통계 알고리즘(Z-score 등)을 선택합니다.
+            4. **실행 및 검토:** 보완된 데이터 수치와 감사 로그(Audit Log)를 최종 확인합니다.
+            5. **데이터 저장:** 원본과 보완 데이터가 포함된 통합 엑셀 리포트를 다운로드합니다.
+            """)
+        else:
+            st.markdown("""
+            ### 🛠️ 이용 방법 및 단계
+            1. **결측 패턴 파악:** '데이터 결측 패턴 분석'을 확장하여 변수별 결측 비중과 AI 진단 결과를 확인합니다.
+            2. **보완 대상 선택:** 결측치가 있는 변수 중 보완 처리를 수행할 대상을 선택합니다.
+            3. **최적 알고리즘 설정:** AI 추천을 활용하거나 MICE, k-NN 등 보완 알고리즘을 지정합니다. (보완 불가 시 Call-back 선택)
+            4. **보완 실행:** '대체 실행' 버튼을 클릭하여 결측값을 통계적으로 생성합니다.
+            5. **조사 가이드 활용:** 재확인(Call-back)이 필요한 경우 AI가 생성한 전수 조사 가이드를 활용합니다.
+            """)
 
     # [v4.1 고도화] 전문가용 가이드 (수식 포함)
     with st.expander(f"📘 AI {'이상치' if mode == 'outlier' else '결측치'} 검토 - 통계적 판별 및 보완 알고리즘 안내", expanded=False):
@@ -1296,6 +1328,16 @@ else:
     elif st.session_state["menu_selection"] == "AI 단위 무응답 검토":
         show_unit_nonresponse_system()
         st.stop()
+
+    # [v4.2 추가] 메인 보고서 검수 가이드
+    with st.expander("📘 AI 보고서 검수 서비스 이용 안내", expanded=False):
+        st.markdown("""
+        ### 🛠️ 이용 방법 안내
+        1. **보고서 업로드:** 검수할 리서치 보고서(PDF, DOCX, TXT)를 업로드 영역에 드래그하거나 선택합니다.
+        2. **분석 단계 수행:** 하단의 **STEP 1(요약)**, **STEP 2(검수)**, **STEP 3(종합)** 버튼을 순서대로 클릭하여 AI 분석을 생성합니다.
+        3. **내용 확인 및 수정:** AI가 생성한 초안을 검토하고 필요한 경우 텍스트 상자에서 직접 수정합니다.
+        4. **결과 다운로드:** 모든 분석이 완료되면 상단의 **'검수 결과 다운로드(Word)'** 버튼을 통해 최종 보고서를 저장합니다.
+        """)
 
     # 파일 업로드 + 검수 항목
     col_up, col_items = st.columns([3, 2], gap="large")
