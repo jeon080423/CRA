@@ -473,7 +473,7 @@ def show_unit_nonresponse_system():
 
     if not df_file:
         st.markdown("""
-<div class="qx-card" style="text-align:center; padding:3.5rem 2rem; margin-top: 1rem;">
+<div class="qx-card" style="text-align:center; padding:3.5rem 2rem 5rem 2rem; margin-top: 1rem; margin-bottom: 4rem; min-height: 450px;">
     <div style="font-size:3rem; margin-bottom:1rem;">⚖️</div>
     <div style="font-size:1.1rem; font-weight:600; color:#1A2237; margin-bottom:0.5rem;">
         무응답 교정을 위한 데이터를 업로드하세요
@@ -681,7 +681,7 @@ def show_outlier_inspection_system(mode="outlier"):
     if not df_file:
         if mode == "outlier":
             st.markdown("""
-<div class="qx-card" style="text-align:center; padding:3.5rem 2rem; margin-top: 1rem;">
+<div class="qx-card" style="text-align:center; padding:3.5rem 2rem 5rem 2rem; margin-top: 1rem; margin-bottom: 4rem; min-height: 450px;">
     <div style="font-size:3rem; margin-bottom:1rem;">📈</div>
     <div style="font-size:1.1rem; font-weight:600; color:#1A2237; margin-bottom:0.5rem;">
         검토할 데이터를 업로드하세요
@@ -711,7 +711,7 @@ def show_outlier_inspection_system(mode="outlier"):
 """, unsafe_allow_html=True)
         else:
             st.markdown("""
-<div class="qx-card" style="text-align:center; padding:3.5rem 2rem; margin-top: 1rem;">
+<div class="qx-card" style="text-align:center; padding:3.5rem 2rem 5rem 2rem; margin-top: 1rem; margin-bottom: 4rem; min-height: 450px;">
     <div style="font-size:3rem; margin-bottom:1rem;">📊</div>
     <div style="font-size:1.1rem; font-weight:600; color:#1A2237; margin-bottom:0.5rem;">
         분석할 데이터를 업로드하세요
