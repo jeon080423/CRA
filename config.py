@@ -26,18 +26,19 @@ MODEL_DISPLAY_NAMES = {
 # 자동 최적화 모드: 할당량 초과 시 순서대로 폴백
 # ──────────────────────────────────────────────
 AUTO_MODEL_PRIORITY = [
-    "gemini-2.0-flash",                 # 1순위: 압도적 속도 및 안정성
-    "gemini-2.0-pro-exp-02-05",         # 2순위: 최고 수준의 분석력 (실험적)
-    "gemini-2.0-flash-lite",            # 3순위: 경량화된 고속 모델
+    "gemini-2.0-flash",                 # 1순위
+    "gemini-2.5-flash",                 # 2순위 (안정성 보완)
+    "gemini-2.0-pro-exp-02-05",         # 3순위
+    "gemini-2.0-flash-lite",            # 4순위
 ]
 
 # ──────────────────────────────────────────────
 # 단계별 최적 모델 맵 (속도 vs 품질 밸런스)
 # ──────────────────────────────────────────────
 STEP_MODEL_MAP = {
-    1: ["gemini-2.0-flash", "gemini-2.0-flash-lite"],
-    2: ["gemini-2.0-flash", "gemini-2.0-pro-exp-02-05"], 
-    3: ["gemini-2.0-pro-exp-02-05", "gemini-2.0-flash"], 
+    1: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite"],
+    2: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-pro-exp-02-05"], 
+    3: ["gemini-2.5-flash", "gemini-2.0-pro-exp-02-05", "gemini-2.0-flash"], 
 }
 
 

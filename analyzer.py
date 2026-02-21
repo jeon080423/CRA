@@ -90,6 +90,12 @@ def _is_quota_error(error: Exception) -> bool:
     return any(kw in err_str for kw in config.QUOTA_ERROR_KEYWORDS)
 
 
+def _is_daily_limit(error: Exception) -> bool:
+    """일일 사용량(Daily Limit) 초과인지 확인합니다 (프로젝트/모델 공통 제한)."""
+    err_str = str(error).lower()
+    return "perday" in err_str or "per day" in err_str
+
+
 # 전역 설정 중용 변수 (스레드 안전)
 _last_configured_key = None
 _config_lock = threading.Lock()
@@ -265,7 +271,12 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
                 
                 # 할당량 초과(Quota Error) 또는 권한/인증 오류인 경우 키를 즉시 교체하고 재시도
                 if _is_quota_error(e):
-                    # 할당량 에러 시에는 약간 더 긴 대기 시간을 가짐
+                    # 일일 할당량(Daily/Per-Day) 초과인 경우 키 교체로 해결이 안 되므로 즉시 모델 전환
+                    if _is_daily_limit(e):
+                        print(f"[INFO] [STEP {step_num}] Daily limit hit for {candidate}. Jumping to next model...", flush=True)
+                        break
+                        
+                    # 단순 레이트리밋(RPM)인 경우 약간 대기 후 키 교체
                     time.sleep(1.5)
                     new_key = get_api_key()
                     print(f"[INFO] [STEP {step_num}] Quota/Auth hit for {candidate}. Rotating key: {current_api_key[:8]} -> {new_key[:8]}", flush=True)
