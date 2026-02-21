@@ -79,6 +79,15 @@ html, body, [class*="css"] {
 [data-testid="stSidebar"] [data-baseweb="select"] > div,
 [data-testid="stSidebar"] [data-baseweb="input"] > div { background-color: #243048 !important; border-color: #374151 !important; }
 
+/* 네비게이션 라디오 버튼 텍스트 크기 및 줄바꿈 방지 */
+[data-testid="stSidebar"] .stRadio div[data-testid="stMarkdownContainer"] p {
+    font-size: 0.82rem !important;
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
 .qx-topbar {
     background: #FFFFFF;
     border-bottom: 1px solid #E5E9F0;
