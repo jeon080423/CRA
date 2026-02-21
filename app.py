@@ -21,6 +21,9 @@ from analyzer import (
 from rfp_prompts import RFP_SECTIONS
 import rfp_utils
 import io
+import pandas as pd
+import numpy as np
+from data_cleaner import DataImputer
 try:
     from docx import Document
     from docx.shared import Pt
@@ -775,26 +778,10 @@ else:
         # End Win Strategy here (early return or just wrap)
         st.stop()
     elif st.session_state["menu_selection"] == "AI 이상치 검토 (Call Back, Data Adjustment)":
-        st.markdown("""
-    <div class="qx-topbar">
-        <span class="qx-topbar-logo">AI 이상치 검토</span>
-        <span class="qx-topbar-sep"></span>
-        <span class="qx-topbar-title">데이터 품질 진단 솔루션</span>
-        <span class="qx-topbar-badge">Call Back, Data Adjustment</span>
-    </div>
-    """, unsafe_allow_html=True)
-        st.info("📊 데이터의 이상치를 분석하고 재확인(Call Back) 및 조정(Adjustment)하는 기능입니다. 세부 기능은 준비 중입니다.")
+        show_outlier_inspection_system(mode="outlier")
         st.stop()
     elif st.session_state["menu_selection"] == "AI 결측치 검토 (Call Back, Imputation)":
-        st.markdown("""
-    <div class="qx-topbar">
-        <span class="qx-topbar-logo">AI 결측치 검토</span>
-        <span class="qx-topbar-sep"></span>
-        <span class="qx-topbar-title">데이터 품질 진단 솔루션</span>
-        <span class="qx-topbar-badge">Call Back, Imputation</span>
-    </div>
-    """, unsafe_allow_html=True)
-        st.info("📊 무응답 패턴을 분석하고 재확인(Call Back) 및 대체(Imputation)하는 기능입니다. 세부 기능은 준비 중입니다.")
+        show_outlier_inspection_system(mode="imputation")
         st.stop()
 
     # 파일 업로드 + 검수 항목
@@ -1154,4 +1141,159 @@ else:
 </div>
 """, unsafe_allow_html=True)
 
-# Last forced sync: 2026-02-21 22:32:00
+def show_outlier_inspection_system(mode="outlier"):
+    """AI 이상치/결측치 검토 및 보완 시스템 UI"""
+    st.markdown(f"""
+    <div class="qx-topbar">
+        <span class="qx-topbar-logo">AI {'이상치' if mode == 'outlier' else '결측치'} 검토</span>
+        <span class="qx-topbar-sep"></span>
+        <span class="qx-topbar-title">데이터 품질 진단 솔루션</span>
+        <span class="qx-topbar-badge">Call Back, {'Adjustment' if mode == 'outlier' else 'Imputation'}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 1. 파일 업로드
+    st.markdown('<div class="qx-section-label">1. 데이터 업로드 (Excel/CSV)</div>', unsafe_allow_html=True)
+    df_file = st.file_uploader(f"검토할 데이터를 업로드하세요 ({mode})", type=["xlsx", "csv"], label_visibility="collapsed", key=f"uploader_{mode}")
+
+    if not df_file:
+        st.info("📊 데이터를 업로드하면 분석을 위한 변수 선택 및 보완 설정이 활성화됩니다.")
+        return
+
+    # 데이터 로드
+    try:
+        if df_file.name.endswith(".csv"):
+            df = pd.read_csv(df_file)
+        else:
+            df = pd.read_excel(df_file)
+    except Exception as e:
+        st.error(f"데이터 로드 중 오류 발생: {e}")
+        return
+
+    st.success(f"데이터 로드 완료: {len(df)} 행, {len(df.columns)} 열")
+    
+    # 2. 변수 선택
+    st.markdown('<div class="qx-section-label">2. 검토 대상 변수 선택</div>', unsafe_allow_html=True)
+    target_cols = st.multiselect("이상치/결측치 검토가 필요한 변수를 선택하세요", options=df.columns.tolist(), key=f"targets_{mode}")
+
+    if not target_cols:
+        st.warning("분석할 변수를 최소 하나 이상 선택해 주세요.")
+        return
+
+    # 3. 변수별 보완 설정
+    st.markdown('<div class="qx-section-label">3. 변수별 보완 방법 설정</div>', unsafe_allow_html=True)
+    
+    impute_configs = {}
+    
+    for col in target_cols:
+        with st.expander(f"📍 변수: {col}", expanded=True):
+            col_a, col_b = st.columns([2, 1])
+            
+            with col_b:
+                if st.button(f"🪄 AI 추천", key=f"ai_rec_{mode}_{col}"):
+                    # AI 추천 로직 (analyzer 활용)
+                    prompt = f"다음 변수의 데이터 대체 방법을 추천하고 이유를 설명해줘. 변수명: {col}, 데이터 타입: {df[col].dtype}, 샘플 데이터: {df[col].dropna().head(5).tolist()}"
+                    res, err = run_analysis("데이터 분석 전문가", prompt, "샘플 데이터 분석 중...")
+                    if not err:
+                        st.session_state[f"rec_{mode}_{col}"] = res
+                    else:
+                        st.session_state[f"rec_{mode}_{col}"] = f"AI 추천 생성 중 오류: {err}"
+                
+                if f"rec_{mode}_{col}" in st.session_state:
+                    st.caption(st.session_state[f"rec_{mode}_{col}"])
+
+            with col_a:
+                methods = ["전체 평균 대체", "층별 평균 대체", "회귀 대체", "핫덱(Hot-Deck)", "k-NN 대체", "직접 입력"]
+                selected_method = st.selectbox(f"보완 방법 선택 ({col})", options=methods, key=f"method_{mode}_{col}")
+                
+                options = {}
+                if selected_method == "층별 평균 대체":
+                    strata = st.multiselect(f"층(Strata) 변수 선택 ({col})", options=[c for c in df.columns if c != col], key=f"strata_{mode}_{col}")
+                    options["strata"] = strata
+                elif selected_method == "k-NN 대체":
+                    k_val = st.slider(f"k값 설정 ({col})", 1, 10, 5, key=f"k_{mode}_{col}")
+                    options["k"] = k_val
+                
+                impute_configs[col] = {"method": selected_method, "options": options}
+
+    # 4. 실행 버튼
+    st.markdown("<hr>", unsafe_allow_html=True)
+    if st.button("🚀 데이터 보완 실행", type="primary", use_container_width=True, key=f"run_btn_{mode}"):
+        imputer = DataImputer(df)
+        
+        with st.spinner("통계적 알고리즘 처리 중..."):
+            for col, config in impute_configs.items():
+                # 이상치/결측치 인덱스 추출
+                if mode == "imputation":
+                    missing_idx = df[df[col].isna()].index.tolist()
+                else:
+                    if pd.api.types.is_numeric_dtype(df[col]):
+                        m = df[col].mean()
+                        s = df[col].std()
+                        missing_idx = df[(df[col] < m - 3*s) | (df[col] > m + 3*s) | df[col].isna()].index.tolist()
+                    else:
+                        missing_idx = df[df[col].isna()].index.tolist()
+                
+                if not missing_idx:
+                    continue
+                
+                method = config["method"]
+                opts = config["options"]
+                
+                if method == "전체 평균 대체":
+                    imputer.impute_grand_mean(col, missing_idx)
+                elif method == "층별 평균 대체" and opts.get("strata"):
+                    imputer.impute_stratified_mean(col, missing_idx, opts["strata"])
+                elif method == "k-NN 대체":
+                    imputer.impute_knn(col, missing_idx, k=opts.get("k", 5))
+                else:
+                    imputer.impute_grand_mean(col, missing_idx)
+            
+            st.session_state[f"imputed_df_{mode}"] = imputer.df
+            st.session_state[f"impute_summary_{mode}"] = imputer.get_summary()
+            st.session_state[f"impute_log_{mode}"] = imputer.audit_log
+            
+        st.success("데이터 보완 처리가 완료되었습니다!")
+
+    # 5. 결과 확인 및 다운로드
+    if f"imputed_df_{mode}" in st.session_state:
+        st.markdown('<div class="qx-section-label">4. 결과 요약 및 다운로드</div>', unsafe_allow_html=True)
+        
+        summary = st.session_state[f"impute_summary_{mode}"]
+        if isinstance(summary, dict) and summary:
+            cols_metric = st.columns(len(summary))
+            for i, (col_name, count) in enumerate(summary.items()):
+                cols_metric[i].metric(col_name, f"{count}건 보완")
+        
+        orig_df = df.copy()
+        adj_df = st.session_state[f"imputed_df_{mode}"]
+        log_list = st.session_state[f"impute_log_{mode}"]
+        log_df = pd.DataFrame(log_list)
+
+        # 결과 엑셀용 DF 구성
+        export_df = orig_df.copy()
+        for col in target_cols:
+            export_df[f"{col}_보완"] = adj_df[col]
+            method_map = {row['인덱스']: row['적용방법'] for row in log_list if row['변수명'] == col}
+            export_df[f"{col}_보완방법"] = export_df.index.map(lambda x: method_map.get(x, ""))
+
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            export_df.to_excel(writer, index=False, sheet_name='Result')
+            if not log_df.empty:
+                log_df.to_excel(writer, index=False, sheet_name='AuditLog')
+        output.seek(0)
+        
+        st.download_button(
+            "📥 보완 데이터 다운로드 (Excel)",
+            data=output,
+            file_name=f"보완완료_{df_file.name}",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key=f"dl_btn_{mode}"
+        )
+        
+        with st.expander("📝 및 상세 보완 내역 (Log)"):
+            st.dataframe(log_df, use_container_width=True)
+
+# Last forced sync: 2026-02-22 07:05:00
