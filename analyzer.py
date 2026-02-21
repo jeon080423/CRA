@@ -272,21 +272,19 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
                 err_msg = str(e).lower()
                 print(f"[ERROR] [STEP {step_num}] API Error ({candidate}): {err_msg}", flush=True)
                 
-                # 할당량 초과(Quota Error) 또는 권한/인증 오류인 경우 키를 즉시 교체하고 재시도
+                last_error_msg = f"❌ 분석 오류 ({candidate}): {e}"
+
                 if _is_quota_error(e):
                     # 일일 할당량(Daily/Per-Day) 초과인 경우에도 키를 교체해봅니다.
-                    # (8개의 키가 서로 다른 프로젝트일 수 있으므로 즉시 포기하지 않음)
                     if _is_daily_limit(e):
-                        print(f"[INFO] [STEP {step_num}] Daily limit hit for {candidate}. Rotating key to check other projects...", flush=True)
+                        print(f"[INFO] [STEP {step_num}] Daily limit hit for {candidate}. Rotating key...", flush=True)
                     
-                    # 단순 레이트리밋(RPM)인 경우 약간 대기 후 키 교체
                     time.sleep(1.5)
                     new_key = get_api_key()
-                    print(f"[INFO] [STEP {step_num}] Quota/Auth hit for {candidate}. Rotating key: {current_api_key[:8]} -> {new_key[:8]}", flush=True)
                     current_api_key = new_key
                     continue  # 동일 모델에 대해 새 키로 재시도
                 
-                # 서버 오류(500, 503)나 타임아웃, 404 등은 다음 후보 모델로 전환
+                # 서버 오류 등은 다음 후보 모델로 전환
                 should_jump_model = (
                     "500" in err_msg or 
                     "503" in err_msg or 
@@ -299,11 +297,12 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
                 
                 if should_jump_model:
                     print(f"[INFO] [STEP {step_num}] Jumping to next model due to server/path error: {err_msg[:50]}...", flush=True)
-                    break # 내부 키 루프 탈출 -> 다음 candidate 모델 시도
+                    break 
                 
-                return "", f"❌ 분석 오류 ({candidate}): {e}"
+                return "", last_error_msg
 
-    return "", "❌ 모든 가용 모델 및 API 키가 응답하지 않거나 정책에 의해 차단되었습니다."
+    return "", f"❌ 모든 가용 모델 및 API 키가 응답하지 않거나 정책에 의해 차단되었습니다. (최근 오류: {last_error_msg})"
+
 
 
 def run_step_with_chunks(
