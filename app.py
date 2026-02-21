@@ -496,7 +496,66 @@ def show_outlier_inspection_system(mode="outlier"):
     df_file = st.file_uploader(f"검토할 데이터를 업로드하세요 ({mode})", type=["xlsx", "csv"], label_visibility="collapsed", key=f"uploader_{mode}")
 
     if not df_file:
-        st.info("📊 데이터를 업로드하면 분석을 위한 변수 선택 및 보완 설정이 활성화됩니다.")
+        if mode == "outlier":
+            st.markdown("""
+<div class="qx-card" style="text-align:center; padding:3.5rem 2rem; margin-top: 1rem;">
+    <div style="font-size:3rem; margin-bottom:1rem;">📈</div>
+    <div style="font-size:1.1rem; font-weight:600; color:#1A2237; margin-bottom:0.5rem;">
+        검토할 데이터를 업로드하세요
+    </div>
+    <div style="font-size:0.87rem; color:#8B96A9; margin-bottom:2rem;">
+        Excel 또는 CSV 데이터를 업로드하면 AI가 이상치 탐지 및 시각적 진단을 수행합니다.
+    </div>
+    <div style="display:flex; justify-content:center; gap:1.5rem; flex-wrap:wrap;">
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
+            <div style="font-size:1.4rem;">📍</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">시각적 진단</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
+            <div style="font-size:1.4rem;">📏</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">통계적 탐지</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
+            <div style="font-size:1.4rem;">🧠</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">AI 보완 방법</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
+            <div style="font-size:1.4rem;">📄</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">결과 리포트</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+<div class="qx-card" style="text-align:center; padding:3.5rem 2rem; margin-top: 1rem;">
+    <div style="font-size:3rem; margin-bottom:1rem;">📊</div>
+    <div style="font-size:1.1rem; font-weight:600; color:#1A2237; margin-bottom:0.5rem;">
+        분석할 데이터를 업로드하세요
+    </div>
+    <div style="font-size:0.87rem; color:#8B96A9; margin-bottom:2rem;">
+        데이터를 업로드하면 AI가 결측 패턴을 분석하고 최적의 통계적 보완을 제안합니다.
+    </div>
+    <div style="display:flex; justify-content:center; gap:1.5rem; flex-wrap:wrap;">
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
+            <div style="font-size:1.4rem;">🔍</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">패턴 분석</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
+            <div style="font-size:1.4rem;">🧪</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">고급 보완(MICE)</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
+            <div style="font-size:1.4rem;">🚨</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">재확인 관리</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
+            <div style="font-size:1.4rem;">🎙️</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">조사 가이드</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
         return
 
     # 데이터 로드
