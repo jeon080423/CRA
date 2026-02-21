@@ -327,7 +327,7 @@ with st.sidebar:
                         use_container_width=True
                     )
                     
-                    ok_count = sum(1 for r in results if "정상" in r["Status"])
+                    ok_count = sum(1 for r in results if "정상" in r["상태"])
                     st.success(f"진단 완료: 총 {len(results)}개 조합 중 {ok_count}개 정상")
                     if ok_count == 0:
                         st.error("사용 가능한 키/모델 조합이 없습니다. API 키를 교체해 주세요.")
