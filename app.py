@@ -220,7 +220,7 @@ def init_session():
         "full_result": "",
         "selected_model": DEFAULT_MODEL,
         "auto_mode": True,    # 자동 최적화 모드 기본값
-        "menu_selection": "보고서 검수 AI Tools",
+        "menu_selection": "과업 내용 체크 리스트",
         "rfp_curr_text": "",
         "rfp_prev_text": "",
         "rfp_results": {},
@@ -389,7 +389,7 @@ with st.sidebar:
 
     # 내비게이션
     st.markdown('<div class="qx-section-label">NAVIGATION</div>', unsafe_allow_html=True)
-    menu_options = ["보고서 검수 AI Tools", "과업 내용 체크 리스트", "이상치 및 무응답 현황"]
+    menu_options = ["과업 내용 체크 리스트", "이상치 및 무응답 현황", "보고서 검수 AI Tools"]
     
     # 세션 상태에 저장된 메뉴가 옵션에 없으면 기본값(첫 번째) 사용
     try:
