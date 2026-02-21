@@ -455,6 +455,34 @@ def show_outlier_inspection_system(mode="outlier"):
 
     st.success(f"데이터 로드 완료: {len(df)} 행, {len(df.columns)} 열")
     
+    # [v3.0 추가] 결측치 패턴 분석 섹션
+    if mode == "imputation":
+        with st.expander("📊 데이터 결측 패턴 분석 (v3.0)", expanded=False):
+            missing_counts = df.isnull().sum()
+            missing_df = pd.DataFrame({
+                "변수명": missing_counts.index,
+                "결측건수": missing_counts.values,
+                "결측비율(%)": (missing_counts.values / len(df) * 100).round(1)
+            })
+            missing_df = missing_df[missing_df["결측건수"] > 0].sort_values("결측건수", ascending=False)
+            
+            if missing_df.empty:
+                st.info("현재 결측치가 있는 변수가 없습니다. 데이터가 완벽합니다! ✨")
+            else:
+                col_m1, col_m2 = st.columns([1, 1])
+                with col_m1:
+                    st.markdown("### 🔍 주요 결측 변수")
+                    st.dataframe(missing_df, hide_index=True, use_container_width=True)
+                with col_m2:
+                    st.markdown("### 🤖 AI 결측 유형 진단")
+                    if st.button("🧠 AI 패턴 진단 실행", key="diag_btn_ai"):
+                        diag_prompt = f"다음 데이터의 결측 현황을 보고 MCAR(완전무작위), MAR(무작위), MNAR(비무작위) 중 어느 유형에 가까운지 진단하고 조치 전략을 추천해줘.\n{missing_df.to_string()}"
+                        res, err = run_analysis("데이터 품질 전문가", diag_prompt, "결측 패턴 추론 중...")
+                        if not err:
+                            st.info(res)
+                        else:
+                            st.error(f"진단 오류: {err}")
+
     # 2. 변수 선택
     st.markdown('<div class="qx-section-label">2. 검토 대상 변수 선택</div>', unsafe_allow_html=True)
     target_cols = st.multiselect("이상치/결측치 검토가 필요한 변수를 선택하세요", options=df.columns.tolist(), key=f"targets_{mode}")
@@ -486,7 +514,7 @@ def show_outlier_inspection_system(mode="outlier"):
                     st.caption(st.session_state[f"rec_{mode}_{col}"])
 
             with col_a:
-                methods = ["전체 평균 대체", "층별 평균 대체", "회귀 대체", "핫덱(Hot-Deck)", "k-NN 대체", "직접 입력"]
+                methods = ["전체 평균 대체", "중앙값 대체", "최빈값 대체", "층별 평균 대체", "MICE 다중 대체", "k-NN 대체", "재확인(Call Back)", "직접 입력"]
                 selected_method = st.selectbox(f"보완 방법 선택 ({col})", options=methods, key=f"method_{mode}_{col}")
                 
                 options = {}
@@ -496,6 +524,8 @@ def show_outlier_inspection_system(mode="outlier"):
                 elif selected_method == "k-NN 대체":
                     k_val = st.slider(f"k값 설정 ({col})", 1, 10, 5, key=f"k_{mode}_{col}")
                     options["k"] = k_val
+                elif selected_method == "재확인(Call Back)":
+                    st.warning("⚠️ 이 데이터는 보완하지 않고 '재조사 명단'에 포함합니다.")
                 
                 impute_configs[col] = {"method": selected_method, "options": options}
 
@@ -525,10 +555,18 @@ def show_outlier_inspection_system(mode="outlier"):
                 
                 if method == "전체 평균 대체":
                     imputer.impute_grand_mean(col, missing_idx)
+                elif method == "중앙값 대체":
+                    imputer.impute_median(col, missing_idx)
+                elif method == "최빈값 대체":
+                    imputer.impute_mode(col, missing_idx)
                 elif method == "층별 평균 대체" and opts.get("strata"):
                     imputer.impute_stratified_mean(col, missing_idx, opts["strata"])
                 elif method == "k-NN 대체":
                     imputer.impute_knn(col, missing_idx, k=opts.get("k", 5))
+                elif method == "MICE 다중 대체":
+                    imputer.impute_mice(col, missing_idx)
+                elif method == "재확인(Call Back)":
+                    imputer._apply_imputation(col, missing_idx, "CALL_BACK", "재확인 대상분류")
                 else:
                     imputer.impute_grand_mean(col, missing_idx)
             
@@ -576,8 +614,24 @@ def show_outlier_inspection_system(mode="outlier"):
             key=f"dl_btn_{mode}"
         )
         
-        with st.expander("📝 및 상세 보완 내역 (Log)"):
+        with st.expander("📝 상세 보완 내역 (Log)", expanded=True):
             st.dataframe(log_df, use_container_width=True)
+            
+        # [v3.0 추가] 재확인(Call-back) 대상 명단 별도 표시
+        callback_df = log_df[log_df["적용방법"] == "재확인 대상분류"]
+        if not callback_df.empty:
+            st.markdown('<div class="qx-section-label" style="color:#d32f2f;">🚨 재조사(Call-back) 필요 명단</div>', unsafe_allow_html=True)
+            st.error(f"총 {len(callback_df)}건의 데이터가 재확인 대상으로 분류되었습니다. 아래 명단을 조사원에게 전달하세요.")
+            
+            # 조사 가이드 생성 (AI가 각 변수별로 생성)
+            target_callback_vars = callback_df["변수명"].unique().tolist()
+            if st.button("🎙️ AI 재조사 질문 가이드 생성", key="btn_callback_guide"):
+                guide_prompt = f"다음 변수들에 대해 전화 재조사를 실시할 때, 응답자에게 자연스럽게 물어볼 수 있는 질문 스크립트를 작성해줘.\n변수: {', '.join(target_callback_vars)}"
+                res, err = run_analysis("전화조사 슈퍼바이저", guide_prompt, "스크립트 작성 중...")
+                if not err:
+                    st.info(res)
+            
+            st.dataframe(callback_df, use_container_width=True, hide_index=True)
 
 
 # ── 사이드바
