@@ -267,7 +267,7 @@ def do_logout():
 with st.sidebar:
     # 로고 추가
     try:
-        st.image("logo.png", use_container_width=True)
+        st.image("logo.png", width=180)
     except:
         pass
 
