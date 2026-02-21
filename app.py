@@ -24,6 +24,7 @@ import io
 import pandas as pd
 import numpy as np
 from data_cleaner import DataImputer
+import plotly.express as px
 try:
     from docx import Document
     from docx.shared import Pt
@@ -435,6 +436,26 @@ def show_outlier_inspection_system(mode="outlier"):
     </div>
     """, unsafe_allow_html=True)
 
+    # [v3.5 추가] 이용자 가이드 (User Manual)
+    with st.expander(f"📘 AI {'이상치' if mode == 'outlier' else '결측치'} 검토 이용 안내", expanded=False):
+        if mode == "outlier":
+            st.markdown("""
+            ### 🛠️ AI 이상치 검토 가이드
+            1. **데이터 업로드:** 검토할 Excel 또는 CSV 파일을 업로드합니다.
+            2. **시각적 탐색:** '시각적 이상치 판별' 섹션에서 산점도와 바이올린 플롯을 통해 데이터 분포와 이상 의심 사례를 확인합니다.
+            3. **변수 선택:** 분석이 필요한 수치형/범주형 변수를 선택합니다.
+            4. **AI 추천 및 설정:** 'AI 추천' 버튼을 클릭하여 적절한 보완 방법을 확인하거나 직접 선택합니다.
+            5. **실행 및 다운로드:** 보완된 데이터와 감사 보고서(Audit Log)를 엑셀로 저장합니다.
+            """)
+        else:
+            st.markdown("""
+            ### 🛠️ AI 결측치 검토 가이드
+            1. **패턴 분석:** 데이터 로드 후 상단의 '결측 패턴 분석'을 통해 어떤 변수가 얼마나 비어있는지 확인합니다.
+            2. **AI 진단:** 무작위성 여부(MCAR/MAR/MNAR)를 진단받아 통계적 편향 위험을 파악합니다.
+            3. **보완 전략 수립:** 중요한 변수는 'MICE'나 'k-NN'으로, 보완이 불가능한 건은 '재확인(Call-back)'으로 설정합니다.
+            4. **조사 가이드 활용:** 재확인 대상에 대해 AI가 생성해주는 전화 조사 스크립트를 활용합니다.
+            """)
+
     # 1. 파일 업로드
     st.markdown('<div class="qx-section-label">1. 데이터 업로드 (Excel/CSV)</div>', unsafe_allow_html=True)
     df_file = st.file_uploader(f"검토할 데이터를 업로드하세요 ({mode})", type=["xlsx", "csv"], label_visibility="collapsed", key=f"uploader_{mode}")
@@ -454,6 +475,38 @@ def show_outlier_inspection_system(mode="outlier"):
         return
 
     st.success(f"데이터 로드 완료: {len(df)} 행, {len(df.columns)} 열")
+    
+    # [v3.5 추가] 시각적 이상치 판별 섹션
+    if mode == "outlier":
+        with st.expander("📈 시각적 이상치 판별 (Scatter & Violin)", expanded=False):
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            if len(numeric_cols) < 1:
+                st.warning("시각화할 수 있는 수치형 변수가 없습니다.")
+            else:
+                viz_tab1, viz_tab2 = st.tabs(["📍 산점도 (Scatter Plot)", "🎻 바이올린 플롯 (Violin Plot)"])
+                
+                with viz_tab1:
+                    st.markdown("##### 두 변수 간의 관계와 극단값 확인")
+                    c1, c2, c3 = st.columns([2, 2, 1])
+                    with c1:
+                        x_axis = st.selectbox("X축 변수", options=numeric_cols, key="viz_x")
+                    with c2:
+                        y_axis = st.selectbox("Y축 변수", options=numeric_cols, index=min(1, len(numeric_cols)-1), key="viz_y")
+                    with c3:
+                        dot_color = st.color_picker("점 색상", "#0F6CBD", key="viz_color")
+                    
+                    fig_scatter = px.scatter(df, x=x_axis, y=y_axis, template="plotly_white", 
+                                           title=f"{x_axis} vs {y_axis} 산점도")
+                    fig_scatter.update_traces(marker=dict(color=dot_color, size=8, opacity=0.6))
+                    st.plotly_chart(fig_scatter, use_container_width=True)
+                
+                with viz_tab2:
+                    st.markdown("##### 데이터의 분포 밀도와 이상치 범위 확인")
+                    v_col = st.selectbox("분석할 변수", options=numeric_cols, key="viz_v")
+                    fig_violin = px.violin(df, y=v_col, box=True, points="all", template="plotly_white",
+                                         title=f"{v_col} 분포 분석 (Violin & Box)")
+                    fig_violin.update_traces(fillcolor="#0F6CBD", opacity=0.6, line=dict(color="black"))
+                    st.plotly_chart(fig_violin, use_container_width=True)
     
     # [v3.0 추가] 결측치 패턴 분석 섹션
     if mode == "imputation":
