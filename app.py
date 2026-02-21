@@ -193,6 +193,13 @@ hr { border-color: #E5E9F0 !important; margin: 1rem 0 !important; }
 #MainMenu { visibility: hidden; }
 footer    { visibility: hidden; }
 header    { visibility: hidden; }
+@media print {
+    [data-testid="stSidebar"], .stButton, hr, .qx-topbar-badge, .badge-ok, .badge-warn { display: none !important; }
+    [data-testid="block-container"] { padding: 0 !important; background-color: white !important; }
+    .qx-card { border: none !important; box-shadow: none !important; padding: 0 !important; margin-bottom: 2rem !important; page-break-inside: avoid; }
+    .qx-topbar { border-bottom: 2px solid #0F6CBD !important; }
+    body { background-color: white !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -646,6 +653,34 @@ else:
             st.markdown("<br>", unsafe_allow_html=True)
 
         # 다운로드
+        # 인쇄 버튼 (JS 기반)
+        st.markdown("""
+        <div class="no-print">
+            <button onclick="window.print()" style="
+                width: 100%;
+                background-color: #0F6CBD;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 0.75rem;
+                font-size: 0.9rem;
+                font-weight: 600;
+                cursor: pointer;
+                margin-top: 1rem;
+                margin-bottom: 1.5rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            ">
+                🖨️ 분석 결과 리포트 인쇄하기
+            </button>
+        </div>
+        <style>
+            @media print { .no-print { display: none !important; } }
+        </style>
+        """, unsafe_allow_html=True)
+
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown('<div class="qx-section-label">DOWNLOAD RESULTS</div>', unsafe_allow_html=True)
 
