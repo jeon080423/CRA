@@ -754,15 +754,8 @@ else:
                         if i < max_cols:
                             # 셀 내부에도 빨간색 강조 적용 시도
                             p = row_cells[i].paragraphs[0]
-                            parts = re.split(r"(<span style='color:red'>.*?</span>)", cell_text)
-                            for part in parts:
-                                if part.startswith("<span style='color:red'>"):
-                                    inner = re.sub(r"<span style='color:red'>(.*?)</span>", r"\1", part)
-                                    run = p.add_run(inner)
-                                    run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
-                                    run.bold = True
-                                else:
-                                    p.add_run(part)
+                            # 셀 내부에도 볼드 및 빨간색 강조 적용
+                            add_formatted_text(p, cell_text)
                 table_buffer.clear()
                 doc.add_paragraph() # 표 뒤에 공백 추가
 
@@ -796,17 +789,35 @@ else:
                 else:
                     is_bullet = line_strip.startswith('- ') or line_strip.startswith('* ')
                     text_content = line_strip[2:] if is_bullet else line_strip
-                    p = doc.add_paragraph(style='List Bullet') if is_bullet else doc.add_paragraph()
+                    def add_formatted_text(paragraph, text):
+                        """정규표현식을 사용하여 마크다운 볼드(**)와 span 태그 처리"""
+                        # 1. 빨간색 강조(<span...>)와 볼드(**...**)를 식별하기 위한 정규식
+                        # 순서: span 태그 우선 감지 후 일반 볼드 감지
+                        pattern = r"(<span style='color:red'>.*?</span>|\*\*.*?\*\*)"
+                        parts = re.split(pattern, text)
+                        
+                        for part in parts:
+                            if part.startswith("<span style='color:red'>"):
+                                inner = re.sub(r"<span style='color:red'>(.*?)</span>", r"\1", part)
+                                # 내부의 ** 제거 (중첩 처리)
+                                inner = inner.replace("**", "")
+                                run = paragraph.add_run(inner)
+                                run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
+                                run.bold = True
+                            elif part.startswith("**") and part.endswith("**"):
+                                inner = part[2:-2]
+                                run = paragraph.add_run(inner)
+                                run.bold = True
+                            else:
+                                if part:
+                                    paragraph.add_run(part)
+
+                    if is_bullet:
+                        p = doc.add_paragraph(style='List Bullet')
+                    else:
+                        p = doc.add_paragraph()
                     
-                    parts = re.split(r"(<span style='color:red'>.*?</span>)", text_content)
-                    for part in parts:
-                        if part.startswith("<span style='color:red'>"):
-                            inner_text = re.sub(r"<span style='color:red'>(.*?)</span>", r"\1", part)
-                            run = p.add_run(inner_text)
-                            run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
-                            run.bold = True
-                        else:
-                            p.add_run(part)
+                    add_formatted_text(p, text_content)
             
             # 마지막 남은 표 출력
             flush_table()
