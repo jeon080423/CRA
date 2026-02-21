@@ -389,7 +389,7 @@ with st.sidebar:
 
     # 내비게이션
     st.markdown('<div class="qx-section-label">NAVIGATION</div>', unsafe_allow_html=True)
-    menu_options = ["과업 내용 체크 리스트", "이상치 및 무응답 현황", "보고서 검수 AI Tools"]
+    menu_options = ["과업 내용 체크 리스트", "이상치 확인 및 무응답 검토", "보고서 검수 AI Tools"]
     
     # 세션 상태에 저장된 메뉴가 옵션에 없으면 기본값(첫 번째) 사용
     try:
@@ -579,10 +579,10 @@ else:
         show_win_strategy_section()
         # End Win Strategy here (early return or just wrap)
         st.stop()
-    elif st.session_state["menu_selection"] == "이상치 및 무응답 현황":
+    elif st.session_state["menu_selection"] == "이상치 확인 및 무응답 검토":
         st.markdown("""
     <div class="qx-topbar">
-        <span class="qx-topbar-logo">이상치 및 무응답 현황</span>
+        <span class="qx-topbar-logo">이상치 확인 및 무응답 검토</span>
         <span class="qx-topbar-sep"></span>
         <span class="qx-topbar-title">데이터 품질 진단 솔루션</span>
         <span class="qx-topbar-badge">Data Quality Audit</span>
