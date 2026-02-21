@@ -557,47 +557,42 @@ with st.sidebar:
         ) + " → ..."
         st.caption(f"우선순위: {priority_names}")
     else:
-        # 수동 선택 영역 강조 컨테이너 시작
-        st.markdown('<div class="sb-highlight-container">', unsafe_allow_html=True)
-        st.markdown('<span class="sb-model-badge">Manual Selection</span>', unsafe_allow_html=True)
-        
-        # 표시 이름 목록 생성
-        display_options = [MODEL_DISPLAY_NAMES.get(m, m) for m in AVAILABLE_MODELS]
-        display_default = MODEL_DISPLAY_NAMES.get(DEFAULT_MODEL, DEFAULT_MODEL)
-        
-        selected_display = st.selectbox(
-            "모델을 직접 선택하세요",
-            display_options,
-            index=display_options.index(display_default),
-            label_visibility="visible",
-            key="sb_model_select"
-        )
-        
-        # 표시 이름 → 실제 모델 ID 역매핑
-        reverse_map = {v: k for k, v in MODEL_DISPLAY_NAMES.items()}
-        selected_model = reverse_map.get(selected_display, DEFAULT_MODEL)
-        st.session_state["selected_model"] = selected_model
-        
-        # 모델 ID 가시성 극대화 (완전한 흰색 적용)
-        st.markdown(f"""
-            <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #4A5568;">
-                <div style="
-                    background: #374151; 
-                    color: #FFFFFF; 
-                    padding: 4px 12px; 
-                    border-radius: 4px; 
-                    font-family: 'Roboto Mono', monospace; 
-                    font-size: 0.75rem;
-                    font-weight: 700;
-                    border: 1px solid #64748B;
-                ">
-                    {selected_model}
+        # 수동 선택 영역을 테두리가 있는 컨테이너로 묶음
+        with st.container(border=True):
+            # 표시 이름 목록 생성
+            display_options = [MODEL_DISPLAY_NAMES.get(m, m) for m in AVAILABLE_MODELS]
+            display_default = MODEL_DISPLAY_NAMES.get(DEFAULT_MODEL, DEFAULT_MODEL)
+            
+            selected_display = st.selectbox(
+                "모델을 직접 선택하세요",
+                display_options,
+                index=display_options.index(display_default),
+                label_visibility="visible",
+                key="sb_model_select"
+            )
+            
+            # 표시 이름 → 실제 모델 ID 역매핑
+            reverse_map = {v: k for k, v in MODEL_DISPLAY_NAMES.items()}
+            selected_model = reverse_map.get(selected_display, DEFAULT_MODEL)
+            st.session_state["selected_model"] = selected_model
+            
+            # 모델 ID 가시성 극대화 (회색톤 + 화이트 텍스트)
+            st.markdown(f"""
+                <div style="display: flex; align-items: center; gap: 8px; margin-top: 5px;">
+                    <div style="
+                        background: #4A5568; 
+                        color: #FFFFFF; 
+                        padding: 3px 10px; 
+                        border-radius: 4px; 
+                        font-family: 'Roboto Mono', monospace; 
+                        font-size: 0.75rem;
+                        font-weight: 700;
+                    ">
+                        {selected_model}
+                    </div>
+                    <span style="font-size: 0.7rem; color: #A0AABB;">Active ID</span>
                 </div>
-                <span style="font-size: 0.7rem; color: #A0AABB; font-weight: 500;">Active ID</span>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
 
     st.markdown("<hr>", unsafe_allow_html=True)
