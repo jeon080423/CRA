@@ -456,6 +456,41 @@ def show_outlier_inspection_system(mode="outlier"):
             4. **조사 가이드 활용:** 재확인 대상에 대해 AI가 생성해주는 전화 조사 스크립트를 활용합니다.
             """)
 
+    # [v3.6 추가] 주요 기능 요약 카드 (메인 화면 스타일)
+    st.markdown('<div class="qx-section-label">SYSTEM FEATURES</div>', unsafe_allow_html=True)
+    if mode == "outlier":
+        st.markdown("""
+<div class="qx-card" style="padding:1.25rem 1.5rem; margin-bottom:1.5rem;">
+    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:1.5rem;">
+        <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.875rem;color:#2D3A50;">
+            <span style="color:#0F6CBD;font-weight:700;">01</span><span>데이터 분포 시각화 (Plotly)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.875rem;color:#2D3A50;">
+            <span style="color:#0F6CBD;font-weight:700;">02</span><span>통계적 이상치 정밀 탐지</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.875rem;color:#2D3A50;">
+            <span style="color:#0F6CBD;font-weight:700;">03</span><span>AI 최적 보완 및 결과 리포트</span>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+<div class="qx-card" style="padding:1.25rem 1.5rem; margin-bottom:1.5rem;">
+    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:1.5rem;">
+        <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.875rem;color:#2D3A50;">
+            <span style="color:#0F6CBD;font-weight:700;">01</span><span>결측 패턴 및 AI 유형 진단</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.875rem;color:#2D3A50;">
+            <span style="color:#0F6CBD;font-weight:700;">02</span><span>고급 통계 보완 (MICE/k-NN)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.875rem;color:#2D3A50;">
+            <span style="color:#0F6CBD;font-weight:700;">03</span><span>재확인(Call-back) 대상 관리</span>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
     # 1. 파일 업로드
     st.markdown('<div class="qx-section-label">1. 데이터 업로드 (Excel/CSV)</div>', unsafe_allow_html=True)
     df_file = st.file_uploader(f"검토할 데이터를 업로드하세요 ({mode})", type=["xlsx", "csv"], label_visibility="collapsed", key=f"uploader_{mode}")
