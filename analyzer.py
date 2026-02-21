@@ -470,3 +470,69 @@ STEP_LABELS = {
     2: "[2단계] 부문별 정밀 검수 및 오류 식별",
     3: "[3단계] 종합 검수 보고서",
 }
+def check_key_quotas(progress_callback=None) -> list[dict]:
+    """모든 API 키와 가용 모델의 상태를 진단합니다."""
+    keys = get_api_keys()
+    models = config.AVAILABLE_MODELS
+    results = []
+    
+    total_checks = len(keys) * len(models)
+    current_check = 0
+    
+    test_prompt = "Hello" # 최소 토큰 소모를 위한 짧은 테스트 프롬프트
+    
+    for i, key in enumerate(keys):
+        key_masked = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else "Invalid Key"
+        for model_name in models:
+            current_check += 1
+            if progress_callback:
+                progress_callback(current_check, total_checks, f"Checking Key {i+1} with {model_name}...")
+                
+            status = "✅ 정상"
+            error_detail = ""
+            
+            try:
+                # 1. 모델 초기화 테스트
+                model, init_err = init_model(model_name=model_name, api_key=key)
+                if init_err:
+                    status = "❌ 초기화 실패"
+                    error_detail = str(init_err)
+                else:
+                    # 2. 실제 호출 테스트 (최소 출력 설정)
+                    try:
+                        # 0.1초 대기로 레이트리밋 방지
+                        import time
+                        time.sleep(0.1)
+                        
+                        response = model.generate_content(
+                            test_prompt,
+                            generation_config={"max_output_tokens": 5},
+                            request_options={"timeout": 15}
+                        )
+                        # 응답 성공 시 (내용 확인 불필요, 에러가 안 나는 게 중요)
+                        _ = _resolve_text(response)
+                    except Exception as e:
+                        if _is_daily_limit(e):
+                            status = "🚫 일일 한도 초과"
+                        elif _is_quota_error(e):
+                            status = "⏳ 레이트리밋(RPM)"
+                        elif "404" in str(e) or "not found" in str(e).lower():
+                            status = "❓ 모델 미지원"
+                        elif "policy" in str(e).lower() or "blocked" in str(e).lower():
+                            status = "🛡️ 정책 차단"
+                        else:
+                            status = "⚠️ 기타 오류"
+                        error_detail = str(e)
+            except Exception as e:
+                status = "❌ 시스템 오류"
+                error_detail = str(e)
+                
+            results.append({
+                "Key Index": i + 1,
+                "Key ID": key_masked,
+                "Model": model_name,
+                "Status": status,
+                "Detail": error_detail[:100] # 너무 길면 생략
+            })
+            
+    return results

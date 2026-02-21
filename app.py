@@ -15,7 +15,7 @@ from analyzer import (
     run_analysis_stream, run_analysis, _run_single,
     STEP_PROMPTS, STEP_LABELS,
     FULL_ANALYSIS_PROMPT, get_api_key, get_api_keys,
-    run_step_with_chunks
+    run_step_with_chunks, check_key_quotas
 )
 import io
 try:
@@ -295,6 +295,44 @@ with st.sidebar:
     else:
         st.error("API 키 없음 — Streamlit Secrets에 GEMINI_API_KEYS를 추가하세요.", icon="⚠️")
 
+    st.markdown("<hr>", unsafe_allow_html=True)
+    
+    # API 할당량 진단 (v2.8)
+    st.markdown('<div class="qx-section-label">DIAGNOSTIC</div>', unsafe_allow_html=True)
+    if st.button("🔍 API 할당량 진단 시작", use_container_width=True, key="btn_diag"):
+        with st.expander("진단 결과", expanded=True):
+            diag_prog = st.progress(0, text="진단 대기 중...")
+            diag_status = st.empty()
+            
+            def diag_callback(curr, total, msg):
+                diag_prog.progress(curr/total, text=f"진단 중... ({curr}/{total})")
+                diag_status.caption(msg)
+                
+            with st.spinner("모든 키와 모델 상태를 확인 중입니다..."):
+                results = check_key_quotas(progress_callback=diag_callback)
+                diag_prog.empty()
+                diag_status.empty()
+                
+                if results:
+                    import pandas as pd
+                    df = pd.DataFrame(results)
+                    st.dataframe(
+                        df, 
+                        hide_index=True,
+                        column_config={
+                            "Status": st.column_config.TextColumn("상태", width="medium"),
+                            "Detail": st.column_config.TextColumn("상세 내용", width="large"),
+                        },
+                        use_container_width=True
+                    )
+                    
+                    ok_count = sum(1 for r in results if "정상" in r["Status"])
+                    st.success(f"진단 완료: 총 {len(results)}개 조합 중 {ok_count}개 정상")
+                    if ok_count == 0:
+                        st.error("사용 가능한 키/모델 조합이 없습니다. API 키를 교체해 주세요.")
+                else:
+                    st.warning("진단할 API 키가 없습니다.")
+    
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # 모델 선택
