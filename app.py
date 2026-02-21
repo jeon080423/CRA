@@ -524,7 +524,26 @@ with st.sidebar:
         reverse_map = {v: k for k, v in MODEL_DISPLAY_NAMES.items()}
         selected_model = reverse_map.get(selected_display, DEFAULT_MODEL)
         st.session_state["selected_model"] = selected_model
-        st.caption(f"`{selected_model}`")
+        
+        # 모델 ID 가시성 개선 및 라벨 추가
+        st.markdown(f"""
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <div style="
+                    background: #2D3A50; 
+                    color: #FFFFFF; 
+                    padding: 4px 10px; 
+                    border-radius: 6px; 
+                    font-family: inherit; 
+                    font-size: 0.8rem;
+                    font-weight: 500;
+                    border: 1px solid #374151;
+                ">
+                    {selected_model}
+                </div>
+                <span style="font-size: 0.75rem; color: #8B96A9;">설정된 모델</span>
+            </div>
+        """, unsafe_allow_html=True)
+
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
