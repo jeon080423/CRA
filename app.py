@@ -265,12 +265,13 @@ def do_logout():
 
 # ── 사이드바
 with st.sidebar:
-    # 로고 추가
+    # 로고 추가 (가운데 정렬)
     try:
-        st.image("logo.png", width=180)
+        _, mid_col, _ = st.columns([1, 3, 1])
+        with mid_col:
+            st.image("logo.png", width=180)
     except:
         pass
-
     st.markdown("### Research Auditor & Win Strategy")
     st.markdown("<hr>", unsafe_allow_html=True)
 
