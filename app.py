@@ -584,64 +584,66 @@ else:
 
         st.markdown("<hr>", unsafe_allow_html=True)
 
-        # 탭 분석 UI (v13.0: 3단계 체제)
-        tab1, tab2, tab3 = st.tabs([
-            STEP_LABELS[1], STEP_LABELS[2], STEP_LABELS[3],
-        ])
-
-        def render_step_tab(tab, step_num: int):
-            with tab:
+        # 단일 페이지 분석 UI (v16.0: 한 페이지에 모두 표시)
+        for s in [1, 2, 3]:
+            st.markdown(f'<div class="qx-section-label">{STEP_LABELS[s]}</div>', unsafe_allow_html=True)
+            
+            # 각 단계별 카드 섹션
+            with st.container():
                 col_hd, col_st = st.columns([3, 1])
                 with col_hd:
-                    st.markdown(
-                        f'<div class="qx-card-title">{STEP_LABELS[step_num]}</div>',
-                        unsafe_allow_html=True,
-                    )
+                    st.markdown(f"### {STEP_LABELS[s]}")
                 with col_st:
-                    if st.session_state["step_results"][step_num]:
+                    if st.session_state["step_results"][s]:
                         st.markdown('<span class="badge-ok">완료</span>', unsafe_allow_html=True)
                     else:
                         st.markdown('<span class="badge-warn">대기</span>', unsafe_allow_html=True)
 
                 run_btn = st.button(
-                    f"{step_num}단계 분석 실행",
-                    key=f"btn_step_{step_num}",
+                    f"{s}단계 분석 실행",
+                    key=f"btn_step_{s}",
                 )
+                
                 result_area = st.empty()
-
-                if st.session_state["full_result"] and not st.session_state["step_results"][step_num]:
-                    result_area.info("전체 분석 결과를 참조하세요. 단계별 독립 분석을 원하면 위 버튼을 클릭하세요.")
-                elif st.session_state["step_results"][step_num]:
-                    result_area.markdown(st.session_state["step_results"][step_num], unsafe_allow_html=True)
+                
+                # 결과 표시
+                if st.session_state["step_results"][s]:
+                    result_area.markdown(st.session_state["step_results"][s], unsafe_allow_html=True)
+                elif st.session_state["full_result"] and not st.session_state["step_results"][s]:
+                    result_area.info(f"{s}단계의 통합 결과가 준비되어 있습니다.")
 
                 if run_btn:
                     if not get_api_keys():
                         st.error("API 키가 설정되지 않았습니다.")
-                        return
-                    _auto = st.session_state["auto_mode"]
-                    _model = st.session_state["selected_model"]
-                    with st.spinner(f"{step_num}단계 분석 중..."):
-                        full_text = ""
-                        for chunk, is_error, _ in run_analysis_stream(
-                            STEP_PROMPTS[step_num],
-                            st.session_state["report_text"],
-                            model_name=_model,
-                            auto_mode=_auto,
-                        ):
-                            if is_error:
-                                st.error(chunk)
-                                return
-                            # 실시간 스트리밍 출력
-                            full_text += chunk
-                            result_area.markdown(full_text + " ▌", unsafe_allow_html=True)
-                        
-                        result_area.markdown(full_text, unsafe_allow_html=True)
-                    st.session_state["step_results"][step_num] = full_text
-                    st.rerun()
-
-        render_step_tab(tab1, 1)
-        render_step_tab(tab2, 2)
-        render_step_tab(tab3, 3)
+                    else:
+                        _auto = st.session_state["auto_mode"]
+                        _model = st.session_state["selected_model"]
+                        with st.spinner(f"{s}단계 분석 중..."):
+                            full_text = ""
+                            # 스트리밍 방식 호출 (실시간 피드백)
+                            for chunk, is_error, _ in run_analysis_stream(
+                                STEP_PROMPTS[s],
+                                st.session_state["report_text"],
+                                model_name=_model,
+                                auto_mode=_auto,
+                            ):
+                                if is_error:
+                                    st.error(chunk)
+                                    break
+                                full_text += chunk
+                                result_area.markdown(full_text + " ▌", unsafe_allow_html=True)
+                            
+                            if full_text:
+                                result_area.markdown(full_text, unsafe_allow_html=True)
+                                st.session_state["step_results"][s] = full_text
+                                # 전체 결과 업데이트
+                                combined = ""
+                                for i in range(1, 4):
+                                    if st.session_state["step_results"][i]:
+                                        combined += f"\n\n---\n\n## {STEP_LABELS[i]}\n\n{st.session_state['step_results'][i]}"
+                                st.session_state["full_result"] = combined
+                                st.rerun()
+            st.markdown("<br>", unsafe_allow_html=True)
 
         # 다운로드
         st.markdown("<hr>", unsafe_allow_html=True)

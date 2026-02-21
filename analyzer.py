@@ -300,43 +300,31 @@ def run_step_with_chunks(
             except Exception as e:
                 errors.append(f"조각 {chunk_idx+1} 치명적 오류: {e}")
     
-    # 4. 결과 통합 및 Synthesis (v15.0: 계층적 병합 & SEP 도입)
+    # 4. 결과 통합 및 Synthesis (v16.0: 안정적 플랫 병합 복구)
     if len(chunk_results) > 1:
-        def _merge_hierarchically(results, step, level=1):
-            if len(results) <= 4: # 4개 이하면 직접 병합
-                print(f"[PROCESS] [STEP {step}] Hierarchical Merge (Level {level}): merging {len(results)} chunks", flush=True)
-                all_text = "\n\n".join([f"--- 조각 ---\n{res}" for res in results if res])
-                synth_prompts = {1: STEP1_SYNTHESIS_PROMPT, 2: STEP2_SYNTHESIS_PROMPT, 3: STEP3_SYNTHESIS_PROMPT}
-                prompt_template = synth_prompts.get(step)
-                
-                # 병합용 모델 선택
-                synth_model = "gemini-2.5-pro" if step in [2, 3] else (model_name if model_name else config.DEFAULT_MODEL)
-                
-                res, err = _run_single(
-                    prompt_template.replace("{chunk_results}", all_text),
-                    "", synth_model, auto_mode, step, None
-                )
-                
-                # 정책 차단(400/Safety) 발생 시 추상적 요약으로 재시도 (혁신적 우회)
-                if err and ("policy" in err.lower() or "safety" in err.lower() or "400" in err):
-                    print(f"[WARN] [STEP {step}] Policy block during merge. Retrying with abstraction...", flush=True)
-                    abstract_prompt = f"다음 데이터에서 핵심적 에러 내용과 페이지 정보만 추출하여 아주 짧게 요약해줘. 저작권 보호를 위해 원문 그대로 인용하지 마.\n\n{all_text[:5000]}"
-                    res, err = _run_single(abstract_prompt, "", "gemini-2.0-flash", True, step, None)
-                
-                return res if not err else "\n\n".join(results)
-            
-            # 4개보다 많으면 그룹화하여 재귀 호출
-            print(f"[PROCESS] [STEP {step}] Splitting {len(results)} chunks into groups at Level {level}", flush=True)
-            groups = [results[i:i+4] for i in range(0, len(results), 4)]
-            merged_groups = []
-            for g in groups:
-                merged_groups.append(_merge_hierarchically(g, step, level + 1))
-            return _merge_hierarchically(merged_groups, step, level + 1)
-
-        combined_text = _merge_hierarchically([r for r in chunk_results if r], step_num)
+        print(f"[PROCESS] [STEP {step_num}] Synthesizing {len(chunk_results)} results...", flush=True)
+        all_text = "\n\n".join([f"--- 조각 ---\n{res}" for res in chunk_results if res])
+        
+        synth_prompts = {1: STEP1_SYNTHESIS_PROMPT, 2: STEP2_SYNTHESIS_PROMPT, 3: STEP3_SYNTHESIS_PROMPT}
+        prompt_template = synth_prompts.get(step_num)
+        
+        # 병합용 모델 선택 (Pro 모델 활용)
+        synth_model = "gemini-2.5-pro" if step_num in [2, 3] else (model_name if model_name else config.DEFAULT_MODEL)
+        
+        synthesis_text, synth_err = _run_single(
+            prompt_template.replace("{chunk_results}", all_text),
+            "", synth_model, auto_mode, step_num, None
+        )
+        
+        if not synth_err:
+            combined_text = synthesis_text
+        else:
+            # 병합 실패 시 단순 나열하여 결과 보존
+            combined_text = "\n\n---\n\n".join(filter(None, chunk_results))
+    elif chunk_results:
+        combined_text = chunk_results[0]
     else:
-        combined_text = chunk_results[0] if chunk_results else ""
-
+        combined_text = ""
     # 5. 내결함성(Fault Tolerance)
     if not combined_text and any(chunk_results):
         combined_text = "\n\n---\n\n".join(filter(None, chunk_results))
