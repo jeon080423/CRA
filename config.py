@@ -8,22 +8,38 @@ APP_DESCRIPTION = "국가승인통계, 공공기관 만족도 조사, 정책 평
 # Gemini 모델 목록 (사용자가 수동 선택 가능한 전체 목록)
 # ──────────────────────────────────────────────
 AVAILABLE_MODELS = [
-    "gemini-2.0-flash",                # Gemini 2.0 Flash (Unlimited)
-    "gemini-2.5-flash",                # Gemini 2.5 Flash (10K/Day)
-    "gemini-3-flash-preview",          # Gemini 3 Flash (10K/Day)
-    "gemini-2.5-pro",                  # Gemini 2.5 Pro (1K/Day)
-    "gemini-3-pro-preview",            # Gemini 3 Pro (250/Day)
-    "gemini-3.1-pro-preview",          # Gemini 3.1 Pro (250/Day)
+    "gemini-2.0-flash",                # Gemini 2.0 Flash
+    "gemini-2.0-flash-lite",           # Gemini 2.0 Flash Lite
+    "gemini-2.5-flash",                # Gemini 2.5 Flash
+    "gemini-2.5-flash-lite",           # Gemini 2.5 Flash Lite
+    "gemini-3-flash-preview",          # Gemini 3 Flash Preview
+    "gemini-2.5-pro",                  # Gemini 2.5 Pro
+    "gemini-3-pro-preview",            # Gemini 3 Pro Preview
+    "gemini-3.1-pro-preview",          # Gemini 3.1 Pro Preview
+    "gemini-flash-latest",             # Gemini Flash Latest
+    "gemini-flash-lite-latest",        # Gemini Flash Lite Latest
+    "gemini-pro-latest",               # Gemini Pro Latest
+    "gemma-3-27b-it",                  # Gemma 3 27B
+    "gemma-3-12b-it",                  # Gemma 3 12B
+    "gemma-3-4b-it",                   # Gemma 3 4B
 ]
 
 # 모델 표시 이름 매핑
 MODEL_DISPLAY_NAMES = {
-    "gemini-2.0-flash":                 "Gemini 2.0 Flash (Unlimited)",
-    "gemini-2.5-flash":                 "Gemini 2.5 Flash (10K)",
-    "gemini-3-flash-preview":           "Gemini 3 Flash (10K)",
-    "gemini-2.5-pro":                   "Gemini 2.5 Pro (1K)",
-    "gemini-3-pro-preview":             "Gemini 3 Pro (250)",
-    "gemini-3.1-pro-preview":           "Gemini 3.1 Pro (250)",
+    "gemini-2.0-flash":                 "Gemini 2.0 Flash",
+    "gemini-2.0-flash-lite":            "Gemini 2.0 Flash Lite (Experimental)",
+    "gemini-2.5-flash":                 "Gemini 2.5 Flash",
+    "gemini-2.5-flash-lite":            "Gemini 2.5 Flash Lite (Experimental)",
+    "gemini-3-flash-preview":           "Gemini 3 Flash (Preview)",
+    "gemini-2.5-pro":                   "Gemini 2.5 Pro",
+    "gemini-3-pro-preview":             "Gemini 3 Pro (Preview)",
+    "gemini-3.1-pro-preview":           "Gemini 3.1 Pro (Preview)",
+    "gemini-flash-latest":              "Gemini Flash (Latest)",
+    "gemini-flash-lite-latest":         "Gemini Flash Lite (Latest)",
+    "gemini-pro-latest":                "Gemini Pro (Latest)",
+    "gemma-3-27b-it":                   "Gemma 3 27B (IT)",
+    "gemma-3-12b-it":                   "Gemma 3 12B (IT)",
+    "gemma-3-4b-it":                    "Gemma 3 4B (IT)",
 }
 
 # ──────────────────────────────────────────────
