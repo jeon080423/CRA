@@ -612,7 +612,7 @@ else:
                 if st.session_state["full_result"] and not st.session_state["step_results"][step_num]:
                     result_area.info("전체 분석 결과를 참조하세요. 단계별 독립 분석을 원하면 위 버튼을 클릭하세요.")
                 elif st.session_state["step_results"][step_num]:
-                    result_area.markdown(st.session_state["step_results"][step_num])
+                    result_area.markdown(st.session_state["step_results"][step_num], unsafe_allow_html=True)
 
                 if run_btn:
                     if not get_api_keys():
@@ -631,8 +631,11 @@ else:
                             if is_error:
                                 st.error(chunk)
                                 return
+                            # 실시간 스트리밍 출력
                             full_text += chunk
-                            result_area.markdown(full_text)
+                            result_area.markdown(full_text + " ▌", unsafe_allow_html=True)
+                        
+                        result_area.markdown(full_text, unsafe_allow_html=True)
                     st.session_state["step_results"][step_num] = full_text
                     st.rerun()
 

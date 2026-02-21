@@ -319,7 +319,7 @@ def run_step_with_chunks(
             
             # 하이브리드 전략: 병합(Synthesis)은 고성능 모델(Pro)을 사용
             # config에 정의된 우선순위 모델 중 하나 사용 (Pro 우선)
-            synth_model = "gemini-1.5-pro" if step_num == 2 else (model_name if model_name else config.DEFAULT_MODEL)
+            synth_model = "gemini-1.5-pro" if step_num in [2, 3] else (model_name if model_name else config.DEFAULT_MODEL)
             
             synthesis_text, synth_err = _run_single(
                 synthesis_prompt_template.replace("{chunk_results}", all_results_text),

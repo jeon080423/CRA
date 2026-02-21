@@ -8,42 +8,43 @@ APP_DESCRIPTION = "국가승인통계, 공공기관 만족도 조사, 정책 평
 # Gemini 모델 목록 (사용자가 수동 선택 가능한 전체 목록)
 # ──────────────────────────────────────────────
 AVAILABLE_MODELS = [
-    "gemini-3-flash-preview",          # Gemini 3.0 Flash (Next-Gen Speed)
+    "gemini-2.0-flash",                # Gemini 2.0 Flash (Stable)
+    "gemini-1.5-pro",                  # Gemini 1.5 Pro (Stable)
+    "gemini-1.5-flash",                # Gemini 1.5 Flash (Stable)
+    "gemini-3-flash-preview",          # Gemini 3.0 Flash (Preview)
     "gemini-2.5-pro",                  # Gemini 2.5 Pro (State-of-the-art)
     "gemini-2.5-flash",                # Gemini 2.5 Flash
     "gemini-2.0-pro-exp-02-05",        # Gemini 2.0 Pro Exp
-    "gemini-2.0-flash",                # Gemini 2.0 Flash
-    "gemini-2.0-flash-exp",            # Gemini 2.0 Flash Exp
 ]
 
 # 모델 표시 이름 매핑
 MODEL_DISPLAY_NAMES = {
+    "gemini-2.0-flash":                 "Gemini 2.0 Flash (Stable)",
+    "gemini-1.5-pro":                   "Gemini 1.5 Pro (Stable)",
+    "gemini-1.5-flash":                 "Gemini 1.5 Flash (Stable)",
     "gemini-3-flash-preview":           "Gemini 3.0 Flash (Preview)",
     "gemini-2.5-pro":                   "Gemini 2.5 Pro (Stable)",
     "gemini-2.5-flash":                 "Gemini 2.5 Flash (Stable)",
     "gemini-2.0-pro-exp-02-05":         "Gemini 2.0 Pro (Experimental)",
-    "gemini-2.0-flash":                 "Gemini 2.0 Flash (Stable)",
-    "gemini-2.0-flash-exp":             "Gemini 2.0 Flash (Experimental)",
 }
 
 # ──────────────────────────────────────────────
 # 자동 최적화 모드: 할당량 초과 시 순서대로 폴백
 # ──────────────────────────────────────────────
 AUTO_MODEL_PRIORITY = [
-    "gemini-3-flash-preview",           # 1순위: 압도적인 차세대 속도
-    "gemini-2.5-pro",                   # 2순위: 최고 수준의 정밀도
-    "gemini-2.5-flash",                 # 3순위: 안정적인 고속 모델
-    "gemini-2.0-flash",                 # 4순위: 검증된 고속 모델
-    "gemini-2.0-pro-exp-02-05",         # 5순위: 고성능 실험용
+    "gemini-2.0-flash",                 # 1순위: 안정적인 최신 고속 모델
+    "gemini-1.5-flash",                 # 2순위: 검증된 고속 모델
+    "gemini-1.5-pro",                   # 3순위: 최고 수준의 정밀도
+    "gemini-3-flash-preview",           # 4순위: 압도적인 차세대 속도
 ]
 
 # ──────────────────────────────────────────────
 # 단계별 최적 모델 맵 (속도 vs 품질 밸런스)
 # ──────────────────────────────────────────────
 STEP_MODEL_MAP = {
-    1: ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash"],
-    2: ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash"], # 조각 분석용 (Flash 전환)
-    3: ["gemini-2.5-pro", "gemini-2.0-pro-exp-02-05", "gemini-3-flash-preview"], # 종합 리포트 요약용 (Pro 복구)
+    1: ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-3-flash-preview"],
+    2: ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-3-flash-preview"], 
+    3: ["gemini-1.5-pro", "gemini-2.0-flash", "gemini-2.5-pro"], 
 }
 
 
