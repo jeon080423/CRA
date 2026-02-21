@@ -5,6 +5,7 @@ Streamlit Cloud 배포용 메인 앱
 import streamlit as st
 import concurrent.futures
 import datetime
+import config
 from config import (
     APP_TITLE, APP_ICON, APP_DESCRIPTION,
     AVAILABLE_MODELS, DEFAULT_MODEL, MAX_TEXT_CHARS,
