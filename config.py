@@ -10,20 +10,20 @@ APP_DESCRIPTION = "국가승인통계, 공공기관 만족도 조사, 정책 평
 AVAILABLE_MODELS = [
     "gemini-2.0-flash",                # Gemini 2.0 Flash (Unlimited)
     "gemini-2.5-flash",                # Gemini 2.5 Flash (10K/Day)
-    "gemini-3-flash",                  # Gemini 3 Flash (10K/Day)
+    "gemini-3-flash-preview",          # Gemini 3 Flash (10K/Day)
     "gemini-2.5-pro",                  # Gemini 2.5 Pro (1K/Day)
-    "gemini-3-pro",                    # Gemini 3 Pro (250/Day)
-    "gemini-3.1-pro",                  # Gemini 3.1 Pro (250/Day)
+    "gemini-3-pro-preview",            # Gemini 3 Pro (250/Day)
+    "gemini-3.1-pro-preview",          # Gemini 3.1 Pro (250/Day)
 ]
 
 # 모델 표시 이름 매핑
 MODEL_DISPLAY_NAMES = {
     "gemini-2.0-flash":                 "Gemini 2.0 Flash (Unlimited)",
     "gemini-2.5-flash":                 "Gemini 2.5 Flash (10K)",
-    "gemini-3-flash":                   "Gemini 3 Flash (10K)",
+    "gemini-3-flash-preview":           "Gemini 3 Flash (10K)",
     "gemini-2.5-pro":                   "Gemini 2.5 Pro (1K)",
-    "gemini-3-pro":                     "Gemini 3 Pro (250)",
-    "gemini-3.1-pro":                   "Gemini 3.1 Pro (250)",
+    "gemini-3-pro-preview":             "Gemini 3 Pro (250)",
+    "gemini-3.1-pro-preview":           "Gemini 3.1 Pro (250)",
 }
 
 # ──────────────────────────────────────────────
@@ -32,16 +32,16 @@ MODEL_DISPLAY_NAMES = {
 AUTO_MODEL_PRIORITY = [
     "gemini-2.0-flash",                 # 1순위 (무제한 한도)
     "gemini-2.5-flash",                 # 2순위 (1만 한도)
-    "gemini-3-flash",                   # 3순위 (1만 한도)
+    "gemini-3-flash-preview",           # 3순위 (1만 한도)
     "gemini-2.5-pro",                   # 4순위 (1천 한도)
-    "gemini-3-pro",                     # 5순위 (250 한도)
+    "gemini-3-pro-preview",             # 5순위 (250 한도)
 ]
 
 # ──────────────────────────────────────────────
 # 단계별 최적 모델 맵 (속도 vs 품질 밸런스)
 # ──────────────────────────────────────────────
 STEP_MODEL_MAP = {
-    1: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-3-flash"],
+    1: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-3-flash-preview"],
     2: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
     3: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"],
 }
