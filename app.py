@@ -29,7 +29,7 @@ except ImportError:
 
 # ── 페이지 설정
 st.set_page_config(
-    page_title="Research Auditor · 보고서 분석기",
+    page_title="보고서 검수 AI Tools",
     page_icon="🔍",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -220,7 +220,7 @@ def init_session():
         "full_result": "",
         "selected_model": DEFAULT_MODEL,
         "auto_mode": True,    # 자동 최적화 모드 기본값
-        "menu_selection": "보고서 검토 AI Tools",
+        "menu_selection": "보고서 검수 AI Tools",
         "rfp_curr_text": "",
         "rfp_prev_text": "",
         "rfp_results": {},
@@ -272,15 +272,15 @@ with st.sidebar:
             st.image("logo.png", width=180)
     except:
         pass
-    st.markdown("### 보고서 검토 AI Tools & 과업 내용 체크")
+    st.markdown("### 보고서 검수 AI Tools & 과업 내용 체크")
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # 내비게이션
     st.markdown('<div class="qx-section-label">NAVIGATION</div>', unsafe_allow_html=True)
     menu = st.radio(
         "메뉴를 선택하세요",
-        ["보고서 검토 AI Tools", "과업 내용 체크"],
-        index=0 if st.session_state["menu_selection"] == "보고서 검토 AI Tools" else 1,
+        ["보고서 검수 AI Tools", "과업 내용 체크"],
+        index=0 if st.session_state["menu_selection"] == "보고서 검수 AI Tools" else 1,
         label_visibility="collapsed",
         key="nav_radio"
     )
@@ -433,7 +433,7 @@ with st.sidebar:
 if not st.session_state["is_logged_in"]:
     st.markdown("""
 <div class="qx-topbar">
-    <span class="qx-topbar-logo">AI 검토 Tools</span>
+    <span class="qx-topbar-logo">보고서 검수 AI Tools</span>
     <span class="qx-topbar-sep"></span>
     <span class="qx-topbar-title">수석 리서치 품질 검수관</span>
 </div>
@@ -448,11 +448,11 @@ if not st.session_state["is_logged_in"]:
 """, unsafe_allow_html=True)
 
 else:
-    if st.session_state["menu_selection"] == "보고서 검토 AI Tools":
+    if st.session_state["menu_selection"] == "보고서 검수 AI Tools":
         # 상단 헤더 바
         st.markdown("""
     <div class="qx-topbar">
-        <span class="qx-topbar-logo">보고서 검토 AI Tools</span>
+        <span class="qx-topbar-logo">보고서 검수 AI Tools</span>
         <span class="qx-topbar-sep"></span>
         <span class="qx-topbar-title">수석 리서치 품질 검수관</span>
         <span class="qx-topbar-badge">AI-Powered Quality Check</span>
