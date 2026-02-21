@@ -200,11 +200,45 @@ html, body, [class*="css"] {
 .sb-file-name { font-size: 0.82rem; font-weight: 600; color: #E2E8F0 !important; word-break: break-all; }
 .sb-file-meta { font-size: 0.75rem; color: #8B96A9 !important; margin-top: 0.25rem; }
 
+/* AI 모델 수동 선택 영역 강조 (회색톤으로 변경) */
+.sb-highlight-container {
+    background: #2D3A50 !important; /* 회색톤 배경 */
+    border: 1px solid #4A5568 !important; /* 차분한 회색 테두리 */
+    border-radius: 10px;
+    padding: 1.2rem;
+    margin-top: 0.8rem;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+.sb-model-badge {
+    background: #4A5568; /* 회색톤 배지 */
+    color: #FFFFFF !important;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 0.8rem;
+    display: inline-block;
+    letter-spacing: 0.5px;
+}
+
 hr { border-color: #E5E9F0 !important; margin: 1rem 0 !important; }
 [data-testid="stAlert"] { border-radius: 8px !important; font-size: 0.875rem !important; }
 #MainMenu { visibility: hidden; }
 footer    { visibility: hidden; }
 header    { visibility: hidden; }
+
+/* 표 내부 줄바꿈 허용 및 가독성 개선 */
+table { width: 100% !important; border-collapse: collapse !important; }
+th, td { 
+    white-space: normal !important; 
+    word-break: keep-all !important; 
+    line-height: 1.6 !important; 
+    padding: 10px 15px !important;
+    vertical-align: top !important;
+}
+td br { content: ""; display: block; margin-bottom: 0.5rem; }
+
 @media print {
     [data-testid="stSidebar"], .stButton, hr, .qx-topbar-badge, .badge-ok, .badge-warn { display: none !important; }
     [data-testid="block-container"] { padding: 0 !important; background-color: white !important; }
@@ -373,8 +407,10 @@ def perform_rfp_analysis():
             st.error(f"Error in {sec['title']}: {err}")
             st.session_state["rfp_results"][sec["id"]] = f"⚠️ 분석 실패: {err}"
         else:
-            # 후처리: <blue> 태그 등을 마크다운으로 변환하거나 보존 (Word export에서 지원하도록 수정됨)
-            st.session_state["rfp_results"][sec["id"]] = result
+            import re
+            # 후처리: 모든 세미콜론(; , ；) 뒤의 공백을 포함하여 <br>로 변환 (줄바꿈 구현)
+            processed_result = re.sub(r'[;；]\s*', '<br>', result)
+            st.session_state["rfp_results"][sec["id"]] = processed_result
         
         progress_bar.progress((i + 1) / total)
     
@@ -521,38 +557,47 @@ with st.sidebar:
         ) + " → ..."
         st.caption(f"우선순위: {priority_names}")
     else:
+        # 수동 선택 영역 강조 컨테이너 시작
+        st.markdown('<div class="sb-highlight-container">', unsafe_allow_html=True)
+        st.markdown('<span class="sb-model-badge">Manual Selection</span>', unsafe_allow_html=True)
+        
         # 표시 이름 목록 생성
         display_options = [MODEL_DISPLAY_NAMES.get(m, m) for m in AVAILABLE_MODELS]
         display_default = MODEL_DISPLAY_NAMES.get(DEFAULT_MODEL, DEFAULT_MODEL)
+        
         selected_display = st.selectbox(
-            "모델 선택",
+            "모델을 직접 선택하세요",
             display_options,
             index=display_options.index(display_default),
-            label_visibility="collapsed",
+            label_visibility="visible",
+            key="sb_model_select"
         )
+        
         # 표시 이름 → 실제 모델 ID 역매핑
         reverse_map = {v: k for k, v in MODEL_DISPLAY_NAMES.items()}
         selected_model = reverse_map.get(selected_display, DEFAULT_MODEL)
         st.session_state["selected_model"] = selected_model
         
-        # 모델 ID 가시성 개선 및 라벨 추가
+        # 모델 ID 가시성 극대화 (완전한 흰색 적용)
         st.markdown(f"""
-            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #4A5568;">
                 <div style="
-                    background: #2D3A50; 
+                    background: #374151; 
                     color: #FFFFFF; 
-                    padding: 4px 10px; 
-                    border-radius: 6px; 
-                    font-family: inherit; 
-                    font-size: 0.8rem;
-                    font-weight: 500;
-                    border: 1px solid #374151;
+                    padding: 4px 12px; 
+                    border-radius: 4px; 
+                    font-family: 'Roboto Mono', monospace; 
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    border: 1px solid #64748B;
                 ">
                     {selected_model}
                 </div>
-                <span style="font-size: 0.75rem; color: #8B96A9;">설정된 모델</span>
+                <span style="font-size: 0.7rem; color: #A0AABB; font-weight: 500;">Active ID</span>
             </div>
         """, unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
     st.markdown("<hr>", unsafe_allow_html=True)
@@ -587,6 +632,118 @@ with st.sidebar:
     st.caption("개발: ㅈㅅㅎ")
     st.caption("문의: shjeon1@metrix.co.kr")
     st.caption("Powered by Google Gemini · v2.9")
+
+
+
+def export_to_docx(markdown_text: str) -> io.BytesIO:
+    """마크다운-텍스트를 워드(DOCX) 파일로 변환 (표 객체 및 빨간색 강조 지원)"""
+    if Document is None:
+        return io.BytesIO(b"python-docx is not installed")
+    
+    doc = Document()
+    style = doc.styles['Normal']
+    style.font.size = Pt(11)
+    
+    from docx.shared import RGBColor
+    import re
+    
+    lines = markdown_text.split('\n')
+    table_buffer = []
+    
+    def flush_table():
+        if not table_buffer:
+            return
+        # 컬럼 수 결정 (가장 긴 행 기준)
+        max_cols = max(len(row) for row in table_buffer)
+        if max_cols == 0:
+            return
+        
+        table = doc.add_table(rows=0, cols=max_cols)
+        table.style = 'Table Grid'
+        
+        for row_data in table_buffer:
+            row_cells = table.add_row().cells
+            for i, cell_text in enumerate(row_data):
+                if i < max_cols:
+                    # 셀 내부에도 빨간색 강조 적용 시도
+                    p = row_cells[i].paragraphs[0]
+                    # 셀 내부에도 볼드 및 빨간색 강조 적용
+                    add_formatted_text(p, cell_text)
+        table_buffer.clear()
+        doc.add_paragraph() # 표 뒤에 공백 추가
+
+    def add_formatted_text(paragraph, text):
+        """정규표현식을 사용하여 마크다운 볼드(**), span 태그, blue 태그 처리"""
+        import re
+        # <br> 태그를 실제 줄바꿈으로 변환 (워드용)
+        text = text.replace("<br>", "\n")
+        
+        # 1. 빨간색 강조(<span...>), 파란색 강조(<blue>), 볼드(**...**)를 식별하기 위한 정규식
+        pattern = r"(<span style='color:red'>.*?</span>|<blue>.*?</blue>|\*\*.*?\*\*)"
+        parts = re.split(pattern, text)
+        
+        for part in parts:
+            if part.startswith("<span style='color:red'>"):
+                inner = re.sub(r"<span style='color:red'>(.*?)</span>", r"\1", part)
+                inner = inner.replace("**", "")
+                run = paragraph.add_run(inner)
+                run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
+                run.bold = True
+            elif part.startswith("<blue>"):
+                inner = re.sub(r"<blue>(.*?)</blue>", r"\1", part)
+                inner = inner.replace("**", "")
+                run = paragraph.add_run(inner)
+                run.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)
+                run.bold = True
+            elif part.startswith("**") and part.endswith("**"):
+                inner = part[2:-2]
+                run = paragraph.add_run(inner)
+                run.bold = True
+            else:
+                if part:
+                    paragraph.add_run(part)
+
+    for line in lines:
+        line_strip = line.strip()
+        
+        # 표 행 감지 (| 로 시작하거나 포함된 경우)
+        if '|' in line_strip:
+            if re.match(r'^[|\s\-:]+$', line_strip):
+                continue
+            parts = [p.strip() for p in line_strip.split('|') if p.strip()]
+            if parts:
+                table_buffer.append(parts)
+                continue
+        
+        if table_buffer:
+            flush_table()
+        
+        if not line_strip:
+            continue
+        
+        if line_strip.startswith('###'):
+            doc.add_heading(line_strip.lstrip('#').strip(), level=3)
+        elif line_strip.startswith('##'):
+            doc.add_heading(line_strip.lstrip('#').strip(), level=2)
+        elif line_strip.startswith('#'):
+            doc.add_heading(line_strip.lstrip('#').strip(), level=1)
+        else:
+            is_bullet = line_strip.startswith('- ') or line_strip.startswith('* ')
+            text_content = line_strip[2:] if is_bullet else line_strip
+            
+            if is_bullet:
+                p = doc.add_paragraph(style='List Bullet')
+            else:
+                p = doc.add_paragraph()
+            
+            add_formatted_text(p, text_content)
+    
+    flush_table()
+    
+    bio = io.BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio
 
 
 # ── 로그인 가드
@@ -939,116 +1096,6 @@ else:
 
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown('<div class="qx-section-label">DOWNLOAD RESULTS</div>', unsafe_allow_html=True)
-
-        def export_to_docx(markdown_text: str) -> io.BytesIO:
-            """마크다운-텍스트를 워드(DOCX) 파일로 변환 (표 객체 및 빨간색 강조 지원)"""
-            if Document is None:
-                return io.BytesIO(b"python-docx is not installed")
-            
-            doc = Document()
-            style = doc.styles['Normal']
-            style.font.size = Pt(11)
-            
-            from docx.shared import RGBColor
-            import re
-            
-            lines = markdown_text.split('\n')
-            table_buffer = []
-            
-            def flush_table():
-                if not table_buffer:
-                    return
-                # 컬럼 수 결정 (가장 긴 행 기준)
-                max_cols = max(len(row) for row in table_buffer)
-                if max_cols == 0:
-                    return
-                
-                table = doc.add_table(rows=0, cols=max_cols)
-                table.style = 'Table Grid'
-                
-                for row_data in table_buffer:
-                    row_cells = table.add_row().cells
-                    for i, cell_text in enumerate(row_data):
-                        if i < max_cols:
-                            # 셀 내부에도 빨간색 강조 적용 시도
-                            p = row_cells[i].paragraphs[0]
-                            # 셀 내부에도 볼드 및 빨간색 강조 적용
-                            add_formatted_text(p, cell_text)
-                table_buffer.clear()
-                doc.add_paragraph() # 표 뒤에 공백 추가
-
-            for line in lines:
-                line_strip = line.strip()
-                
-                # 표 행 감지 (| 로 시작하거나 포함된 경우)
-                if '|' in line_strip:
-                    # 구분선 (|---|) 인 경우 무시
-                    if re.match(r'^[|\s\-:]+$', line_strip):
-                        continue
-                    # 데이터 행 추출
-                    parts = [p.strip() for p in line_strip.split('|') if p.strip()]
-                    if parts:
-                        table_buffer.append(parts)
-                        continue
-                
-                # 표가 끝나면 출력
-                if table_buffer:
-                    flush_table()
-                
-                if not line_strip:
-                    continue
-                
-                if line_strip.startswith('###'):
-                    doc.add_heading(line_strip.lstrip('#').strip(), level=3)
-                elif line_strip.startswith('##'):
-                    doc.add_heading(line_strip.lstrip('#').strip(), level=2)
-                elif line_strip.startswith('#'):
-                    doc.add_heading(line_strip.lstrip('#').strip(), level=1)
-                else:
-                    is_bullet = line_strip.startswith('- ') or line_strip.startswith('* ')
-                    text_content = line_strip[2:] if is_bullet else line_strip
-                    def add_formatted_text(paragraph, text):
-                        """정규표현식을 사용하여 마크다운 볼드(**), span 태그, blue 태그 처리"""
-                        # 1. 빨간색 강조(<span...>), 파란색 강조(<blue>), 볼드(**...**)를 식별하기 위한 정규식
-                        pattern = r"(<span style='color:red'>.*?</span>|<blue>.*?</blue>|\*\*.*?\*\*)"
-                        parts = re.split(pattern, text)
-                        
-                        for part in parts:
-                            if part.startswith("<span style='color:red'>"):
-                                inner = re.sub(r"<span style='color:red'>(.*?)</span>", r"\1", part)
-                                # 내부의 ** 제거 (중첩 처리)
-                                inner = inner.replace("**", "")
-                                run = paragraph.add_run(inner)
-                                run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
-                                run.bold = True
-                            elif part.startswith("<blue>"):
-                                inner = re.sub(r"<blue>(.*?)</blue>", r"\1", part)
-                                inner = inner.replace("**", "")
-                                run = paragraph.add_run(inner)
-                                run.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)
-                                run.bold = True
-                            elif part.startswith("**") and part.endswith("**"):
-                                inner = part[2:-2]
-                                run = paragraph.add_run(inner)
-                                run.bold = True
-                            else:
-                                if part:
-                                    paragraph.add_run(part)
-
-                    if is_bullet:
-                        p = doc.add_paragraph(style='List Bullet')
-                    else:
-                        p = doc.add_paragraph()
-                    
-                    add_formatted_text(p, text_content)
-            
-            # 마지막 남은 표 출력
-            flush_table()
-            
-            bio = io.BytesIO()
-            doc.save(bio)
-            bio.seek(0)
-            return bio
 
         def build_full_report() -> str:
             fname = st.session_state.get("file_name", "보고서")
