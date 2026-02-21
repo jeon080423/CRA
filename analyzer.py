@@ -201,7 +201,10 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
     prompt = prompt_template.replace("{report_text}", clean_text)
     
     if auto_mode:
-        candidates = config.STEP_MODEL_MAP.get(step_num, config.AUTO_MODEL_PRIORITY)
+        candidates = config.STEP_MODEL_MAP.get(step_num, config.AUTO_MODEL_PRIORITY).copy()
+        # 부하 분산을 위해 상위 2개 모델의 순서를 확률적으로 섞음 (모두 훌륭한 모델이므로 분산 유도)
+        if len(candidates) >= 2 and random.random() > 0.5:
+            candidates[0], candidates[1] = candidates[1], candidates[0]
     else:
         candidates = [model_name if model_name else config.DEFAULT_MODEL]
 
@@ -271,11 +274,11 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
                 
                 # 할당량 초과(Quota Error) 또는 권한/인증 오류인 경우 키를 즉시 교체하고 재시도
                 if _is_quota_error(e):
-                    # 일일 할당량(Daily/Per-Day) 초과인 경우 키 교체로 해결이 안 되므로 즉시 모델 전환
+                    # 일일 할당량(Daily/Per-Day) 초과인 경우에도 키를 교체해봅니다.
+                    # (8개의 키가 서로 다른 프로젝트일 수 있으므로 즉시 포기하지 않음)
                     if _is_daily_limit(e):
-                        print(f"[INFO] [STEP {step_num}] Daily limit hit for {candidate}. Jumping to next model...", flush=True)
-                        break
-                        
+                        print(f"[INFO] [STEP {step_num}] Daily limit hit for {candidate}. Rotating key to check other projects...", flush=True)
+                    
                     # 단순 레이트리밋(RPM)인 경우 약간 대기 후 키 교체
                     time.sleep(1.5)
                     new_key = get_api_key()
