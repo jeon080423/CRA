@@ -9,19 +9,17 @@ APP_DESCRIPTION = "국가승인통계, 공공기관 만족도 조사, 정책 평
 # ──────────────────────────────────────────────
 AVAILABLE_MODELS = [
     "gemini-2.0-flash",                # Gemini 2.0 Flash (Stable)
-    "gemini-1.5-pro",                  # Gemini 1.5 Pro (Powerful)
-    "gemini-1.5-flash",                # Gemini 1.5 Flash (Fast)
+    "gemini-2.5-flash",                # Gemini 2.5 Flash
     "gemini-2.0-pro-exp-02-05",        # Gemini 2.0 Pro Experimental
-    "gemini-1.5-flash-8b",             # Gemini 1.5 Flash 8B (Super Fast)
+    "gemini-2.0-flash-lite",           # Gemini 2.0 Flash Lite (Fast)
 ]
 
 # 모델 표시 이름 매핑
 MODEL_DISPLAY_NAMES = {
     "gemini-2.0-flash":                 "Gemini 2.0 Flash (Stable)",
-    "gemini-1.5-pro":                   "Gemini 1.5 Pro (Stable)",
-    "gemini-1.5-flash":                 "Gemini 1.5 Flash (Stable)",
+    "gemini-2.5-flash":                 "Gemini 2.5 Flash (Stable)",
     "gemini-2.0-pro-exp-02-05":         "Gemini 2.0 Pro (Experimental)",
-    "gemini-1.5-flash-8b":              "Gemini 1.5 Flash 8B",
+    "gemini-2.0-flash-lite":            "Gemini 2.0 Flash Lite",
 }
 
 # ──────────────────────────────────────────────
@@ -29,18 +27,17 @@ MODEL_DISPLAY_NAMES = {
 # ──────────────────────────────────────────────
 AUTO_MODEL_PRIORITY = [
     "gemini-2.0-flash",                 # 1순위: 압도적 속도 및 안정성
-    "gemini-1.5-pro",                   # 2순위: 최고 수준의 분석력
-    "gemini-1.5-flash",                 # 3순위: 안정적인 고속 모델
-    "gemini-2.0-pro-exp-02-05",         # 4순위: 실험적 고성능 모델
+    "gemini-2.0-pro-exp-02-05",         # 2순위: 최고 수준의 분석력 (실험적)
+    "gemini-2.0-flash-lite",            # 3순위: 경량화된 고속 모델
 ]
 
 # ──────────────────────────────────────────────
 # 단계별 최적 모델 맵 (속도 vs 품질 밸런스)
 # ──────────────────────────────────────────────
 STEP_MODEL_MAP = {
-    1: ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"],
-    2: ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"], 
-    3: ["gemini-1.5-pro", "gemini-2.0-pro-exp-02-05", "gemini-2.0-flash"], 
+    1: ["gemini-2.0-flash", "gemini-2.0-flash-lite"],
+    2: ["gemini-2.0-flash", "gemini-2.0-pro-exp-02-05"], 
+    3: ["gemini-2.0-pro-exp-02-05", "gemini-2.0-flash"], 
 }
 
 

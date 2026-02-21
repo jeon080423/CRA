@@ -204,25 +204,27 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
 
     for candidate in candidates:
         # 모델별 최대 키 전환 시도 횟수 (6개 키가 있으므로 충분히 기회 부여)
-        for key_retry in range(3): 
-            # 무리한 호출 방지를 위해 약간의 지연 시간 도입
-            time.sleep(0.5)
+        for key_retry in range(12): 
+            # 기본 지연 시간 (동시 요청으로 인한 레이트리밋 방지)
+            time.sleep(0.8)
             
             print(f"[PROCESS] [STEP {step_num}] Requesting -> {candidate} (Key: {current_api_key[:8] if current_api_key else 'None'}...)", flush=True)
             try:
                 model, init_err = init_model(candidate, api_key=current_api_key)
                 if init_err:
-                    # 초기화 실패 시 (잘못된 키 등) 즉시 키 교체 시도
+                    # 초기화 실패 시 (잘못된 키, 지원하지 않는 모델명, 잘못된 세이프티 설정 등)
                     err_low = str(init_err).lower()
-                    if any(kw in err_low for kw in ["api_key", "401", "403", "unauthorized", "invalid"]):
+                    
+                    # 키 관련 문제이면 다음 키 시도
+                    if any(kw in err_low for kw in ["api_key", "401", "403", "unauthorized", "invalid", "permission"]):
                         new_key = get_api_key()
-                        print(f"[WARN] [INIT_FAILED] Key issue detected. Rotating: {current_api_key[:8]} -> {new_key[:8]}", flush=True)
+                        print(f"[WARN] [INIT_FAILED] Key issue. Rotating: {current_api_key[:8]} -> {new_key[:8]}", flush=True)
                         current_api_key = new_key
                         continue
-                    else:
-                        # 모델 자체가 없는 경우(404) 등은 다음 후보 모델로 전환
-                        print(f"[WARN] [INIT_FAILED] Model/Path issue: {init_err}. Jumping model...", flush=True)
-                        break
+                    
+                    # 그 외(404 등)는 모델 자체가 불능인 것으로 간주하고 모델 스위칭
+                    print(f"[WARN] [INIT_FAILED] Fatal init error: {init_err}. Jumping to next model...", flush=True)
+                    break 
                 
                 # 타임아웃 120초로 여유 있게 설정
                 response = model.generate_content(
@@ -236,8 +238,8 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
                     print(f"[INFO] [STEP {step_num}] Policy block detected. Retrying with Safe-Mode prompt...", flush=True)
                     # 원본 텍스트(clean_text)를 사용하여 더 추상적으로 변환하여 필터 우회 시도
                     safe_prompt = f"다음 텍스트에서 정책적으로 민감할 수 있는 실명, 고유 명사, 구체적 문장을 제외하고 핵심 내용만 아주 짧게 요약해줘.\n\n{clean_text[:5000]}"
-                    # 더 안정적인 모델로 교체하여 재시도
-                    for safe_model_name in ["gemini-1.5-flash", "gemini-2.0-flash"]:
+                    # 더 안정적인 모델로 교체하여 재시도 (사용자 요청: 2.5-flash 우선 사용)
+                    for safe_model_name in ["gemini-2.5-flash", "gemini-2.0-flash"]:
                         model_safe, _ = init_model(safe_model_name, api_key=current_api_key)
                         if model_safe:
                             try:
@@ -263,8 +265,10 @@ def _run_single(prompt_template: str, report_text: str, model_name: str, auto_mo
                 
                 # 할당량 초과(Quota Error) 또는 권한/인증 오류인 경우 키를 즉시 교체하고 재시도
                 if _is_quota_error(e):
+                    # 할당량 에러 시에는 약간 더 긴 대기 시간을 가짐
+                    time.sleep(1.5)
                     new_key = get_api_key()
-                    print(f"[INFO] [STEP {step_num}] Key-related error (Quota/Auth). Rotating key: {current_api_key[:8]} -> {new_key[:8]}", flush=True)
+                    print(f"[INFO] [STEP {step_num}] Quota/Auth hit for {candidate}. Rotating key: {current_api_key[:8]} -> {new_key[:8]}", flush=True)
                     current_api_key = new_key
                     continue  # 동일 모델에 대해 새 키로 재시도
                 
