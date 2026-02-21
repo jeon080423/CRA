@@ -437,14 +437,23 @@ def show_unit_nonresponse_system():
     </div>
     """, unsafe_allow_html=True)
 
-    # [v4.0 추가] 가이드
-    with st.expander("📘 AI 단위 무응답(가중치) 검토 가이드", expanded=False):
+    # [v4.1 고도화] 전문가용 가이드 (수식 포함)
+    with st.expander("📘 AI 단위 무응답(가중치) 검토 - 통계적 모델 설계 및 수식 안내", expanded=False):
         st.markdown("""
-        ### 🛠️ AI 단위 무응답 교정 가이드
-        1. **데이터 업로드:** 응답이 완료된 원본 설문 데이터를 업로드합니다.
-        2. **변수 및 목표 설정:** 성별, 연령대 등 가중치 조정 기준 변수를 선택하고 모집단 분포(비율)를 입력합니다.
-        3. **Raking 실행:** RIM Weighting 알고리즘을 통해 반복적으로 적정 가중치를 산출합니다.
-        4. **품질 검정:** 가중치 분포와 설계효과(Deff)를 확인하여 표본의 대표성을 검토합니다.
+        ### 🔍 통계적 가중치 조정(Weighting) 모델
+        단위 무응답으로 인한 표본 편향을 교정하기 위해 본 시스템은 **RIM Weighting (Raking)** 알고리즘을 채택합니다.
+        
+        #### **1. Raking (Iterative Proportional Fitting) 알고리즘**
+        여러 인구통계 변수(성별, 연령 등)의 분포를 모집단(Target) 분포에 맞추기 위해 가중치를 반복적으로 업데이트합니다.
+        - **수렴 조건:** 모든 차원에서의 주변 분포(Marginal Distribution)오차가 설정된 허용 오차($\epsilon < 10^{-4}$) 이내일 때 종료됩니다.
+
+        #### **2. 가중치 품질 평가지표 (Diagnostic Metrics)**
+        가중치 부여는 추정치의 분산을 증가시킬 수 있으므로, **Kish의 설계효과(Design Effect, Deff)**를 통해 보정의 품질을 평가합니다.
+        """)
+        st.latex(r"Deff \approx 1 + L = \frac{n \sum_{i=1}^{n} w_i^2}{(\sum_{i=1}^{n} w_i)^2}")
+        st.markdown("""
+        - **유효 표본 크기 (Effective Sample Size, ESS):** 가중치 적용 후의 실제 정보량을 나타내며, $ESS = \frac{n}{Deff}$로 산출됩니다. 
+        - **해석:** $Deff$가 1.5 이하일 경우 통계적으로 모델의 안정성이 높다고 판단하며, 2.0을 초과할 경우 특정 계층에 과도한 가중치가 부여되었음을 시사합니다.
         """)
 
     # 빈 상태 안내
@@ -561,24 +570,41 @@ def show_outlier_inspection_system(mode="outlier"):
     </div>
     """, unsafe_allow_html=True)
 
-    # [v3.5 추가] 이용자 가이드 (User Manual)
-    with st.expander(f"📘 AI {'이상치' if mode == 'outlier' else '결측치'} 검토 이용 안내", expanded=False):
+    # [v4.1 고도화] 전문가용 가이드 (수식 포함)
+    with st.expander(f"📘 AI {'이상치' if mode == 'outlier' else '결측치'} 검토 - 통계적 판별 및 보완 알고리즘 안내", expanded=False):
         if mode == "outlier":
             st.markdown("""
-            ### 🛠️ AI 이상치 검토 가이드
-            1. **데이터 업로드:** 검토할 Excel 또는 CSV 파일을 업로드합니다.
-            2. **시각적 탐색:** '시각적 이상치 판별' 섹션에서 산점도와 바이올린 플롯을 통해 데이터 분포와 이상 의심 사례를 확인합니다.
-            3. **변수 선택:** 분석이 필요한 수치형/범주형 변수를 선택합니다.
-            4. **AI 추천 및 설정:** 'AI 추천' 버튼을 클릭하여 적절한 보완 방법을 확인하거나 직접 선택합니다.
-            5. **실행 및 다운로드:** 보완된 데이터와 감사 보고서(Audit Log)를 엑셀로 저장합니다.
+            ### 🔍 이상치 탐지 모델 (Outlier Detection)
+            본 시스템은 데이터의 분포 특성에 따라 두 가지 보편적인 통계 기준을 적용합니다.
+
+            #### **1. 표준점수 (Z-score) 기준**
+            데이터가 정규분포를 따른다는 가정하에, 평균으로부터 표준편차($\sigma$)의 3배 이상 떨어진 값을 이상치로 판별합니다.
+            """)
+            st.latex(r"z = \frac{x - \mu}{\sigma}")
+            st.markdown("""
+            - **판정:** $|z| > 3.0$ 인 경우 통계적 유의수준 99.7% 밖의 극단치로 간주합니다.
+
+            #### **2. IQR (Interquartile Range) 기준**
+            비모수적 분포에서도 강건한(Robust) 탐지를 위해 사분위수를 활용합니다.
+            - **Upper Fence:** $Q3 + 1.5 \times (Q3 - Q1)$
+            - **Lower Fence:** $Q1 - 1.5 \times (Q3 - Q1)$
+            - 바이올린 플롯 내부의 박스 구조가 이 범위를 시각화합니다.
             """)
         else:
             st.markdown("""
-            ### 🛠️ AI 결측치 검토 가이드
-            1. **패턴 분석:** 데이터 로드 후 상단의 '결측 패턴 분석'을 통해 어떤 변수가 얼마나 비어있는지 확인합니다.
-            2. **AI 진단:** 무작위성 여부(MCAR/MAR/MNAR)를 진단받아 통계적 편향 위험을 파악합니다.
-            3. **보완 전략 수립:** 중요한 변수는 'MICE'나 'k-NN'으로, 보완이 불가능한 건은 '재확인(Call-back)'으로 설정합니다.
-            4. **조사 가이드 활용:** 재확인 대상에 대해 AI가 생성해주는 전화 조사 스크립트를 활용합니다.
+            ### 🔍 결측치 보완 알고리즘 (Imputation)
+            항목 무응답의 성격(MCAR, MAR, MNAR)에 따라 최적의 알고리즘을 선택할 수 있습니다.
+
+            #### **1. MICE (Multivariate Imputation by Chained Equations)**
+            다변량 데이터의 결측치를 보완하기 위한 최신 기법으로, 각 변수의 결측치를 다른 변수들을 독립변수로 하는 회귀 모델을 통해 반복적으로 예측합니다.
+            """)
+            st.latex(r"Y_j = f(Y_{-j}, X, \beta) + \epsilon")
+            st.markdown("""
+            - **장점:** 변수 간의 상관관계를 유지하면서 결측치를 대체하므로 데이터의 편향을 최소화합니다.
+
+            #### **2. k-NN (k-Nearest Neighbors) Imputation**
+            유사성이 가장 높은 $k$개의 이웃 사례를 찾아 그 값들의 가중 평균으로 대체합니다.
+            - **거리 척도:** 유클리드 거리(Euclidean Distance)를 활용하여 데이터 간의 유사도를 측정합니다.
             """)
 
     # [v3.6 추가] 주요 기능 요약 카드 (메인 화면 스타일)
