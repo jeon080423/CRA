@@ -917,10 +917,11 @@ def show_sample_design_system():
             st.info("""
             **API 인증키 발급 방법:**
             1. **KOSIS 공유서비스**([kosis.kr/openapi](https://kosis.kr/openapi/index.jsp)) 접속
-            2. 메인 화면의 **'OPEN API 인증키 신청'** 클릭 (업로드된 이미지의 빨간색 박스 창)
+            2. 메인 화면의 **'OPEN API 인증키 신청'** 클릭 (아래 가이드 이미지의 빨간색 박스 창)
             3. 로그인 및 활용 신청 후 발급된 **'인증키'**를 복사하여 아래 입력란에 붙여넣으세요.
             * 공공데이터포털(data.go.kr)에서 발급받은 '주민등록 인구현황' 서비스키도 사용 가능합니다.
             """)
+            st.image("https://raw.githubusercontent.com/jeon080423/CRA/main/kosis_guide.png", caption="KOSIS OPEN API 인증키 신청 가이드", use_container_width=True)
             user_key = st.text_input(
                 "API 인증키 입력", 
                 value=st.session_state.get("user_api_key", ""), 
