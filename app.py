@@ -634,7 +634,7 @@ def show_unit_nonresponse_system():
                 cb_parser = CodebookParser(cb_file)
             st.success("코드북 연동 완료: 변수 및 응답값 라벨이 활성화되었습니다.")
         except Exception as e:
-            st.error(f"코드북 파싱 오류: {e}")
+            st.error(f"코드북 데이터 읽기 오류: {e}")
 
     # 변수 선택
     st.markdown('<div class="qx-section-label">2. 가중치 보정 변수 설정</div>', unsafe_allow_html=True)
@@ -935,7 +935,7 @@ def show_sample_design_system():
 | ④ | **검색** 버튼 클릭 |
 | ⑤ | 하단 **xlsx 파일 다운로드** 클릭 후 저장 |
 
-> 💡 다운로드한 파일을 그대로 업로드하면 지역·성별·연령대 자동 파싱됩니다.
+> 💡 다운로드한 파일을 그대로 업로드하면 지역·성별·연령대가 자동으로 추출되어 정리됩니다.
                 """)
 
         # ── 파일 업로드 ──────────────────────────────────────────────
@@ -971,8 +971,20 @@ def show_sample_design_system():
                     with st.expander("🔧 MOIS 데이터 필터 및 집계 설정", expanded=True):
                         st.markdown("**📍 지역 선택**")
                         chk_col0, chk_col1 = st.columns([1, 2])
+                        
+                        # [v6.17] 전체 선택 해제 시 개별 선택도 초기화하는 콜백
+                        def on_all_regions_change():
+                            if not st.session_state.get("mois_all_regions", True):
+                                for r in SIDO_LIST:
+                                    st.session_state[f"mois_r_{r}"] = False
+
                         with chk_col0:
-                            all_regions = st.checkbox("전체 선택", value=True, key="mois_all_regions")
+                            all_regions = st.checkbox(
+                                "전체 선택", 
+                                value=True, 
+                                key="mois_all_regions",
+                                on_change=on_all_regions_change
+                            )
                         with chk_col1:
                             sejong_merge = st.checkbox(
                                 "세종특별자치시 → 충청남도 합산",
@@ -985,7 +997,8 @@ def show_sample_design_system():
                             selected_regions = []
                             for i, region in enumerate(display_list):
                                 with r_cols[i % 4]:
-                                    if st.checkbox(region, value=True, key=f"mois_r_{region}"):
+                                    # 기본값을 False로 변경하여 전체 해제 시 빈 상태로 시작
+                                    if st.checkbox(region, value=False, key=f"mois_r_{region}"):
                                         selected_regions.append(region)
                         else:
                             selected_regions = None  # None = 전체
@@ -1009,7 +1022,17 @@ def show_sample_design_system():
                                 key="mois_age_range"
                             )
 
-                    # MOIS 파싱
+                        # [v6.16] 학교급별 구분 옵션 (19세 이하 포함 시 노출)
+                        school_level_opt = False
+                        if age_range[0] <= 19:
+                            school_level_opt = st.checkbox(
+                                "19세 이하 학교급별 구분 (초등/중등/고등)",
+                                value=False,
+                                help="8-10세: 초등 저학년, 11-13세: 초등 고학년, 14-16세: 중등, 17-19세: 고등",
+                                key="mois_school_level_opt"
+                            )
+
+                    # MOIS 데이터 추출
                     try:
                         pop_long_df = parse_mois_excel_with_gender(
                             uploaded_pop,
@@ -1017,21 +1040,22 @@ def show_sample_design_system():
                             min_age=age_range[0],
                             max_age=age_range[1],
                             interval=age_interval,
-                            include_sejong_in_chungnam=sejong_merge
+                            include_sejong_in_chungnam=sejong_merge,
+                            school_level_option=school_level_opt
                         )
                         if pop_long_df is not None:
-                            st.markdown(f"**📋 파싱 결과 미리보기** — {len(pop_long_df)}개 층, 총인구 {pop_long_df['인구수'].sum():,}명")
+                            st.markdown(f"**📋 데이터 추출 결과 미리보기** — {len(pop_long_df)}개 층, 총인구 {pop_long_df['인구수'].sum():,}명")
                             st.dataframe(pop_long_df.head(15), hide_index=True, use_container_width=True)
                             # 확정 버튼
-                            if st.button("✅ 파싱 결과를 모집단으로 확정", use_container_width=True, key="mois_confirm"):
+                            if st.button("✅ 추출된 데이터를 모집단으로 확정", use_container_width=True, key="mois_confirm"):
                                 st.session_state["pop_source_df"] = pop_long_df
                                 st.session_state["pop_col_hint"] = "인구수"
                                 st.session_state["strata_cols_hint"] = ["지역", "성별", "연령대"]
                                 st.rerun()
                         else:
-                            st.warning("파싱 결과가 없습니다. 지역 선택 또는 연령 범위를 확인해주세요.")
+                            st.warning("추출된 데이터가 없습니다. 지역 선택 또는 연령 범위를 확인해주세요.")
                     except Exception as e:
-                        st.error(f"MOIS 파싱 오류: {e}")
+                        st.error(f"MOIS 데이터 해석 오류: {e}")
 
                 else:
                     # ── 일반 Excel/CSV 필터 (v6.13 유지) ────────────
@@ -1086,7 +1110,7 @@ def show_sample_design_system():
                 st.session_state["pop_source_df"] = pd.read_csv(io.StringIO(pop_input.strip()), skipinitialspace=True)
                 st.rerun()
             except Exception as e:
-                st.error(f"입력 데이터 파싱 오류: {e}")
+                st.error(f"입력 데이터 분석 오류: {e}")
 
     # 최종 모집단 데이터 확정 확인
     if "pop_source_df" not in st.session_state:
@@ -1517,7 +1541,7 @@ def show_outlier_inspection_system(mode="outlier"):
                         ])
                         st.dataframe(var_preview_df, use_container_width=True, hide_index=True)
                     else:
-                        st.info("파싱된 변수 설명 정보가 없습니다.")
+                        st.info("읽어온 변수 설명 정보가 없습니다.")
                 with tab_cb2:
                     if cb_parser.code_map:
                         all_codes = []
@@ -1526,9 +1550,9 @@ def show_outlier_inspection_system(mode="outlier"):
                                 all_codes.append({"변수명": var, "코드": c, "라벨": l})
                         st.dataframe(pd.DataFrame(all_codes), use_container_width=True, hide_index=True)
                     else:
-                        st.info("파싱된 코드표 정보가 없습니다.")
+                        st.info("읽어온 코드표 정보가 없습니다.")
         except Exception as e:
-            st.error(f"코드북 파싱 오류: {e}")
+            st.error(f"코드북 데이터 읽기 오류: {e}")
 
     st.success(f"데이터 로드 완료: {len(df)} 행, {len(df.columns)} 열")
     

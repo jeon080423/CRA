@@ -217,7 +217,8 @@ def detect_and_load_mois_excel(uploaded_file):
 
 
 def parse_mois_excel_with_gender(df, regions=None, min_age=0, max_age=100,
-                                  interval=10, include_sejong_in_chungnam=False):
+                                  interval=10, include_sejong_in_chungnam=False,
+                                  school_level_option=False):
     """MOIS 와이드 포맷 → 지역·성별·연령대 롱 포맷 변환.
     컬럼 구조 (311개):
       [0]코드 [1]지역 [2~3]계 총/등록 [4~104]계 0~100세
@@ -243,7 +244,8 @@ def parse_mois_excel_with_gender(df, regions=None, min_age=0, max_age=100,
     df = df[~rvals.isin(["전", "전국", "nan"]) & ~rvals.str.startswith("0000")]
 
     if regions:
-        df = df[df[region_col].isin(regions)]
+        # MOIS 엑셀의 지역명은 보통 '서울특별시  (1100000000)' 형식이므로 시작 문자열로 매칭
+        df = df[df[region_col].apply(lambda x: any(str(x).strip().startswith(r) for r in regions))]
     if df.empty:
         return None
 
@@ -266,26 +268,62 @@ def parse_mois_excel_with_gender(df, regions=None, min_age=0, max_age=100,
     def age_label(age):
         if interval == 1:
             return f"{age}세"
-        # 시작 나이가 구간 경계에 정렬되지 않으면 → 다음 전체 구간 끝까지 합산
-        # 예) min_age=19, interval=10 → next_boundary=20, first_end=29 → "19~29세"
-        if min_age % interval != 0:
-            next_boundary = ((min_age // interval) + 1) * interval  # e.g. 20
-            first_end = min(next_boundary + interval - 1, max_age, 100)  # e.g. 29
-            if age < next_boundary + interval:   # age in [min_age, first_end]
-                return "100세이상" if min_age >= 100 else f"{min_age}~{first_end}세"
+
+        # [v6.16] 학교급별 구분 옵션 적용 (19세 이하)
+        if school_level_option and age <= 19:
+            if 8 <= age <= 10: return "8~10세(초등 저학년)"
+            if 11 <= age <= 13: return "11~13세(초등 고학년)"
+            if 14 <= age <= 16: return "14~16세(중등)"
+            if 17 <= age <= 19: return "17~19세(고등)"
+            if age < 8: return f"{min_age}~7세"
+
+        # [v6.16] 18세 미만 시작 시 19세 이하 "10대" 통합
+        if min_age < 18 and age <= 19:
+            return "10대"
+
+        # 20세 이상 그룹핑
+        if age >= 20:
+             # 19세 이하가 특수 처리된 경우 20세부터 정규 구간(20, 30...)으로 시작
+             if school_level_option or min_age < 18:
+                 s = (age // interval) * interval
+                 e = min(s + interval - 1, max_age, 100)
+                 return "100세이상" if s >= 100 else f"{s}~{e}세"
+
+             # 기존 로직 (min_age >= 18 이고 특수 옵션 없을 때)
+             if min_age % interval != 0:
+                 next_boundary = ((min_age // interval) + 1) * interval
+                 if age < next_boundary + interval:
+                     first_end = min(next_boundary + interval - 1, max_age, 100)
+                     return "100세이상" if min_age >= 100 else f"{min_age}~{first_end}세"
+
         # 표준 그룹핑
         s = (age // interval) * interval
         e = min(s + interval - 1, max_age, 100)
         return "100세이상" if s >= 100 else f"{s}~{e}세"
 
     def age_sort_key(age):
-        """그룹핑 정렬 키 — 첫 부분 빈은 min_age로 통일"""
+        """그룹핑 정렬 키"""
         if interval == 1:
             return age
-        if min_age % interval != 0:
-            next_boundary = ((min_age // interval) + 1) * interval
-            if age < next_boundary + interval:
-                return min_age  # 첫 합산 그룹 전체를 동일 키로
+
+        if school_level_option and age <= 19:
+            if age < 8: return 0
+            if 8 <= age <= 10: return 8
+            if 11 <= age <= 13: return 11
+            if 14 <= age <= 16: return 14
+            if 17 <= age <= 19: return 17
+
+        if min_age < 18 and age <= 19:
+            return min_age
+
+        if age >= 20:
+            if school_level_option or min_age < 18:
+                return (age // interval) * interval
+            if min_age % interval != 0:
+                next_boundary = ((min_age // interval) + 1) * interval
+                if age < next_boundary + interval:
+                    return min_age
+
         return (age // interval) * interval
 
     records = []
@@ -312,6 +350,7 @@ def parse_mois_excel_with_gender(df, regions=None, min_age=0, max_age=100,
            .sort_values(["지역", "성별", "AgeSort"])
            .drop(columns=["AgeSort"]))
     return agg[agg["인구수"] > 0].reset_index(drop=True)
+
 
 
 def format_sample_pivot_table(res_df):
