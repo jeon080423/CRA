@@ -1005,9 +1005,44 @@ def show_sample_design_system():
                     st.error(f"파일 로드 중 오류: {e}")
 
         if uploaded_pop is not None:
-            st.dataframe(uploaded_pop.head(5), hide_index=True, use_container_width=True)
+            # [v6.13] 연령대 및 성별 필터 옵션
+            with st.expander("🔧 데이터 필터 설정 (연령대 / 성별)", expanded=True):
+                fu1, fu2, fu3 = st.columns([1, 1, 1])
+                with fu1:
+                    # 연령대 컬럼 자동 감지
+                    age_col_candidates = [c for c in uploaded_pop.columns if any(kw in str(c) for kw in ["연령", "age", "나이", "Age"])]
+                    age_col_file = st.selectbox(
+                        "연령대 컬럼 선택",
+                        options=["(없음)"] + uploaded_pop.columns.tolist(),
+                        index=(1 + uploaded_pop.columns.tolist().index(age_col_candidates[0])) if age_col_candidates else 0,
+                        key="age_col_file"
+                    )
+                with fu2:
+                    # 성별 컬럼 자동 감지
+                    gender_col_candidates = [c for c in uploaded_pop.columns if any(kw in str(c) for kw in ["성별", "gender", "sex", "성"])]
+                    gender_col_file = st.selectbox(
+                        "성별 컬럼 선택",
+                        options=["(없음)"] + uploaded_pop.columns.tolist(),
+                        index=(1 + uploaded_pop.columns.tolist().index(gender_col_candidates[0])) if gender_col_candidates else 0,
+                        key="gender_col_file"
+                    )
+                with fu3:
+                    # 성별 값 선택 (컬럼 선택 시)
+                    if gender_col_file != "(없음)":
+                        gender_vals = uploaded_pop[gender_col_file].dropna().unique().tolist()
+                        selected_genders = st.multiselect("포함할 성별 값", options=gender_vals, default=gender_vals, key="gender_vals_file")
+                    else:
+                        selected_genders = []
+
+            # 필터 적용
+            filtered_pop = uploaded_pop.copy()
+            if gender_col_file != "(없음)" and selected_genders:
+                filtered_pop = filtered_pop[filtered_pop[gender_col_file].isin(selected_genders)]
+
+            st.markdown(f"**미리보기** (필터 후 {len(filtered_pop)}행)")
+            st.dataframe(filtered_pop.head(10), hide_index=True, use_container_width=True)
             if st.button("✅ 업로드 파일을 모집단으로 확정", use_container_width=True):
-                st.session_state["pop_source_df"] = uploaded_pop
+                st.session_state["pop_source_df"] = filtered_pop
                 st.rerun()
 
     with tab_manual:
@@ -1076,7 +1111,7 @@ def show_sample_design_system():
             df_work["allocated"] = min_n + (df_work[pop_col] / total_pop * remaining_n)
         
         # 반올림 및 합계 조정
-        df_work["final_n"] = df_work["allocated"].round().astype(int)
+        df_work["final_n"] = df_work["allocated"].round().fillna(0).astype(int)
         diff = total_n - df_work["final_n"].sum()
         if diff != 0:
             df_work["remainder"] = df_work["allocated"] - df_work["final_n"]
