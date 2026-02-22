@@ -925,12 +925,6 @@ def show_sample_design_system():
             2. **'행정안전부_주민등록 인구현황'** 검색 후 활용신청
             3. 마이페이지 > 오픈API > 활용신청 내역에서 **'일반 인증키(Encoding)'**를 복사하여 입력하세요.
             """)
-            
-            # [v6.6] 가이드 이미지
-            img_c1, img_c2 = st.columns([0.6, 0.4])
-            with img_c1:
-                # 가이드 이미지도 공공데이터포털 신청 화면으로 차후 교체 권장되나, 현재는 기존 이미지 유지
-                st.image("https://raw.githubusercontent.com/jeon080423/CRA/main/kosis_guide.png", caption="참고: API 키 신청 일반 예시 (포털 확인 필요)", use_container_width=True)
         
         st.markdown("""
             <style>
