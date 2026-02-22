@@ -575,9 +575,9 @@ def show_unit_nonresponse_system():
         가중치 부여는 추정치의 분산을 증가시킬 수 있으므로, **Kish의 설계효과(Design Effect, Deff)**를 통해 보정의 품질을 평가합니다.
         """)
         st.latex(r"Deff \approx 1 + L = \frac{n \sum_{i=1}^{n} w_i^2}{(\sum_{i=1}^{n} w_i)^2}")
-        st.markdown("""
-        - **유효 표본 크기 (Effective Sample Size, ESS):** 가중치 적용 후의 실제 정보량을 나타내며, $ESS = \frac{n}{Deff}$로 산출됩니다. 
-        - **해석:** $Deff$가 1.5 이하일 경우 통계적으로 모델의 안정성이 높다고 판단하며, 2.0을 초과할 경우 특정 계층에 과도한 가중치가 부여되었음을 시사합니다.
+        st.markdown(r"""
+        - **유효 표본 크기 (Effective Sample Size, ESS):** 가중치 적용 후의 실제 정보량을 나타내며, $ESS = \frac{n}{Deff}$ 로 산출됩니다. 
+        - **해석:** $Deff$ 가 1.5 이하일 경우 통계적으로 모델의 안정성이 높다고 판단하며, 2.0을 초과할 경우 특정 계층에 과도한 가중치가 부여되었음을 시사합니다.
         """)
 
     # 빈 상태 안내 (2컬럼 업로드 레이아웃)
