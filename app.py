@@ -1031,34 +1031,42 @@ def show_sample_design_system():
                                 value=False, key="mois_sejong_merge"
                             )
 
+                        # [v6.22] 레벨에 따른 전체 목록 미리 계산 (요약 표시용)
+                        code_col = uploaded_pop.columns[0]
+                        reg_col = uploaded_pop.columns[1]
+                        cvals = uploaded_pop[code_col].astype(str).str.strip()
+                        
+                        if design_level == "광역 시도 단위":
+                            full_display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("00000000") & (cvals != "0000000000")][reg_col].tolist()]
+                        elif design_level == "기초 시/군 단위":
+                            full_display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("000000") & ~cvals.str.endswith("00000000")][reg_col].tolist()]
+                        else: # 구/군 단위 (상세)
+                            full_display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("00000") & ~cvals.str.endswith("00000000")][reg_col].tolist()]
+                        
+                        if sejong_merge and "세종특별자치시" in full_display_list:
+                            full_display_list = [r for r in full_display_list if r != "세종특별자치시"]
+                        
+                        st.session_state["mois_display_list"] = full_display_list
+
+                        # [v6.22] 현재 선택 현황 요약 표시
+                        if all_regions:
+                            st.info(f"📍 **{design_level}**로 설정됨: 현재 총 **{len(full_display_list)}개** 지역이 모두 포함되어 있습니다.")
+                            with st.expander("🔍 포함된 지역 명단 확인하기", expanded=False):
+                                st.caption(", ".join(full_display_list))
+                        
                         if not all_regions:
-                            # 레벨에 따른 목록 추출
-                            code_col = uploaded_pop.columns[0]
-                            reg_col = uploaded_pop.columns[1]
-                            cvals = uploaded_pop[code_col].astype(str).str.strip()
-                            rvals = uploaded_pop[reg_col].astype(str).str.strip()
+                            st.warning(f"⚠️ 아래 목록에서 분석에 포함할 지역을 직접 선택해 주세요. (현재 레벨: {design_level})")
+                            display_list = full_display_list
                             
-                            if design_level == "광역 시도 단위":
-                                display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("00000000") & (cvals != "0000000000")][reg_col].tolist()]
-                            elif design_level == "기초 시/군 단위":
-                                display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("000000") & ~cvals.str.endswith("00000000")][reg_col].tolist()]
-                            else: # 구/군 단위 (상세)
-                                display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("00000") & ~cvals.str.endswith("00000000")][reg_col].tolist()]
-                            
-                            # 세종 합산 시 필터링
-                            if sejong_merge and "세종특별자치시" in display_list:
-                                display_list = [r for r in display_list if r != "세종특별자치시"]
-                            
-                            st.session_state["mois_display_list"] = display_list
-                            
-                            r_cols = st.columns(4)
+                            row_cols = 4
+                            cols_list = st.columns(row_cols)
                             selected_regions = []
                             for i, region in enumerate(display_list):
-                                with r_cols[i % 4]:
+                                with cols_list[i % row_cols]:
                                     if st.checkbox(region, value=False, key=f"mois_r_{region}"):
                                         selected_regions.append(region)
                         else:
-                            selected_regions = None
+                            selected_regions = full_display_list
 
                         st.markdown("**📊 연령 설정**")
                         fa1, fa2 = st.columns(2)
