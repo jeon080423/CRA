@@ -303,6 +303,12 @@ def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위",
             if 17 <= age <= 19: return "17~19세(고등)"
             if age < 8: return f"{min_age}~7세"
 
+        # [v6.21] 시작연령이 18세 또는 19세인 경우 20대와 통합 ("19~29세" 등)
+        # 단, 학교급별 옵션이 꺼져 있을 때만 적용 (켜져 있으면 '고등' 등으로 표시됨)
+        if not school_level_option and (min_age == 18 or min_age == 19) and age <= 29:
+            fe = min(29, max_age, 100)
+            return f"{min_age}~{fe}세"
+
         # [v6.16] 18세 미만 시작 시 19세 이하 "10대" 통합
         if min_age < 18 and age <= 19:
             return "10대"
@@ -315,12 +321,12 @@ def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위",
                  e = min(s + interval - 1, max_age, 100)
                  return "100세이상" if s >= 100 else f"{s}~{e}세"
 
-             # 기존 로직 (min_age >= 18 이고 특수 옵션 없을 때)
+             # [v6.21] 18/19세 통합 케이스를 제외한 나머지 변칙 시작점 처리
              if min_age % interval != 0:
-                 next_boundary = ((min_age // interval) + 1) * interval
-                 if age < next_boundary + interval:
-                     first_end = min(next_boundary + interval - 1, max_age, 100)
-                     return "100세이상" if min_age >= 100 else f"{min_age}~{first_end}세"
+                 nb = ((min_age // interval) + 1) * interval
+                 if age < nb + interval:
+                     fe = min(nb + interval - 1, max_age, 100)
+                     return "100세이상" if min_age >= 100 else f"{min_age}~{fe}세"
 
         # 표준 그룹핑
         s = (age // interval) * interval
@@ -339,6 +345,10 @@ def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위",
             if 14 <= age <= 16: return 14
             if 17 <= age <= 19: return 17
 
+        # [v6.21] 18/19세 통합 정렬값
+        if not school_level_option and (min_age == 18 or min_age == 19) and age <= 29:
+            return min_age
+
         if min_age < 18 and age <= 19:
             return min_age
 
@@ -346,8 +356,8 @@ def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위",
             if school_level_option or min_age < 18:
                 return (age // interval) * interval
             if min_age % interval != 0:
-                next_boundary = ((min_age // interval) + 1) * interval
-                if age < next_boundary + interval:
+                nb = ((min_age // interval) + 1) * interval
+                if age < nb + interval:
                     return min_age
 
         return (age // interval) * interval
