@@ -313,6 +313,36 @@ def do_logout():
     st.session_state["login_error"] = ""
 
 
+def show_data_roadmap(current_step=1):
+    """데이터 처리 프로세스 로드맵 (시각적 도식)"""
+    steps = [
+        {"id": 1, "icon": "📝", "label": "RFP 분석/설계"},
+        {"id": 2, "icon": "📥", "label": "데이터/코드북 업로드"},
+        {"id": 3, "icon": "🔍", "label": "이상치/결측치 보정"},
+        {"id": 4, "icon": "⚖️", "label": "단위무응답/가중치"},
+        {"id": 5, "icon": "📊", "label": "최종 리포트 추출"}
+    ]
+    
+    html = '<div style="display:flex; align-items:center; justify-content:space-between; margin: 1.5rem 0; padding:1rem; background:white; border-radius:12px; border:1px solid #E5E9F0;">'
+    for i, s in enumerate(steps):
+        is_active = s['id'] == current_step
+        color = "#0F6CBD" if is_active else "#64748B"
+        bg = "#EEF4FD" if is_active else "#F8FAFC"
+        border = "2px solid #0F6CBD" if is_active else "1px solid #E2E8F0"
+        
+        html += f'''
+        <div style="flex:1; display:flex; flex-direction:column; align-items:center; position:relative;">
+            <div style="width:40px; height:40px; border-radius:50%; background:{bg}; border:{border}; display:flex; align-items:center; justify-content:center; font-size:1.2rem; margin-bottom:0.5rem; color:{color}; z-index:2;">
+                {s['icon']}
+            </div>
+            <div style="font-size:0.7rem; font-weight:{'700' if is_active else '500'}; color:{color}; text-align:center;">{s['label']}</div>
+        '''
+        if i < len(steps) - 1:
+            html += f'<div style="position:absolute; top:20px; left:calc(50% + 20px); width:calc(100% - 40px); height:2px; background:#E2E8F0; z-index:1;"></div>'
+        html += '</div>'
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
+
 def show_win_strategy_section():
     st.markdown("""
     <div class="qx-topbar">
@@ -322,6 +352,21 @@ def show_win_strategy_section():
         <span class="qx-topbar-badge">Winning RFP Analysis</span>
     </div>
     """, unsafe_allow_html=True)
+
+    # [v4.8] 도식 및 상세 안내
+    with st.expander("📘 RFP 심층 분석 - 이용 방법 및 데이터 프로세스 가이드", expanded=False):
+        st.markdown("### 🗺️ 데이터 처리 로드맵")
+        show_data_roadmap(1)
+        st.markdown("""
+        ### 🛠️ 이용 단계 및 상세 가이드
+        1. **RFP 업로드:** 금년도 공고된 제안요청서(RFP)를 업로드합니다. (PDF, Word, TXT 지원)
+        2. **차이 분석 (선택):** 작년 도 RFP가 있다면 함께 업로드하여 가감된 과업을 자동으로 비교합니다.
+        3. **항목별 정밀 진단:** 
+           - **참가 자격:** 입찰 자격 제한 요소 및 필수 실적 요건 여부 판별
+           - **과업 범위:** 제안서 작성 시 누락되어서는 안 될 핵심 요구사항 추출
+           - **기술적 평가:** 정보보안, 개인정보 처리 등 기술 점수 감점 요인 점검
+        4. **전략 리포트 추출:** 분석 결과를 엑셀 및 워드 리포트로 저장하여 제안서 기초 자료로 활용합니다.
+        """)
     
     col1, col2 = st.columns(2)
     with col1:
@@ -438,16 +483,24 @@ def show_unit_nonresponse_system():
     </div>
     """, unsafe_allow_html=True)
 
-    # [v4.2 고도화] 실무용 이용 가이드
-    with st.expander("📘 AI 단위 무응답(가중치) 검토 - 이용 방법 안내", expanded=False):
+    # [v4.8 고도화] 실무용 이용 가이드
+    with st.expander("📘 AI 단위 무응답(가중치) 검토 - 이용 방법 및 데이터 프로세스 가이드", expanded=False):
+        st.markdown("### 🗺️ 데이터 처리 로드맵")
+        show_data_roadmap(4)
         st.markdown("""
-        ### 🛠️ 이용 방법 및 단계
-        1. **데이터 업로드:** 가중치 산출이 필요한 설문 완료 데이터를 업로드합니다.
-        2. **가중치 변수 선택:** 가중치를 적용할 기준 변수(성별, 연령, 지역 등)를 다중 선택합니다.
-        3. **모집단 비율 입력:** 선택한 각 변수 계층별 모집단(Target) 분포 비율(%)을 입력합니다. (합계 100% 필수)
-        4. **데이터 증계 (선택):** 특정 지역이나 계층의 표본이 부족한 경우, '목표 기반 데이터 증계' 기능을 통해 통계적으로 데이터를 생성하여 쿼터를 충족시킵니다.
-        5. **가중치 산출:** '가중치 산출 실행' 버튼을 클릭하여 Raking 알고리즘을 가동합니다.
-        6. **결과 검정:** 설계효과(Deff)와 유효 표본 크기를 확인하고 데이터를 엑셀로 다운로드합니다.
+        ### 🛠️ 데이터 보정 및 가중치(Weighting) 단계
+        1. **데이터 및 모집단 정보 입력:** 
+           - 분석 대상 데이터와 변수 정의(코드북)를 업로드합니다.
+           - 가중치 산출의 기준이 될 인구통계 변수(성별, 연령, 지역 등)를 선택합니다.
+        2. **모집단 목표 분포 설정:** 선택한 각 계층별 모집단(Target) 비율(%)을 입력합니다. (합계 100% 필수)
+        3. **데이터 증계 (Data Augmentation):** 
+           - **세그먼트 타격:** 표본이 극히 부족하여 가중치만으로 보정이 어려운 특정 집단(예: 20대 남성)을 지정합니다.
+           - **합성 데이터 생성:** Bootstrap 또는 Noise-added 기법을 통해 통계적 유의성을 가진 가상 표본을 생성하여 쿼터를 충족시킵니다.
+        4. **가중치 산출(Raking):** RIM Weighting 알고리즘을 통해 다차원 주변 분포를 모집단 비율에 맞게 반복 보정합니다.
+        5. **보정 품질 검정 (Diagnostics):** 
+           - **Deff(설계효과):** 가중치 부여로 인한 분산 증가 정도를 확인합니다. (1.5 이하 권장)
+           - **ESS(유효표본):** 가중치 적용 후 실제 분석에 유효한 정보량을 확인합니다.
+        6. **통합 시트 다운로드:** 가중치 변수가 포함된 최종 분석용 데이터셋을 엑셀로 추출합니다.
         """)
 
     # [v4.1 고도화] 전문가용 가이드 (수식 포함)
@@ -671,25 +724,34 @@ def show_outlier_inspection_system(mode="outlier"):
     </div>
     """, unsafe_allow_html=True)
 
-    # [v4.2 고도화] 실무용 이용 가이드 (명사형 어미)
-    with st.expander(f"📘 AI {'이상치' if mode == 'outlier' else '결측치'} 검토 - 이용 방법 안내", expanded=False):
+    # [v4.8 고도화] 실무용 이용 가이드 (명사형 어미)
+    with st.expander(f"📘 AI {'이상치' if mode == 'outlier' else '결측치'} 검토 - 이용 방법 및 데이터 프로세스 가이드", expanded=False):
+        st.markdown("### 🗺️ 데이터 처리 로드맵")
+        show_data_roadmap(3)
         if mode == "outlier":
             st.markdown("""
-            ### 🛠️ 이용 방법 및 단계
-            1. **시각적 탐색:** 상단 산점도 및 바이올린 플롯을 통한 데이터 전반의 분포 및 이상 의심치 육안 확인
-            2. **검토 변수 선택:** 이상치 탐지가 필요한 수치형/범주형 변수의 다중 선택
-            3. **보안 방법 설정:** AI 추천 제안 수용 또는 직접 통계 알고리즘(Z-score 등) 지정
-            4. **실행 및 검토:** 보완된 데이터 수치 및 감사 로그(Audit Log)의 최종 대조
-            5. **데이터 저장:** 원본 및 보완 데이터를 포함한 통합 엑셀 리포트 추출
+            ### 🛠️ 데이터 이상치(Outlier) 검토 단계
+            1. **데이터 업로드 및 연동:** 원본 시계열/조사 데이터와 코드북을 함께 업로드하여 변수 라벨을 활성화합니다.
+            2. **시각적 패턴 분석:** 산점도(Scatter)와 바이올린(Violin) 플롯을 통해 통계적 분포를 벗어난 극단값을 시각적으로 확인합니다.
+            3. **이상치 사전 진단:** Z-score > 3 기준의 주요 이상 변수 요약 테이블을 통해 보완 우선순위를 판단합니다.
+            4. **보완 전략 수립:** 
+               - **AI 추천:** 변수의 특성(수치/범주)에 따른 최적 알고리즘 추천 제안을 확인합니다.
+               - **통계적 보정:** 전체/층별 평균, k-NN, MICE 등을 지정하여 이상치를 합리적인 값으로 대체합니다.
+               - **재확인(Call-back):** 기입 오류가 아닌 실제 값 확인이 필요한 경우 재조사 대상으로 분류합니다.
+            5. **최종 로그 검수:** 대체 전/후 값과 적용 사유가 기록된 감사 로그(Audit Log)를 최종 검토합니다.
             """)
         else:
             st.markdown("""
-            ### 🛠️ 이용 방법 및 단계
-            1. **결측 패턴 파악:** '데이터 결측 패턴 분석' 확장을 통한 변수별 결측 비중 및 AI 진단 결과 확인
-            2. **보완 대상 선택:** 결측치가 존재하는 변수 중 보완 처리를 수행할 대상 지정
-            3. **최적 알고리즘 설정:** AI 추천 활용 또는 MICE, k-NN 등 보완 알고리즘 수동 지정 (보완 불가 시 Call-back 설정)
-            4. **보완 실행:** '대체 실행' 버튼을 통한 통계적 결측값 생성
-            5. **조사 가이드 활용:** 재확인(Call-back) 대상에 대한 AI 생성 전수 조사 가이드 참조
+            ### 🛠️ 데이터 결측치(Missing) 보완 단계
+            1. **결측 패턴 정밀 진단:** 
+               - '결측 히트맵'을 통해 변수 간 결측 상관관계를 파악합니다.
+               - AI 진단을 통해 MCAR(무작위 결측) 여부를 판별하고 보완 적합성을 평가합니다.
+            2. **보완 알고리즘 엔진 가동:** 
+               - **단일 대체:** 평균, 중앙값, 최빈값 등 빠른 보완이 필요한 경우 사용합니다.
+               - **다중 대체(MICE):** 변수 간 회귀 관계를 활용하여 정보 손실을 최소화하는 고난도 보완에 적격입니다.
+               - **최근접 이웃(k-NN):** 유사한 응답 패턴을 가진 다른 사례의 값을 참조하여 정교하게 대체합니다.
+            3. **조사 가이드 생성:** 보완이 불가능한 필수 항목 결측에 대해 AI가 재조사 스크립트를 자동 생성합니다.
+            4. **통합 데이터 배포:** 보완된 데이터와 원본을 대조할 수 있는 'Imputation Marker'가 포함된 리포트를 다운로드합니다.
             """)
 
     # [v4.5 고도화] 전문가용 가이드 (명사형 어미 및 통계 기법 확장)
