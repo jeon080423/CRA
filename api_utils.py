@@ -266,9 +266,27 @@ def parse_mois_excel_with_gender(df, regions=None, min_age=0, max_age=100,
     def age_label(age):
         if interval == 1:
             return f"{age}세"
+        # 시작 나이가 구간 경계에 정렬되지 않으면 → 다음 전체 구간 끝까지 합산
+        # 예) min_age=19, interval=10 → next_boundary=20, first_end=29 → "19~29세"
+        if min_age % interval != 0:
+            next_boundary = ((min_age // interval) + 1) * interval  # e.g. 20
+            first_end = min(next_boundary + interval - 1, max_age, 100)  # e.g. 29
+            if age < next_boundary + interval:   # age in [min_age, first_end]
+                return "100세이상" if min_age >= 100 else f"{min_age}~{first_end}세"
+        # 표준 그룹핑
         s = (age // interval) * interval
-        e = min(s + interval - 1, 100)
+        e = min(s + interval - 1, max_age, 100)
         return "100세이상" if s >= 100 else f"{s}~{e}세"
+
+    def age_sort_key(age):
+        """그룹핑 정렬 키 — 첫 부분 빈은 min_age로 통일"""
+        if interval == 1:
+            return age
+        if min_age % interval != 0:
+            next_boundary = ((min_age // interval) + 1) * interval
+            if age < next_boundary + interval:
+                return min_age  # 첫 합산 그룹 전체를 동일 키로
+        return (age // interval) * interval
 
     records = []
     for _, row in df.iterrows():
@@ -288,7 +306,7 @@ def parse_mois_excel_with_gender(df, regions=None, min_age=0, max_age=100,
         return None
 
     result = pd.DataFrame(records)
-    result["AgeSort"] = result["연령"].apply(lambda x: (x // interval) * interval)
+    result["AgeSort"] = result["연령"].apply(age_sort_key)
     agg = (result.groupby(["지역", "성별", "AgeSort", "연령대"])["인구수"]
            .sum().reset_index()
            .sort_values(["지역", "성별", "AgeSort"])
