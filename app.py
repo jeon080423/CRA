@@ -26,6 +26,10 @@ import numpy as np
 from data_cleaner import DataImputer, WeightCalculator, DataAugmentor
 from codebook_utils import CodebookParser
 import plotly.express as px
+from usage_tracker import UsageTracker
+
+# ── 이용 통계 트래커 초기화
+tracker = UsageTracker()
 try:
     from docx import Document
     from docx.shared import Pt
@@ -303,6 +307,8 @@ def do_login(username: str):
         st.session_state["is_logged_in"] = True
         st.session_state["logged_in_user"] = uid
         st.session_state["login_error"] = ""
+        # [v4.12] 로그인 로그 기록
+        tracker.log_event(uid, "LOGIN")
     else:
         st.session_state["login_error"] = f"'{uid}'은(는) 등록되지 않은 아이디입니다."
 
@@ -342,6 +348,49 @@ def show_data_roadmap(current_step=1):
         html += '</div>'
     html += '</div>'
     st.markdown(html, unsafe_allow_html=True)
+
+
+def show_admin_dashboard():
+    """관리자 전용 사용량 통계 대시보드"""
+    st.markdown("""
+    <div class="qx-topbar">
+        <span class="qx-topbar-logo">ADMIN DASHBOARD</span>
+        <span class="qx-topbar-sep"></span>
+        <span class="qx-topbar-title">시스템 이용 통계 분석</span>
+        <span class="qx-topbar-badge">Administrator Only</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    df_login, df_section, df_all = tracker.get_summary_data()
+
+    if df_login.empty and df_section.empty:
+        st.info("📊 아직 수집된 이용 통계 데이터가 없습니다.")
+        return
+
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown('<div class="qx-section-label">📅 일별 로그인 추이 (최근 7일)</div>', unsafe_allow_html=True)
+        if not df_login.empty:
+            fig_login = px.line(df_login, x="date", y="count", markers=True, 
+                                title="일별 로그인 수 상세", template="plotly_white")
+            fig_login.update_traces(line_color="#0F6CBD")
+            st.plotly_chart(fig_login, use_container_width=True)
+        else:
+            st.caption("로그인 데이터 없음")
+
+    with col2:
+        st.markdown('<div class="qx-section-label">🍕 당일 섹션별 사용 점유율</div>', unsafe_allow_html=True)
+        if not df_section.empty:
+            fig_section = px.pie(df_section, values="count", names="section_name", 
+                                 title="오늘의 기능별 사용 비중", color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig_section, use_container_width=True)
+        else:
+            st.caption("오늘의 사용 데이터 없음")
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown('<div class="qx-section-label">📋 최근 시스템 접근 로그 (Last 100)</div>', unsafe_allow_html=True)
+    st.dataframe(df_all, use_container_width=True, hide_index=True)
 
 def show_win_strategy_section():
     st.markdown("""
@@ -1253,6 +1302,10 @@ with st.sidebar:
         if "AI 단위 무응답 검토" in menu_options:
             menu_options.remove("AI 단위 무응답 검토")
     
+    # [v4.12] 관리자(shjeon) 전용 메뉴 추가
+    if st.session_state.get("logged_in_user") == "shjeon":
+        menu_options.append("⚙️ ADMIN DASHBOARD")
+    
     # 세션 상태에 저장된 메뉴가 옵션에 없으면(예: 권한으로 숨겨짐) 기본값(첫 번째) 사용
     if "menu_selection" not in st.session_state or st.session_state["menu_selection"] not in menu_options:
         st.session_state["menu_selection"] = menu_options[0]
@@ -1267,9 +1320,14 @@ with st.sidebar:
         menu_options,
         index=current_idx,
         label_visibility="collapsed",
-        key="nav_radio"
     )
-    st.session_state["menu_selection"] = menu
+    
+    # [v4.12] 섹션 접근 로깅 및 상태 동기화
+    if st.session_state["menu_selection"] != menu:
+        st.session_state["menu_selection"] = menu
+        tracker.log_event(st.session_state.get("logged_in_user", "unknown"), "ACCESS", menu)
+        st.rerun()
+    
     st.markdown("<hr>", unsafe_allow_html=True)
 
     if not st.session_state["is_logged_in"]:
@@ -1597,6 +1655,12 @@ else:
         st.stop()
     elif st.session_state["menu_selection"] == "AI 단위 무응답 검토":
         show_unit_nonresponse_system()
+        st.stop()
+    elif st.session_state["menu_selection"] == "⚙️ ADMIN DASHBOARD":
+        if st.session_state.get("logged_in_user") == "shjeon":
+            show_admin_dashboard()
+        else:
+            st.error("이 페이지에 대한 접근 권한이 없습니다.")
         st.stop()
 
     # [v4.2 추가] 메인 보고서 검수 가이드
