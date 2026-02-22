@@ -29,18 +29,9 @@ SIDO_MAP = {
     "제주특별자치도": "50"
 }
 
-def get_month_options():
-    """조회 가능한 최근 12개월 목록 반환"""
-    now = datetime.datetime.now()
-    months = []
-    for i in range(1, 14):
-        date = now - datetime.timedelta(days=30 * i)
-        months.append(date.strftime("%Y%m"))
-    return sorted(list(set(months)), reverse=True)
-
 def get_latest_ym():
-    """가장 최근 통계 연월 산출 (안전하게 2개월 전)"""
-    return get_month_options()[0]
+    """가장 최근의 안정적인 통계 연월 반환 (202512 에러 대응을 위해 202511 고정 권장)"""
+    return "202511"
 
 def fetch_population_data(sido_cd="", sigungu_cd="", ym=None, service_key=None):
     """

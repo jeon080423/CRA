@@ -930,31 +930,42 @@ def show_sample_design_system():
             if user_key:
                 st.session_state["user_api_key"] = user_key
 
-        c_api0, c_api1, c_api2, c_api3 = st.columns([1, 1.2, 0.8, 1.5])
-        with c_api0:
-            month_options = api_utils.get_month_options()
-            selected_ym = st.selectbox("통계 연월", options=month_options, index=0)
+        c_api1, c_api2, c_api3 = st.columns([2, 1, 1.5])
         with c_api1:
-            sido_name = st.selectbox("지역(시도)", options=list(api_utils.SIDO_MAP.keys()), index=0)
-            sido_cd = api_utils.SIDO_MAP[sido_name]
+            sido_names = st.multiselect(
+                "분석 대상 지역(시도) 선택", 
+                options=list(api_utils.SIDO_MAP.keys()), 
+                default=["서울특별시"],
+                help="17개 광역 시도 중 원하는 지역을 복수 선택할 수 있습니다."
+            )
         with c_api2:
             age_interval = st.selectbox("연령 단위", options=[1, 5, 10], index=2, format_func=lambda x: f"{x}세")
         with c_api3:
             age_range = st.slider("연령 범위", 0, 100, (18, 69))
         
         if st.button("🔍 실시간 인구 데이터 가져오기", use_container_width=True, type="secondary"):
-            with st.spinner(f"{sido_name} ({selected_ym}) 인구 데이터를 수신 중..."):
-                # 입력된 키 또는 세션 키 사용
+            if not sido_names:
+                st.warning("최소 하나 이상의 지역을 선택해 주세요.")
+            else:
+                combined_processed_df = pd.DataFrame()
                 current_key = st.session_state.get("user_api_key")
-                raw_api_df = api_utils.fetch_population_data(sido_cd=sido_cd, ym=selected_ym, service_key=current_key)
+                target_ym = api_utils.get_latest_ym()
                 
-                if raw_api_df is not None:
-                    processed_df = api_utils.process_population_df(raw_api_df, min_age=age_range[0], max_age=age_range[1])
-                    if processed_df is not None and not processed_df.empty:
-                        st.session_state["api_pop_df"] = api_utils.aggregate_by_groups(processed_df, interval=age_interval)
-                        st.success(f"{sido_name} ({selected_ym}) 데이터 수신 및 {age_range[0]}세-{age_range[1]}세 필터링 완료 ({age_interval}세 단위)")
-                    else:
-                        st.warning("해당 조건에 맞는 인구 데이터가 없습니다.")
+                with st.spinner(f"선택한 {len(sido_names)}개 지역의 데이터를 수신 중..."):
+                    for s_name in sido_names:
+                        s_cd = api_utils.SIDO_MAP[s_name]
+                        raw_api_df = api_utils.fetch_population_data(sido_cd=s_cd, ym=target_ym, service_key=current_key)
+                        
+                        if raw_api_df is not None:
+                            p_df = api_utils.process_population_df(raw_api_df, min_age=age_range[0], max_age=age_range[1])
+                            if p_df is not None and not p_df.empty:
+                                combined_processed_df = pd.concat([combined_processed_df, p_df], ignore_index=True)
+                
+                if not combined_processed_df.empty:
+                    st.session_state["api_pop_df"] = api_utils.aggregate_by_groups(combined_processed_df, interval=age_interval)
+                    st.success(f"{len(sido_names)}개 지역 ({target_ym} 기준) 데이터 수집 및 가공 완료")
+                else:
+                    st.error("데이터를 불러오지 못했습니다. API 키 또는 지역 설정을 확인하세요.")
 
         if "api_pop_df" in st.session_state:
             st.dataframe(st.session_state["api_pop_df"], hide_index=True, use_container_width=True)
