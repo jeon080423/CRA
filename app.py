@@ -935,7 +935,7 @@ def show_sample_design_system():
                 border-radius: 4px;
             }
             </style>
-        """, unsafe_allow_value=True)
+        """, unsafe_allow_html=True)
         
         user_key = st.text_input(
             "🔑 API 인증키 입력", 
