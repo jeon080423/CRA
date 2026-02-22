@@ -564,7 +564,7 @@ def show_unit_nonresponse_system():
 
     # [v4.1 고도화] 전문가용 가이드 (수식 포함)
     with st.expander("📘 AI 단위 무응답(가중치) 검토 - 통계적 모델 설계 및 수식 안내", expanded=False):
-        st.markdown("""
+        st.markdown(r"""
         ### 🔍 통계적 가중치 조정(Weighting) 모델
         단위 무응답으로 인한 표본 편향을 교정하기 위해 본 시스템은 **RIM Weighting (Raking)** 알고리즘을 채택합니다.
         
@@ -842,7 +842,12 @@ def show_questionnaire_optimization_system():
             from prompts import QUESTIONNAIRE_ANALYSIS_PROMPT
             with st.spinner("설문 설계 전문가가 문항을 심층 분석 중입니다..."):
                 prompt = QUESTIONNAIRE_ANALYSIS_PROMPT.format(questionnaire_text=q_text)
-                res, err = run_analysis("설문 설계 전문가", prompt, "설문 문항 분석 및 개선안 도출 중...")
+                res, err = run_analysis(
+                    "{report_text}", 
+                    prompt, 
+                    model_name=st.session_state["selected_model"], 
+                    auto_mode=st.session_state["auto_mode"]
+                )
                 
                 if err:
                     st.error(f"분석 중 오류 발생: {err}")
@@ -1498,7 +1503,7 @@ def show_outlier_inspection_system(mode="outlier"):
     # [v4.5 고도화] 전문가용 가이드 (명사형 어미 및 통계 기법 확장)
     with st.expander(f"📘 AI {'이상치' if mode == 'outlier' else '결측치'} 검토 - 통계적 판별 및 보완 알고리즘 안내", expanded=False):
         if mode == "outlier":
-            st.markdown("""
+            st.markdown(r"""
             ### 🔍 이상치 탐지 모델 (Outlier Detection)
             데이터의 분포 특성에 따른 두 가지 보편적 통계 기준 적용 방식
 
@@ -1750,7 +1755,12 @@ def show_outlier_inspection_system(mode="outlier"):
                     st.markdown("### 🤖 AI 이상치 원인 추론")
                     if st.button("🧠 AI 이상치 진단 실행", key="diag_btn_out"):
                         diag_prompt = f"다음 변수들의 이상치 정보를 보고 단순 기입 오류 가능성인지, 실제 극단값 사례 가능성인지 추론해줘.\n{outlier_df.to_string()}"
-                        res, err = run_analysis("데이터 품질 전문가", diag_prompt, "이상 패턴 분석 중...")
+                        res, err = run_analysis(
+                            "{report_text}", 
+                            diag_prompt, 
+                            model_name=st.session_state["selected_model"], 
+                            auto_mode=st.session_state["auto_mode"]
+                        )
                         if not err: st.info(res)
                         else: st.error(f"진단 오류: {err}")
 
@@ -1781,7 +1791,12 @@ def show_outlier_inspection_system(mode="outlier"):
                     st.markdown("### 🤖 AI 결측 유형 진단")
                     if st.button("🧠 AI 패턴 진단 실행", key="diag_btn_ai"):
                         diag_prompt = f"다음 데이터의 결측 현황을 보고 MCAR, MAR, MNAR 중 유형을 진단해줘.\n{missing_df.to_string()}"
-                        res, err = run_analysis("데이터 품질 전문가", diag_prompt, "결측 패턴 추론 중...")
+                        res, err = run_analysis(
+                            "{report_text}", 
+                            diag_prompt, 
+                            model_name=st.session_state["selected_model"], 
+                            auto_mode=st.session_state["auto_mode"]
+                        )
                         if not err: st.info(res)
                         else: st.error(f"진단 오류: {err}")
 
@@ -1809,7 +1824,12 @@ def show_outlier_inspection_system(mode="outlier"):
                 if st.button(f"🪄 AI 추천", key=f"ai_rec_{mode}_{col}"):
                     # AI 추천 로직
                     prompt = f"다음 변수의 데이터 대체 방법을 추천하고 이유를 설명해줘. 변수명: {display_name}, 타입: {df[col].dtype}, 샘플: {df[col].dropna().head(5).tolist()}"
-                    res, err = run_analysis("데이터 분석 전문가", prompt, "샘플 데이터 분석 중...")
+                    res, err = run_analysis(
+                        "{report_text}", 
+                        prompt, 
+                        model_name=st.session_state["selected_model"], 
+                        auto_mode=st.session_state["auto_mode"]
+                    )
                     if not err: st.session_state[f"rec_{mode}_{col}"] = res
                     else: st.session_state[f"rec_{mode}_{col}"] = f"AI 추천 생성 중 오류: {err}"
                 
@@ -1944,7 +1964,12 @@ def show_outlier_inspection_system(mode="outlier"):
             target_callback_labels = callback_df["변수설명"].unique().tolist()
             if st.button("🎙️ AI 재조사 질문 가이드 생성", key="btn_callback_guide"):
                 guide_prompt = f"다음 문항들에 대해 전화 재조사를 실시할 때의 스크립트를 작성해줘.\n문항: {', '.join(target_callback_labels)}"
-                res, err = run_analysis("전화조사 슈퍼바이저", guide_prompt, "스크립트 작성 중...")
+                res, err = run_analysis(
+                    "{report_text}", 
+                    guide_prompt, 
+                    model_name=st.session_state["selected_model"], 
+                    auto_mode=st.session_state["auto_mode"]
+                )
                 if not err: st.info(res)
             
             st.dataframe(callback_df, use_container_width=True, hide_index=True)
