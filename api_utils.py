@@ -37,15 +37,17 @@ def get_latest_ym():
     last_month = now - datetime.timedelta(days=60)
     return last_month.strftime("%Y%m")
 
-def fetch_population_data(sido_cd="", sigungu_cd="", ym=None):
+def fetch_population_data(sido_cd="", sigungu_cd="", ym=None, service_key=None):
     """
     행정안전부 API를 통해 인구 데이터 수신
     """
     if not ym:
         ym = get_latest_ym()
         
+    actual_key = service_key if service_key else SERVICE_KEY
+    
     params = {
-        "serviceKey": SERVICE_KEY,
+        "serviceKey": actual_key,
         "pageNo": 1,
         "numOfRows": 1000, # 충분히 크게 설정
         "dataType": "JSON",

@@ -911,6 +911,25 @@ def show_sample_design_system():
 
     with tab_api:
         st.markdown("##### 🏛️ 행정안전부 주민등록 인구 API 연동")
+        
+        # [v6.1] API 키 입력 및 안내
+        with st.expander("🔑 API 인증키(Service Key) 입력 및 발급 방법 안내", expanded=False):
+            st.info("""
+            **API 인증키 발급 방법:**
+            1. **KOSIS 공유서비스**([kosis.kr/openapi](https://kosis.kr/openapi/index.jsp)) 접속
+            2. 메인 화면의 **'OPEN API 인증키 신청'** 클릭 (업로드된 이미지의 빨간색 박스 창)
+            3. 로그인 및 활용 신청 후 발급된 **'인증키'**를 복사하여 아래 입력란에 붙여넣으세요.
+            * 공공데이터포털(data.go.kr)에서 발급받은 '주민등록 인구현황' 서비스키도 사용 가능합니다.
+            """)
+            user_key = st.text_input(
+                "API 인증키 입력", 
+                value=st.session_state.get("user_api_key", ""), 
+                type="password",
+                help="발급받은 인증키를 입력하세요. 입력하지 않으면 시스템 기본 키를 시도합니다."
+            )
+            if user_key:
+                st.session_state["user_api_key"] = user_key
+
         c_api1, c_api2, c_api3 = st.columns(3)
         with c_api1:
             sido_name = st.selectbox("지역(시도) 선택", options=list(api_utils.SIDO_MAP.keys()), index=1)
@@ -921,8 +940,11 @@ def show_sample_design_system():
             age_range = st.slider("분석 연령대 설정", 0, 100, (18, 69))
         
         if st.button("🔍 실시간 인구 데이터 가져오기", use_container_width=True, type="secondary"):
-            with st.spinner(f"{sido_name} 인구 데이터를 API로 수신 중..."):
-                raw_api_df = api_utils.fetch_population_data(sido_cd=sido_cd)
+            with st.spinner(f"{sido_name} 인구 데이터를 수신 중..."):
+                # 입력된 키 또는 세션 키 사용
+                current_key = st.session_state.get("user_api_key")
+                raw_api_df = api_utils.fetch_population_data(sido_cd=sido_cd, service_key=current_key)
+                
                 if raw_api_df is not None:
                     processed_df = api_utils.process_population_df(raw_api_df, min_age=age_range[0], max_age=age_range[1])
                     if processed_df is not None and not processed_df.empty:
