@@ -45,9 +45,9 @@ def fetch_population_data(sido_cd="", sigungu_cd="", ym=None, service_key=None):
     params = {
         "serviceKey": actual_key,
         "pageNo": 1,
-        "numOfRows": 1000, 
+        "numOfRows": 500, 
         "dataType": "JSON",
-        "administStatsYm": ym
+        "searchYearMonth": ym
     }
     
     if sido_cd:
