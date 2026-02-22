@@ -948,7 +948,7 @@ def show_sample_design_system():
     with tab_file:
         # ── [v6.14] 다운로드 가이드 ──────────────────────────────────
         with st.expander("📥 행정안전부 인구통계 데이터 다운로드 방법", expanded=False):
-            g_img_col, g_txt_col = st.columns([0.5, 1.5], gap="large")
+            g_img_col, g_txt_col = st.columns([0.8, 1.2], gap="large")
             with g_img_col:
                 st.image(
                     "mois_guide.png",
