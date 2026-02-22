@@ -854,41 +854,34 @@ def show_questionnaire_optimization_system():
                 st.session_state["q_opt_file_name"] = q_file.name
                 st.success(f"'{q_file.name}'에서 텍스트를 성공적으로 가져왔습니다.")
 
-    # [v4.16] 텍스트 영역 높이 축소 및 테두리 색상 상시 강조 + 배경색 흰색 (최종 보강)
+    # [v4.17] 텍스트 영역 배경색 흰색 및 테두리 청색 강제 (Surgical CSS)
     st.markdown("""
         <style>
-        /* 컨테이너 내부의 모든 요소 배경을 흰색으로 강제 */
-        .q-opt-textarea [data-testid="stTextArea"],
-        .q-opt-textarea [data-testid="stTextArea"] > div,
-        .q-opt-textarea [data-testid="stTextArea"] [data-baseweb="textarea"],
-        .q-opt-textarea [data-baseweb="base-input"],
-        .q-opt-textarea div[role="textbox"] {
+        /* 특정 플레이스홀더를 가진 텍스트 영역과 그 부모 요소들을 타겟팅 */
+        div:has(textarea[placeholder*="Q1. 귀하는"]),
+        div:has(textarea[placeholder*="Q1. 귀하는"]) > div,
+        div[data-baseweb="textarea"]:has(textarea[placeholder*="Q1. 귀하는"]),
+        textarea[placeholder*="Q1. 귀하는"] {
             background-color: #FFFFFF !important;
-        }
-        
-        /* 테두리 색상 강조 (포커스 색상 유지) */
-        .q-opt-textarea [data-baseweb="textarea"] {
-            border: 1px solid #0F6CBD !important;
-            background-color: #FFFFFF !important;
-        }
-        
-        /* 입력 영역 내부 텍스트 및 배경 */
-        .q-opt-textarea textarea {
-            background-color: #FFFFFF !important;
+            background: #FFFFFF !important;
+            border-color: #0F6CBD !important;
             color: #1A2237 !important;
-            -webkit-text-fill-color: #1A2237 !important;
         }
         
-        /* 포커스 시 박스 쉐도우 및 테두리 유지 */
-        .q-opt-textarea [data-baseweb="textarea"]:focus-within {
+        /* 테두리 두께 및 색상 상시 강조 */
+        div[data-baseweb="textarea"]:has(textarea[placeholder*="Q1. 귀하는"]) {
+            border: 1px solid #0F6CBD !important;
+            border-radius: 4px !important;
+        }
+        
+        /* 포커스 시 박스 쉐도우 유지 */
+        div[data-baseweb="textarea"]:has(textarea[placeholder*="Q1. 귀하는"]):focus-within {
             box-shadow: 0 0 0 1px #0F6CBD !important;
             border-color: #0F6CBD !important;
-            background-color: #FFFFFF !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="q-opt-textarea">', unsafe_allow_html=True)
     q_text = st.text_area(
         "분석할 설문 문항 (직접 입력하거나 위에서 파일을 업로드하세요)", 
         value=st.session_state.get("q_opt_input_text", ""),
@@ -896,7 +889,6 @@ def show_questionnaire_optimization_system():
         placeholder="예: Q1. 귀하는 본 서비스에 대해 얼마나 만족하십니까?\n1) 매우 만족  2) 만족  3) 보통  4) 불만족  5) 매우 불만족",
         help="파일을 업로드하면 내용이 자동으로 채워집니다. 직접 수정도 가능합니다."
     )
-    st.markdown('</div>', unsafe_allow_html=True)
     # 직접 수정한 내용을 세션 상태에 동기화
     st.session_state["q_opt_input_text"] = q_text
 
