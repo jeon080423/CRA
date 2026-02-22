@@ -1040,7 +1040,9 @@ def show_sample_design_system():
                             
                             if design_level == "광역 시도 단위":
                                 display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("00000000") & (cvals != "0000000000")][reg_col].tolist()]
-                            else: # 기초 시군구 단위
+                            elif design_level == "기초 시/군 단위":
+                                display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("000000") & ~cvals.str.endswith("00000000")][reg_col].tolist()]
+                            else: # 구/군 단위 (상세)
                                 display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("00000") & ~cvals.str.endswith("00000000")][reg_col].tolist()]
                             
                             # 세종 합산 시 필터링

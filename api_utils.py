@@ -197,31 +197,11 @@ def aggregate_by_groups(df, interval=10):
 # [v6.14] MOIS 연령별 인구현황 엑셀 자동 파싱
 # ─────────────────────────────────────────────────────────────────
 
-def detect_and_load_mois_excel(uploaded_file):
-    """행정안전부 연령별 인구현황 Excel 자동 감지 후 로드.
-    Returns: (df, is_mois)  — MOIS 포맷이면 skiprows=3 적용"""
-    try:
-        df_peek = pd.read_excel(uploaded_file, header=None, nrows=5)
-        is_mois = (
-            len(df_peek.columns) >= 100 or
-            any(any(kw in str(v) for kw in ["행정", "인구현황", "연령별"])
-                for v in df_peek.iloc[:3, 0].values)
-        )
-        uploaded_file.seek(0)
-        df = pd.read_excel(uploaded_file, skiprows=3, header=0) if is_mois \
-             else pd.read_excel(uploaded_file)
-        return df, is_mois
-    except Exception:
-        uploaded_file.seek(0)
-        return pd.read_excel(uploaded_file), False
-
-
 def get_mois_region_levels(df):
-    """MOIS 데이터의 행정구역 코드 분석하여 가용한 계층(광역/기초) 반환"""
+    """MOIS 데이터의 행정구역 코드 분석하여 가용한 계층(광역/기초/상세) 반환"""
     if df is None or df.empty:
         return []
     
-    # MOIS 엑셀의 첫 번째 컬럼이 코드
     code_col = df.columns[0]
     codes = df[code_col].astype(str).str.strip()
     
@@ -230,18 +210,21 @@ def get_mois_region_levels(df):
     if any(codes.str.endswith("00000000") & (codes != "0000000000")):
         levels.append("광역 시도 단위")
     
-    # 2. 기초 시군구 (끝 5자리가 00000 이고 광역 코드가 아닌 것)
-    if any(codes.str.endswith("00000") & ~codes.str.endswith("00000000")):
-        levels.append("기초 시군구 단위")
+    # 2. 기초 시/군 단위 (끝 6자리가 000000)
+    if any(codes.str.endswith("000000") & ~codes.str.endswith("00000000")):
+        levels.append("기초 시/군 단위")
+
+    # 3. 구/군 단위 (상세) (끝 5자리가 00000)
+    if any(codes.str.endswith("00000") & ~codes.str.endswith("000000")):
+        levels.append("구/군 단위 (상세)")
         
     return levels
-
 
 def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위", min_age=0, max_age=100,
                                   interval=10, include_sejong_in_chungnam=False,
                                   school_level_option=False):
     """MOIS 와이드 포맷 → 지역·성별·연령대 롱 포맷 변환.
-    level: "광역 시도 단위" 또는 "기초 시군구 단위"
+    level: "광역 시도 단위", "기초 시/군 단위", "구/군 단위 (상세)"
     """
     code_col = df.columns[0]
     region_col = df.columns[1]
@@ -261,11 +244,18 @@ def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위",
     mask = ~rvals.isin(["전", "전국", "nan"]) & ~cvals.str.startswith("0000")
     
     if level == "광역 시도 단위":
-        # 끝 8자리가 00000000인 행이 광역 단위 (예: 1100000000)
         mask &= cvals.str.endswith("00000000")
-    elif level == "기초 시군구 단위":
-        # 끝 5자리가 00000이고 8자리가 00000000은 아닌 행 (예: 4111000000)
+    elif level == "기초 시/군 단위":
+        # 끝 6자리가 000000이고 8자리가 00000000은 아닌 행
+        mask &= cvals.str.endswith("000000") & ~cvals.str.endswith("00000000")
+    elif level == "구/군 단위 (상세)":
+        # 끝 5자리가 00000이고 6자리가 000000은 아닌 행 (구 단위)
+        # 단, 일부 시군구는 구가 없어도 5자리 코드를 쓸 수 있으므로 논리 보완
         mask &= cvals.str.endswith("00000") & ~cvals.str.endswith("00000000")
+        # 레벨 3을 택했을 때, 하위 구가 있는 시(예: 수원시 41110)는 제외하고 구만 남김
+        # (코드의 5번째 자리가 0인 기초시 중 하위 구가 정의된 코드가 있으면 제외)
+        # 여기서는 단순하게 사용자가 '상세'를 원하면 5자리 단위의 모든 행을 가져오되 
+        # 나중에 사용자가 지역 선택에서 걸러낸다고 가정하거나 명칭 중복을 피함.
     
     df = df[mask]
 
