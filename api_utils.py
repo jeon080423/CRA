@@ -193,6 +193,35 @@ def aggregate_by_groups(df, interval=10):
     return agg_df.drop(columns=["AgeSort"])
 
 
+def detect_and_load_mois_excel(uploaded_file):
+    """행정안전부 연령별 인구현황 Excel 자동 감지 후 로드.
+    Returns: (df, is_mois)  — MOIS 포맷이면 skiprows=3 적용"""
+    try:
+        # 엑셀의 헤더와 구성을 살짝 봄
+        df_peek = pd.read_excel(uploaded_file, header=None, nrows=5)
+        
+        # 행안부 파일 특징: 컬럼수가 매우 많고(나이별), 헤더 근처에 '행정' '인구' 등의 키워드가 있음
+        is_mois = (
+            len(df_peek.columns) >= 100 or 
+            any(any(kw in str(v) for kw in ["행정", "인구현황", "연령별"]) 
+                for v in df_peek.iloc[:3, 0].values)
+        )
+        
+        uploaded_file.seek(0)
+        if is_mois:
+            # 행안부 엑셀은 보통 위 3줄이 제목/설명이므로 3줄 건너뛰고 4행을 헤더로 읽음
+            df = pd.read_excel(uploaded_file, skiprows=3, header=0)
+        else:
+            df = pd.read_excel(uploaded_file)
+            
+        return df, is_mois
+    except Exception:
+        uploaded_file.seek(0)
+        try:
+            return pd.read_excel(uploaded_file), False
+        except:
+            return None, False
+
 # ─────────────────────────────────────────────────────────────────
 # [v6.14] MOIS 연령별 인구현황 엑셀 자동 파싱
 # ─────────────────────────────────────────────────────────────────
