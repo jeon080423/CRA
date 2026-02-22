@@ -216,35 +216,61 @@ def detect_and_load_mois_excel(uploaded_file):
         return pd.read_excel(uploaded_file), False
 
 
-def parse_mois_excel_with_gender(df, regions=None, min_age=0, max_age=100,
+def get_mois_region_levels(df):
+    """MOIS 데이터의 행정구역 코드 분석하여 가용한 계층(광역/기초) 반환"""
+    if df is None or df.empty:
+        return []
+    
+    # MOIS 엑셀의 첫 번째 컬럼이 코드
+    code_col = df.columns[0]
+    codes = df[code_col].astype(str).str.strip()
+    
+    levels = []
+    # 1. 광역 시도 (끝 8자리가 00000000)
+    if any(codes.str.endswith("00000000") & (codes != "0000000000")):
+        levels.append("광역 시도 단위")
+    
+    # 2. 기초 시군구 (끝 5자리가 00000 이고 광역 코드가 아닌 것)
+    if any(codes.str.endswith("00000") & ~codes.str.endswith("00000000")):
+        levels.append("기초 시군구 단위")
+        
+    return levels
+
+
+def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위", min_age=0, max_age=100,
                                   interval=10, include_sejong_in_chungnam=False,
                                   school_level_option=False):
     """MOIS 와이드 포맷 → 지역·성별·연령대 롱 포맷 변환.
-    컬럼 구조 (311개):
-      [0]코드 [1]지역 [2~3]계 총/등록 [4~104]계 0~100세
-      [105~106]남 총/등록 [107~207]남 0~100세
-      [208~209]여 총/등록 [210~310]여 0~100세
+    level: "광역 시도 단위" 또는 "기초 시군구 단위"
     """
-    region_col_idx = 1
+    code_col = df.columns[0]
+    region_col = df.columns[1]
 
     # 세종 → 충남 합산
     if include_sejong_in_chungnam:
         df = df.copy()
-        df.iloc[:, region_col_idx] = (
-            df.iloc[:, region_col_idx].astype(str)
-            .replace("세종특별자치시", "충청남도")
-        )
+        df[region_col] = df[region_col].astype(str).replace("세종특별자치시", "충청남도")
         num_cols = df.columns[2:]
         df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
-        df = df.groupby(df.columns[region_col_idx], as_index=False)[list(df.columns[2:])].sum()
-        region_col_idx = 0
+        df = df.groupby(region_col, as_index=False)[list(df.columns[2:])].sum()
 
-    region_col = df.columns[region_col_idx]
     rvals = df[region_col].astype(str)
-    df = df[~rvals.isin(["전", "전국", "nan"]) & ~rvals.str.startswith("0000")]
+    cvals = df[code_col].astype(str)
+    
+    # 기본 필터: 전국계 및 무효 행 제외 (전국 코드는 0000000000)
+    mask = ~rvals.isin(["전", "전국", "nan"]) & ~cvals.str.startswith("0000")
+    
+    if level == "광역 시도 단위":
+        # 끝 8자리가 00000000인 행이 광역 단위 (예: 1100000000)
+        mask &= cvals.str.endswith("00000000")
+    elif level == "기초 시군구 단위":
+        # 끝 5자리가 00000이고 8자리가 00000000은 아닌 행 (예: 4111000000)
+        mask &= cvals.str.endswith("00000") & ~cvals.str.endswith("00000000")
+    
+    df = df[mask]
 
     if regions:
-        # MOIS 엑셀의 지역명은 보통 '서울특별시  (1100000000)' 형식이므로 시작 문자열로 매칭
+        # 지역명으로 시작하는 행만 필터링
         df = df[df[region_col].apply(lambda x: any(str(x).strip().startswith(r) for r in regions))]
     if df.empty:
         return None
@@ -328,7 +354,10 @@ def parse_mois_excel_with_gender(df, regions=None, min_age=0, max_age=100,
 
     records = []
     for _, row in df.iterrows():
-        region = str(row[region_col]).strip()
+        # 지역명에서 코드 부분 제거 (예: '서울특별시  (1100000000)' -> '서울특별시')
+        raw_reg = str(row[region_col]).strip()
+        clean_reg = raw_reg.split('(')[0].strip()
+        
         for gender, (g_start, g_end) in gender_sections.items():
             for age in range(min_age, min(max_age + 1, 101)):
                 idx = g_start + age
@@ -336,7 +365,7 @@ def parse_mois_excel_with_gender(df, regions=None, min_age=0, max_age=100,
                     break
                 pop = safe_int(row[all_cols[idx]])
                 records.append({
-                    "지역": region, "성별": gender,
+                    "지역": clean_reg, "성별": gender,
                     "연령": age, "연령대": age_label(age), "인구수": pop
                 })
 

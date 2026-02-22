@@ -905,6 +905,33 @@ def show_sample_design_system():
         4. **데이터 다운로드:** 조회 후 엑셀 파일을 다운로드하여 활용하십시오.
         """)
 
+    # [v6.20] 표본 설계 이용 방법 및 기능 상세 설명 추가
+    with st.expander("📖 표본 설계 이용 방법 및 주요 기능 안내", expanded=False):
+        st.markdown("""
+        ### 🚀 표본 설계란?
+        표본 설계(Sample Design)는 모집단의 특성을 잘 반영할 수 있도록 조사 대상을 할당하는 과정입니다. 본 도구는 **행정안전부의 최신 주민등록 인구 통계**를 기반으로 과학적인 표본 배분안을 자동으로 생성합니다.
+
+        ---
+
+        ### 📋 이용 방법
+        1.  **데이터 준비**: 행정안전부 인구통계 사이트에서 받은 엑셀 파일을 업로드하거나, 수동으로 데이터를 입력합니다.
+        2.  **모집단 확정**: 지역 레벨(광역/기초)과 연령 범위를 설정하고 '모집단으로 확정' 버튼을 누릅니다.
+        3.  **목표 설정**: 조사의 목표 표본 수(n)를 입력하거나, 원하는 **표본오차(±%)**를 설정하여 필요 인원을 산출합니다.
+        4.  **배분 방식 선택**: 
+            *   **인구비례할당**: 머릿수 비율에 맞춰 정직하게 나눕니다.
+            *   **제곱근 비례**: 인구가 적은 지역의 샘플을 통계적 보정을 위해 조금 더 늘려 배분합니다.
+            *   **최소표본 할당**: 모든 그룹에 최소 인원(예: 30명)을 먼저 깔고 나머지를 비례 배분합니다.
+        5.  **결과 확인 및 조정**: 생성된 결과표를 확인하고, 필요한 경우 **수동 가감(Manual Tuning)** 기능을 통해 숫자를 미세 조정합니다.
+
+        ---
+
+        ### ✨ 주요 특화 기능
+        *   **행안부 데이터 자동 감지**: 복잡한 행안부 엑셀 형식을 읽어 성별/연령별로 자동 정리합니다.
+        *   **지역 계층 분석**: 광역 시도 단위뿐만 아니라 시/군/구 단위의 세밀한 지역 설계가 가능합니다.
+        *   **정밀 배분 옵션**: 10명, 50명 등 특정 단위로 반올림하여 현장 조사가 용이하도록 관리합니다.
+        *   **학교급별 구분**: (8-19세 대상) 초/중/고 학생 단위의 특수 표본 설계를 지원합니다.
+        """)
+
     st.markdown('<div class="qx-section-label">1. 모집단 데이터 입력 (인구 현황)</div>', unsafe_allow_html=True)
     
     tab_file, tab_manual = st.tabs(["📁 파일 업로드", "✍️ 직접 입력"])
@@ -946,7 +973,7 @@ def show_sample_design_system():
         )
 
         if pop_file:
-            from api_utils import (detect_and_load_mois_excel,
+            from api_utils import (detect_and_load_mois_excel, get_mois_region_levels,
                                    parse_mois_excel_with_gender, SIDO_LIST)
             is_mois = False
             uploaded_pop = None
@@ -969,18 +996,30 @@ def show_sample_design_system():
                 if is_mois:
                     # ── MOIS 전용 설정 패널 ──────────────────────────
                     with st.expander("🔧 MOIS 데이터 필터 및 집계 설정", expanded=True):
-                        st.markdown("**📍 지역 선택**")
+                        st.markdown("**📍 설계 지역 레벨 및 선택**")
+                        
+                        # [v6.18] 데이터 구조 분석 후 가용 레벨 자동 제안
+                        avail_levels = get_mois_region_levels(uploaded_pop)
+                        design_level = st.radio(
+                            "표본 설계 단위",
+                            options=avail_levels,
+                            index=len(avail_levels)-1 if avail_levels else 0,
+                            horizontal=True,
+                            key="mois_design_level"
+                        )
+
                         chk_col0, chk_col1 = st.columns([1, 2])
                         
-                        # [v6.17] 전체 선택 해제 시 개별 선택도 초기화하는 콜백
+                        # 전체 선택 해제 시 개별 선택 초기화
                         def on_all_regions_change():
                             if not st.session_state.get("mois_all_regions", True):
-                                for r in SIDO_LIST:
-                                    st.session_state[f"mois_r_{r}"] = False
+                                if "mois_display_list" in st.session_state:
+                                    for r in st.session_state["mois_display_list"]:
+                                        st.session_state[f"mois_r_{r}"] = False
 
                         with chk_col0:
                             all_regions = st.checkbox(
-                                "전체 선택", 
+                                "전체 지역 포함", 
                                 value=True, 
                                 key="mois_all_regions",
                                 on_change=on_all_regions_change
@@ -992,16 +1031,31 @@ def show_sample_design_system():
                             )
 
                         if not all_regions:
-                            display_list = [s for s in SIDO_LIST if s != "세종특별자치시"] if sejong_merge else SIDO_LIST
+                            # 레벨에 따른 목록 추출
+                            code_col = uploaded_pop.columns[0]
+                            reg_col = uploaded_pop.columns[1]
+                            cvals = uploaded_pop[code_col].astype(str).str.strip()
+                            rvals = uploaded_pop[reg_col].astype(str).str.strip()
+                            
+                            if design_level == "광역 시도 단위":
+                                display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("00000000") & (cvals != "0000000000")][reg_col].tolist()]
+                            else: # 기초 시군구 단위
+                                display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("00000") & ~cvals.str.endswith("00000000")][reg_col].tolist()]
+                            
+                            # 세종 합산 시 필터링
+                            if sejong_merge and "세종특별자치시" in display_list:
+                                display_list = [r for r in display_list if r != "세종특별자치시"]
+                            
+                            st.session_state["mois_display_list"] = display_list
+                            
                             r_cols = st.columns(4)
                             selected_regions = []
                             for i, region in enumerate(display_list):
                                 with r_cols[i % 4]:
-                                    # 기본값을 False로 변경하여 전체 해제 시 빈 상태로 시작
                                     if st.checkbox(region, value=False, key=f"mois_r_{region}"):
                                         selected_regions.append(region)
                         else:
-                            selected_regions = None  # None = 전체
+                            selected_regions = None
 
                         st.markdown("**📊 연령 설정**")
                         fa1, fa2 = st.columns(2)
@@ -1037,6 +1091,7 @@ def show_sample_design_system():
                         pop_long_df = parse_mois_excel_with_gender(
                             uploaded_pop,
                             regions=selected_regions,
+                            level=design_level if is_mois else "광역 시도 단위",
                             min_age=age_range[0],
                             max_age=age_range[1],
                             interval=age_interval,
@@ -1153,22 +1208,40 @@ def show_sample_design_system():
         st.info(f"🧬 **층화 구조:** {layer_label} | **총 인구:** {df_raw[pop_col].sum():,}")
 
     st.markdown('<div class="qx-section-label">2. 표본 설계 설정</div>', unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
+    
+    # [v6.19] 정밀 표본 배분 설정 (목표 오차 기준 모드 추가)
+    c1, c2, c3, c4 = st.columns([2, 1, 1.5, 1.5])
     with c1:
-        total_n = st.number_input("목표 전체 표본 수 (n)", min_value=1, value=1000)
+        alloc_mode = st.radio("n 결정 방식", options=["전체 표본 수 지정", "목표 표본오차 기준"], horizontal=True, key="alloc_mode")
+    
     with c2:
-        method = st.selectbox("할당 방식 선택", options=["인구비례할당", "제곱근 비례 할당", "최소표본 할당 후 비례할당"])
+        if alloc_mode == "전체 표본 수 지정":
+            total_n = st.number_input("전체 표본 수(n)", min_value=1, value=1000, key="total_n_input")
+        else:
+            # 목표 오차 기반 n 역산 (p=0.5, 95% 신뢰수준)
+            target_err = st.number_input("목표 오차(±%)", min_value=0.1, max_value=10.0, value=3.1, step=0.1)
+            total_n = int((1.96**2 * 0.25) / ((target_err/100)**2))
+            st.caption(f"계산된 n: {total_n}명")
+
     with c3:
-        min_n = st.number_input("최소 할당 표본 (Min)", min_value=1, value=30, disabled=(method != "최소표본 할당 후 비례할당"))
+        method = st.selectbox("할당 방식", options=["인구비례할당", "제곱근 비례 할당", "최소표본 할당 후 비례할당"], key="allocation_method")
+    
     with c4:
-        import math
-        sampling_error_pct = round(1.96 * math.sqrt(0.25 / max(total_n, 1)) * 100, 2)
-        st.metric("📐 표본오차", f"±{sampling_error_pct}%", help="95% 신뢰수준, p=0.5 기준")
+        min_n_val = st.number_input("최소 할당(Min)", min_value=1, value=30, disabled=(method != "최소표본 할당 후 비례할당"), key="min_n_val")
+
+    # [v6.19] 정밀 배분 옵션 (반올림 및 단위 설정)
+    with st.expander("🛠️ 정밀 배분 고급 옵션 (단위 반올림 등)", expanded=False):
+        fo1, fo2 = st.columns(2)
+        with fo1:
+            round_unit = st.selectbox("배분 단위 (반올림)", options=[1, 5, 10, 50, 100], index=0, help="할당된 표본을 특정 단위(예: 10명 단위)로 정렬합니다.")
+        with fo2:
+            st.info("💡 배분 단위를 높이면 목표 n과 최종 합계에 차이가 발생할 수 있으며, 시스템이 이를 자동으로 보정합니다.")
 
     if st.button("📊 표본 배분 계산 실행", type="primary", use_container_width=True):
         total_pop = df_raw[pop_col].sum()
         df_work = df_raw.copy()
         
+        # 1. 기본 할당 계산
         if method == "인구비례할당":
             df_work["allocated"] = (df_work[pop_col] / total_pop * total_n)
         elif method == "제곱근 비례 할당":
@@ -1176,38 +1249,59 @@ def show_sample_design_system():
             df_work["allocated"] = (df_work[pop_col].apply(np.sqrt) / sqrt_sum * total_n)
         elif method == "최소표본 할당 후 비례할당":
             num_groups = len(df_work)
-            if min_n * num_groups > total_n:
-                st.error(f"최소 표본 합계({min_n * num_groups})가 전체 표본({total_n})보다 큽니다. 설정을 조정해 주세요.")
+            remaining_n = total_n - (min_n_val * num_groups)
+            if remaining_n < 0:
+                st.error("최소 할당 합계가 전체 n보다 큽니다.")
                 return
-            remaining_n = total_n - (min_n * num_groups)
-            df_work["allocated"] = min_n + (df_work[pop_col] / total_pop * remaining_n)
+            df_work["allocated"] = min_n_val + (df_work[pop_col] / total_pop * remaining_n)
         
-        # 반올림 및 합계 조정
-        df_work["final_n"] = df_work["allocated"].round().fillna(0).astype(int)
+        # 2. 정밀 배분 (반올림 단위 적용)
+        df_work["final_n"] = (df_work["allocated"] / round_unit).round().fillna(0).astype(int) * round_unit
+        
+        # 3. 합계 보정 (라운딩으로 인한 차이 조정)
         diff = total_n - df_work["final_n"].sum()
         if diff != 0:
-            df_work["remainder"] = df_work["allocated"] - df_work["final_n"]
-            if diff > 0:
-                idx = df_work.nlargest(diff, "remainder").index
-                df_work.loc[idx, "final_n"] += 1
-            else:
-                idx = df_work.nsmallest(abs(diff), "remainder").index
-                df_work.loc[idx, "final_n"] -= 1
+            # 보정 단위 계산
+            steps = int(abs(diff) / round_unit)
+            if steps > 0:
+                df_work["remainder"] = df_work["allocated"] - df_work["final_n"]
+                if diff > 0:
+                    idx = df_work.nlargest(steps, "remainder").index
+                    df_work.loc[idx, "final_n"] += round_unit
+                else:
+                    idx = df_work.nsmallest(steps, "remainder").index
+                    df_work.loc[idx, "final_n"] -= round_unit
 
-        df_work["비율(%)"] = (df_work["final_n"] / total_n * 100).round(1)
+        df_work["비율(%)"] = (df_work["final_n"] / df_work["final_n"].sum() * 100).round(1)
         st.session_state["sample_design_df"] = df_work[cols + ["final_n", "비율(%)"]]
-        st.session_state["sample_design_meta"] = {"pop_col": pop_col, "strata_cols": strata_cols}
+        st.session_state["sample_design_meta"] = {"pop_col": pop_col, "strata_cols": strata_cols, "round_unit": round_unit}
         st.rerun()
 
     if "sample_design_df" in st.session_state:
-        st.markdown('<div class="qx-section-label">3. 표본 할당 결과</div>', unsafe_allow_html=True)
+        st.markdown('<div class="qx-section-label">3. 표본 할당 결과 및 정밀 조정</div>', unsafe_allow_html=True)
         res_df = st.session_state["sample_design_df"]
-        meta = st.session_state["sample_design_meta"]
+        
+        # [v6.19] 수동 정밀 조정 기능 (Data Editor)
+        with st.expander("📝 세포별 정밀 수동 가감 (Manual Tuning)", expanded=False):
+            st.caption("배분된 수치를 직접 수정할 수 있습니다. 수정 후 '표본 설계 결과 업데이트' 버튼을 클릭하세요.")
+            edited_df = st.data_editor(
+                res_df,
+                column_config={
+                    "final_n": st.column_config.NumberColumn("확정 표본(n)", min_value=0, step=st.session_state["sample_design_meta"].get("round_unit", 1)),
+                    "비율(%)": st.column_config.NumberColumn("비율(%)", disabled=True)
+                },
+                disabled=[c for c in res_df.columns if c != "final_n"],
+                use_container_width=True,
+                key="sample_editor"
+            )
+            if st.button("🔄 정밀 조정 결과 반영", key="update_manual_tuning"):
+                edited_df["비율(%)"] = (edited_df["final_n"] / edited_df["final_n"].sum() * 100).round(1)
+                st.session_state["sample_design_df"] = edited_df
+                st.rerun()
 
-        sc1, sc2, sc3 = st.columns(3)
-        sc1.metric("전체 표본", f"{res_df['final_n'].sum():,}명")
-        sc2.metric("최소 할당", f"{res_df['final_n'].min():,}명")
-        sc3.metric("최대 할당", f"{res_df['final_n'].max():,}명")
+        sc1, sc2, sc3, sc4 = st.columns(4)
+        current_total = res_df['final_n'].sum()
+        sc1.metric("최종 인원 (Total)", f"{current_total:,}명")
 
         # ── [v6.14] 피벗 테이블 (지역×성별×연령대) ─────────────────
         from api_utils import format_sample_pivot_table
