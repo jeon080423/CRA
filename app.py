@@ -1512,6 +1512,27 @@ with st.sidebar:
     st.caption("문의: shjeon1@metrix.co.kr")
     st.caption("Powered by Google Gemini · v2.9")
 
+    # [v4.16] 무단 사용 금지 경고 문구 추가 (아이콘 제외)
+    st.markdown("""
+    <div style="
+        background-color: rgba(255, 245, 245, 0.1); 
+        border-left: 3px solid #FC8181; 
+        padding: 10px; 
+        margin-top: 20px; 
+        border-radius: 4px;
+    ">
+        <p style="
+            color: #FC8181; 
+            font-size: 0.72rem; 
+            font-weight: 500; 
+            line-height: 1.5; 
+            margin: 0;
+        ">
+            본 솔루션은 회사의 지적 재산이며, 사전 허가 없는 무단 사용 및 배포는 엄격히 금지됩니다.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
 
 
 def export_to_docx(markdown_text: str) -> io.BytesIO:
