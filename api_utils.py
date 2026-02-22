@@ -40,14 +40,17 @@ def fetch_population_data(sido_cd="", sigungu_cd="", ym=None, service_key=None):
     if not ym:
         ym = get_latest_ym()
         
+    # [v6.10] Public Data Portal 특성상 서비스키 인코딩 문제 대응을 위해 수동 URL 구성 권장
     actual_key = service_key if service_key else SERVICE_KEY
     
+    # URL 파라미터를 수동 조합하여 인코딩 중복 방지 (특히 '=' 문자 보호)
+    full_url = f"{BASE_URL}?serviceKey={actual_key}"
+    
     params = {
-        "serviceKey": actual_key,
         "pageNo": 1,
         "numOfRows": 500, 
         "dataType": "JSON",
-        "searchYearMonth": ym
+        "administStatsYm": ym
     }
     
     if sido_cd:
@@ -56,7 +59,8 @@ def fetch_population_data(sido_cd="", sigungu_cd="", ym=None, service_key=None):
         params["sigunguCd"] = sigungu_cd
         
     try:
-        response = requests.get(BASE_URL, params=params, timeout=15)
+        # requests.get에 params를 넘기면 serviceKey 이외의 파라미터들만 추가 인코딩됨
+        response = requests.get(full_url, params=params, timeout=15)
         if response.status_code != 200:
             st.error(f"주민등록 인구 API 호출 중 오류 발생: {response.status_code}\nURL: {response.url}\nResponse: {response.text}")
             return None
