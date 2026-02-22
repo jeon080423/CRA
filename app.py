@@ -434,6 +434,35 @@ def show_win_strategy_section():
         st.markdown('<div class="qx-section-label">2. 직전 RFP (선택)</div>', unsafe_allow_html=True)
         prev_file = st.file_uploader("직전 회차 제안요청서", type=["pdf", "docx", "txt"], key="rfp_prev_up")
 
+    # [v4.15] 초기 진입 화면 가이드 (Landing Card)
+    if not curr_file and not st.session_state["rfp_results"]:
+        st.markdown("""
+<div class="qx-card" style="text-align:center; padding:2rem 2rem 2.5rem 2rem; margin-top: 1rem; margin-bottom: 2rem; min-height: 320px;">
+    <div style="font-size:3rem; margin-bottom:0.5rem;">📝</div>
+    <div style="font-size:1.1rem; font-weight:600; color:#1A2237; margin-bottom:0.5rem;">
+        RFP 심층 분석을 위해 문서를 업로드하세요
+    </div>
+    <div style="font-size:0.87rem; color:#8B96A9; margin-bottom:1.5rem;">
+        올해 공고된 제안요청서를 업로드하면 과업 범위와 핵심 요구사항을 인공지능이 자동으로 분석합니다.
+    </div>
+    <div style="display:flex; justify-content:center; gap:1.5rem; flex-wrap:wrap;">
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">📋</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">과업 범위 추출</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">⚖️</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">참가 자격 검토</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">🎯</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">수주 전략 정립</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+        st.markdown("<div style='margin-bottom: 5rem;'></div>", unsafe_allow_html=True)
+
     # 텍스트 추출 가이드
     if curr_file and curr_file.name != st.session_state["rfp_curr_name"]:
         with st.spinner("금년도 RFP 분석 준비 중..."):
@@ -835,6 +864,35 @@ def show_questionnaire_optimization_system():
     # 직접 수정한 내용을 세션 상태에 동기화
     st.session_state["q_opt_input_text"] = q_text
 
+    # [v4.15] 초기 진입 화면 가이드 (Landing Card)
+    if not q_file and not q_text.strip() and "q_opt_result" not in st.session_state:
+        st.markdown("""
+<div class="qx-card" style="text-align:center; padding:2rem 2rem 2.5rem 2rem; margin-top: 1rem; margin-bottom: 2rem; min-height: 320px;">
+    <div style="font-size:3rem; margin-bottom:0.5rem;">📋</div>
+    <div style="font-size:1.1rem; font-weight:600; color:#1A2237; margin-bottom:0.5rem;">
+        설문지 최적화를 위한 텍스트를 입력하세요
+    </div>
+    <div style="font-size:0.87rem; color:#8B96A9; margin-bottom:1.5rem;">
+        문항의 논리적 결함과 응답 편향 요소를 전문가 관점에서 분석하고 개선안을 도출합니다.
+    </div>
+    <div style="display:flex; justify-content:center; gap:1.5rem; flex-wrap:wrap;">
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">🔍</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">설계 결함 탐지</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">💡</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">Before & After</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">📉</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">응답 정합성 확보</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+        st.markdown("<div style='margin-bottom: 5rem;'></div>", unsafe_allow_html=True)
+
     if st.button("🚀 AI 설계 최적화 시작", type="primary", use_container_width=True):
         if not q_text.strip():
             st.warning("분석할 설문 텍스트를 입력해 주세요.")
@@ -976,6 +1034,35 @@ def show_sample_design_system():
             "인구 통계 파일 업로드 — 행정안전부 xlsx 또는 일반 CSV/Excel",
             type=["xlsx", "csv"], key="sample_pop_file"
         )
+
+        # [v4.15] 초기 진입 화면 가이드 (Landing Card)
+        if not pop_file:
+            st.markdown("""
+<div class="qx-card" style="text-align:center; padding:2rem 2rem 2.5rem 2rem; margin-top: 1rem; margin-bottom: 2rem; min-height: 320px;">
+    <div style="font-size:3rem; margin-bottom:0.5rem;">🎯</div>
+    <div style="font-size:1.1rem; font-weight:600; color:#1A2237; margin-bottom:0.5rem;">
+        표본 설계를 위해 인구 데이터를 연동하세요
+    </div>
+    <div style="font-size:0.87rem; color:#8B96A9; margin-bottom:1.5rem;">
+        행정안전부 데이터를 기반으로 지역·성별·연령대별 최적의 표본 할당안을 자동으로 구성합니다.
+    </div>
+    <div style="display:flex; justify-content:center; gap:1.5rem; flex-wrap:wrap;">
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">🏘️</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">시군구 비례 배분</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">🔢</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">표본 오차 산출</div>
+        </div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">📊</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">할당표 자동 생성</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+            st.markdown("<div style='margin-bottom: 5rem;'></div>", unsafe_allow_html=True)
 
         if pop_file:
             from api_utils import (detect_and_load_mois_excel, get_mois_region_levels,
