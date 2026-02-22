@@ -903,29 +903,65 @@ def show_sample_design_system():
         4. **데이터 다운로드:** 조회 후 엑셀 파일을 다운로드하여 활용하십시오.
         """)
 
-    st.markdown('<div class="qx-section-label">1. 인구 데이터 입력</div>', unsafe_allow_html=True)
+    st.markdown('<div class="qx-section-label">1. 모집단 데이터 입력 (인구 현황)</div>', unsafe_allow_html=True)
     
-    # 기본 데이터 셋 제공 (예시용)
-    default_data = "서울, 9411260\n부산, 3317812\n대구, 2375306\n인천, 2967314\n광주, 1431050\n대전, 1446072\n울산, 1106015\n세종, 383547\n경기, 13589155\n강원, 1533357\n충북, 1595058\n충남, 2123037\n전북, 1769607\n전남, 1817629\n경북, 2600492\n경남, 3280815\n제주, 678159"
+    col_u1, col_u2 = st.columns([1, 1], gap="medium")
     
-    pop_input = st.text_area(
-        "지표/지역과 인구수를 입력하세요 (CSV 형식: 이름, 인구수)", 
-        value=default_data,
-        height=200,
-        help="한 줄에 '지역명, 인구수' 순서로 입력해 주세요."
-    )
+    uploaded_pop = None
+    with col_u1:
+        st.markdown("##### 📁 파일 업로드 (Excel, CSV)")
+        pop_file = st.file_uploader("인구 통계 파일 업로드", type=["xlsx", "csv"], key="sample_pop_file")
+        if pop_file:
+            try:
+                if pop_file.name.endswith(".csv"):
+                    uploaded_pop = pd.read_csv(pop_file)
+                else:
+                    uploaded_pop = pd.read_excel(pop_file)
+                st.success(f"'{pop_file.name}' 로드 완료 ({len(uploaded_pop)}개 행)")
+            except Exception as e:
+                st.error(f"파일 로드 중 오류: {e}")
 
-    # 데이터 파싱
-    pop_list = []
-    try:
-        for line in pop_input.strip().split("\n"):
-            if "," in line:
-                name, count = line.split(",")
-                pop_list.append({"name": name.strip(), "population": int(count.strip())})
-        df_pop = pd.DataFrame(pop_list)
-    except Exception as e:
-        st.error(f"데이터 형식이 올바르지 않습니다: {e}")
+    with col_u2:
+        st.markdown("##### ✍️ 직접 입력 / 예시 데이터")
+        # 다차원 예시 제공
+        default_data = "지역, 성별, 연령대, 인구수\n서울, 남, 20대, 650000\n서울, 여, 20대, 680000\n부산, 남, 20대, 210000\n부산, 여, 20대, 220000\n인천, 남, 20대, 195000\n인천, 여, 20대, 198000"
+        pop_input = st.text_area(
+            "데이터를 CSV 형식으로 입력하세요", 
+            value=default_data if not uploaded_pop else "",
+            height=200,
+            help="첫 줄에 헤더(지역, 성별 등)를 포함하여 입력하세요."
+        )
+
+    # 데이터 프레임 구성
+    df_raw = None
+    if uploaded_pop is not None:
+        df_raw = uploaded_pop
+    elif pop_input.strip():
+        try:
+            import io
+            df_raw = pd.read_csv(io.StringIO(pop_input.strip()), skipinitialspace=True)
+        except Exception as e:
+            st.error(f"입력 데이터 파싱 오류: {e}")
+            return
+
+    if df_raw is None or df_raw.empty:
+        st.info("모집단 데이터를 입력하거나 파일을 업로드해 주세요.")
         return
+
+    # 컬럼 설정 (인구수 컬럼 자동 감지 또는 마지막 컬럼 사용)
+    cols = df_raw.columns.tolist()
+    pop_col = None
+    for c in cols:
+        if any(kw in str(c) for kw in ["인구", "population", "count", "N수", "N"]):
+            pop_col = c
+            break
+    if not pop_col:
+        pop_col = cols[-1]
+    
+    df_raw[pop_col] = pd.to_numeric(df_raw[pop_col], errors='coerce').fillna(0)
+    strata_cols = [c for c in cols if c != pop_col]
+
+    st.info(f"🧬 **층화 구조:** {' > '.join(strata_cols)} | **총 인구:** {df_raw[pop_col].sum():,}")
 
     st.markdown('<div class="qx-section-label">2. 표본 설계 설정</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
@@ -937,77 +973,81 @@ def show_sample_design_system():
         min_n = st.number_input("최소 할당 표본 (Min)", min_value=1, value=30, disabled=(method != "최소표본 할당 후 비례할당"))
 
     if st.button("📊 표본 배분 계산 실행", type="primary", use_container_width=True):
-        total_pop = df_pop["population"].sum()
+        total_pop = df_raw[pop_col].sum()
+        df_work = df_raw.copy()
         
         if method == "인구비례할당":
-            df_pop["allocated"] = (df_pop["population"] / total_pop * total_n)
+            df_work["allocated"] = (df_work[pop_col] / total_pop * total_n)
         elif method == "제곱근 비례 할당":
-            sqrt_sum = df_pop["population"].apply(np.sqrt).sum()
-            df_pop["allocated"] = (df_pop["population"].apply(np.sqrt) / sqrt_sum * total_n)
+            sqrt_sum = df_work[pop_col].apply(np.sqrt).sum()
+            df_work["allocated"] = (df_work[pop_col].apply(np.sqrt) / sqrt_sum * total_n)
         elif method == "최소표본 할당 후 비례할당":
-            num_groups = len(df_pop)
+            num_groups = len(df_work)
             if min_n * num_groups > total_n:
                 st.error(f"최소 표본 합계({min_n * num_groups})가 전체 표본({total_n})보다 큽니다. 설정을 조정해 주세요.")
                 return
             remaining_n = total_n - (min_n * num_groups)
-            df_pop["allocated"] = min_n + (df_pop["population"] / total_pop * remaining_n)
+            df_work["allocated"] = min_n + (df_work[pop_col] / total_pop * remaining_n)
         
         # 반올림 및 합계 조정
-        df_pop["final_n"] = df_pop["allocated"].round().astype(int)
-        
-        # 합계가 정확히 n이 되도록 가장 차이가 큰 항목에서 조정 (Residual adjustment)
-        diff = total_n - df_pop["final_n"].sum()
+        df_work["final_n"] = df_work["allocated"].round().astype(int)
+        diff = total_n - df_work["final_n"].sum()
         if diff != 0:
-            # 반올림 오차가 큰 항목부터 1씩 증감
-            df_pop["remainder"] = df_pop["allocated"] - df_pop["final_n"]
-            if diff > 0: # 표본이 모자란 경우
-                idx = df_pop.nlargest(diff, "remainder").index
-                df_pop.loc[idx, "final_n"] += 1
-            else: # 표본이 넘치는 경우
-                idx = df_pop.nsmallest(abs(diff), "remainder").index
-                df_pop.loc[idx, "final_n"] -= 1
+            df_work["remainder"] = df_work["allocated"] - df_work["final_n"]
+            if diff > 0:
+                idx = df_work.nlargest(diff, "remainder").index
+                df_work.loc[idx, "final_n"] += 1
+            else:
+                idx = df_work.nsmallest(abs(diff), "remainder").index
+                df_work.loc[idx, "final_n"] -= 1
 
-        df_pop["비율(%)"] = (df_pop["final_n"] / total_n * 100).round(1)
-        st.session_state["sample_design_df"] = df_pop[["name", "population", "final_n", "비율(%)"]]
+        df_work["비율(%)"] = (df_work["final_n"] / total_n * 100).round(1)
+        st.session_state["sample_design_df"] = df_work[cols + ["final_n", "비율(%)"]]
+        st.session_state["sample_design_meta"] = {"pop_col": pop_col, "strata_cols": strata_cols}
         st.rerun()
 
     if "sample_design_df" in st.session_state:
         st.markdown('<div class="qx-section-label">3. 표본 할당 결과</div>', unsafe_allow_html=True)
         res_df = st.session_state["sample_design_df"]
+        meta = st.session_state["sample_design_meta"]
         
         st.dataframe(
             res_df, 
             hide_index=True,
             column_config={
-                "name": "지표/지역",
-                "population": st.column_config.NumberColumn("모집단(P)", format="%d"),
+                meta["pop_col"]: st.column_config.NumberColumn("모집단(P)", format="%d"),
                 "final_n": st.column_config.NumberColumn("확정 표본(n)", format="%d"),
             },
             use_container_width=True
         )
 
-        # 요약 정보
         sc1, sc2, sc3 = st.columns(3)
         sc1.metric("전체 표본", f"{res_df['final_n'].sum()}명")
         sc2.metric("최소 할당", f"{res_df['final_n'].min()}명")
         sc3.metric("최대 할당", f"{res_df['final_n'].max()}명")
 
-        # 시각화
-        fig = px.bar(res_df, x="name", y="final_n", text="final_n", title="지역별 표본 배분 현황", template="plotly_white")
+        # 시각화 컬럼 선택
+        st.markdown("##### 📈 시각화 설정")
+        viz_col = st.selectbox("X축 기준 변수 선택", options=meta["strata_cols"], index=0)
+        
+        # 층화 변수가 여러개면 그룹화하여 표시
+        viz_df = res_df.groupby(viz_col)["final_n"].sum().reset_index()
+        fig = px.bar(viz_df, x=viz_col, y="final_n", text="final_n", title=f"{viz_col}별 표본 배분 합계", template="plotly_white")
         fig.update_traces(marker_color="#0F6CBD", textposition="outside")
         st.plotly_chart(fig, use_container_width=True)
 
-        if st.button("📥 표본 설계 내역 엑셀 다운로드", use_container_width=True):
+        if st.button("📥 상세 표본 설계 내역 다운로드 (Excel)", use_container_width=True):
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 res_df.to_excel(writer, index=False, sheet_name='Sample_Design')
             output.seek(0)
             st.download_button(
-                "엑셀 파일 저장", 
+                "📥 클릭하여 엑셀 파일 저장", 
                 data=output, 
-                file_name="표본설계_배분결과.xlsx",
+                file_name="표본설계_상세배분안.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
+                use_container_width=True,
+                key="dl_sample_design_final"
             )
 
 
