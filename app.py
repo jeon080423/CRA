@@ -926,14 +926,15 @@ def show_sample_design_system():
             img_c1, img_c2 = st.columns([0.6, 0.4])
             with img_c1:
                 st.image("https://raw.githubusercontent.com/jeon080423/CRA/main/kosis_guide.png", caption="KOSIS OPEN API 인증키 신청 가이드", use_container_width=True)
-            user_key = st.text_input(
-                "API 인증키 입력", 
-                value=st.session_state.get("user_api_key", ""), 
-                type="password",
-                help="발급받은 인증키를 입력하세요. 입력하지 않으면 시스템 기본 키를 시도합니다."
-            )
-            if user_key:
-                st.session_state["user_api_key"] = user_key
+        
+        user_key = st.text_input(
+            "🔑 API 인증키 입력", 
+            value=st.session_state.get("user_api_key", ""), 
+            type="password",
+            help="발급받은 인증키를 입력하세요. 입력하지 않으면 시스템 기본 키를 시도합니다."
+        )
+        if user_key:
+            st.session_state["user_api_key"] = user_key
 
         c_api1, c_api2, c_api3 = st.columns([2, 1, 1.5])
         with c_api1:
