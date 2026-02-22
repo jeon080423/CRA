@@ -1244,7 +1244,15 @@ with st.sidebar:
         "보고서 검수 AI Tools"
     ]
     
-    # 세션 상태에 저장된 메뉴가 옵션에 없으면 기본값(첫 번째) 사용
+    # [v4.10] 특정 사용자(metrix26) 권한 제어 - 섹션 숨김
+    if st.session_state.get("logged_in_user") == "metrix26":
+        if "AI 단위 무응답 검토" in menu_options:
+            menu_options.remove("AI 단위 무응답 검토")
+    
+    # 세션 상태에 저장된 메뉴가 옵션에 없으면(예: 권한으로 숨겨짐) 기본값(첫 번째) 사용
+    if "menu_selection" not in st.session_state or st.session_state["menu_selection"] not in menu_options:
+        st.session_state["menu_selection"] = menu_options[0]
+        
     try:
         current_idx = menu_options.index(st.session_state["menu_selection"])
     except (ValueError, KeyError):
