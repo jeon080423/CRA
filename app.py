@@ -930,26 +930,29 @@ def show_sample_design_system():
             if user_key:
                 st.session_state["user_api_key"] = user_key
 
-        c_api1, c_api2, c_api3 = st.columns(3)
+        c_api0, c_api1, c_api2, c_api3 = st.columns([1, 1.2, 0.8, 1.5])
+        with c_api0:
+            month_options = api_utils.get_month_options()
+            selected_ym = st.selectbox("통계 연월", options=month_options, index=0)
         with c_api1:
-            sido_name = st.selectbox("지역(시도) 선택", options=list(api_utils.SIDO_MAP.keys()), index=1)
+            sido_name = st.selectbox("지역(시도)", options=list(api_utils.SIDO_MAP.keys()), index=0)
             sido_cd = api_utils.SIDO_MAP[sido_name]
         with c_api2:
-            age_interval = st.selectbox("연령 구분 단위", options=[1, 5, 10], index=2, format_func=lambda x: f"{x}세 단위")
+            age_interval = st.selectbox("연령 단위", options=[1, 5, 10], index=2, format_func=lambda x: f"{x}세")
         with c_api3:
-            age_range = st.slider("분석 연령대 설정", 0, 100, (18, 69))
+            age_range = st.slider("연령 범위", 0, 100, (18, 69))
         
         if st.button("🔍 실시간 인구 데이터 가져오기", use_container_width=True, type="secondary"):
-            with st.spinner(f"{sido_name} 인구 데이터를 수신 중..."):
+            with st.spinner(f"{sido_name} ({selected_ym}) 인구 데이터를 수신 중..."):
                 # 입력된 키 또는 세션 키 사용
                 current_key = st.session_state.get("user_api_key")
-                raw_api_df = api_utils.fetch_population_data(sido_cd=sido_cd, service_key=current_key)
+                raw_api_df = api_utils.fetch_population_data(sido_cd=sido_cd, ym=selected_ym, service_key=current_key)
                 
                 if raw_api_df is not None:
                     processed_df = api_utils.process_population_df(raw_api_df, min_age=age_range[0], max_age=age_range[1])
                     if processed_df is not None and not processed_df.empty:
                         st.session_state["api_pop_df"] = api_utils.aggregate_by_groups(processed_df, interval=age_interval)
-                        st.success(f"{sido_name} 데이터 수신 및 {age_range[0]}세-{age_range[1]}세 필터링 완료 ({age_interval}세 단위)")
+                        st.success(f"{sido_name} ({selected_ym}) 데이터 수신 및 {age_range[0]}세-{age_range[1]}세 필터링 완료 ({age_interval}세 단위)")
                     else:
                         st.warning("해당 조건에 맞는 인구 데이터가 없습니다.")
 

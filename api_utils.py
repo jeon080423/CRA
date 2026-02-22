@@ -10,7 +10,6 @@ SERVICE_KEY = "MGFhOGVmMjZmMTExNjIyODgxNTcxNDJmMGI5NTk4ZDQ="
 BASE_URL = "http://apis.data.go.kr/1741000/admmSexdAgePpltn"
 
 SIDO_MAP = {
-    "전체": "",
     "서울특별시": "11",
     "부산광역시": "26",
     "대구광역시": "27",
@@ -20,22 +19,28 @@ SIDO_MAP = {
     "울산광역시": "31",
     "세종특별자치시": "36",
     "경기도": "41",
-    "강원도": "42",
+    "강원특별자치도": "42",
     "충청북도": "43",
     "충청남도": "44",
-    "전라북도": "45",
+    "전북특별자치도": "45",
     "전라남도": "46",
     "경상북도": "47",
     "경상남도": "48",
     "제주특별자치도": "50"
 }
 
-def get_latest_ym():
-    """가장 최근 통계 연월 산출 (현재 기준 1~2개월 전)"""
+def get_month_options():
+    """조회 가능한 최근 12개월 목록 반환"""
     now = datetime.datetime.now()
-    # 안전하게 2개월 전 데이터 사용 (통계 업로드 지연 고려)
-    last_month = now - datetime.timedelta(days=60)
-    return last_month.strftime("%Y%m")
+    months = []
+    for i in range(1, 14):
+        date = now - datetime.timedelta(days=30 * i)
+        months.append(date.strftime("%Y%m"))
+    return sorted(list(set(months)), reverse=True)
+
+def get_latest_ym():
+    """가장 최근 통계 연월 산출 (안전하게 2개월 전)"""
+    return get_month_options()[0]
 
 def fetch_population_data(sido_cd="", sigungu_cd="", ym=None, service_key=None):
     """
@@ -49,7 +54,7 @@ def fetch_population_data(sido_cd="", sigungu_cd="", ym=None, service_key=None):
     params = {
         "serviceKey": actual_key,
         "pageNo": 1,
-        "numOfRows": 1000, # 충분히 크게 설정
+        "numOfRows": 1000, 
         "dataType": "JSON",
         "administStatsYm": ym
     }
@@ -60,18 +65,21 @@ def fetch_population_data(sido_cd="", sigungu_cd="", ym=None, service_key=None):
         params["sigunguCd"] = sigungu_cd
         
     try:
-        response = requests.get(BASE_URL, params=params, timeout=10)
-        response.raise_for_status()
+        response = requests.get(BASE_URL, params=params, timeout=15)
+        if response.status_code != 200:
+            st.error(f"주민등록 인구 API 호출 중 오류 발생: {response.status_code}\nURL: {response.url}\nResponse: {response.text}")
+            return None
+            
         data = response.json()
         
         if "admmSexdAgePpltn" in data:
             items = data["admmSexdAgePpltn"]["item"]
             return pd.DataFrame(items)
         else:
-            st.error(f"API 응답 형식이 올바르지 않거나 데이터가 없습니다: {data}")
+            st.error(f"API 응답에 데이터가 없습니다. (연월/지역 확인 필요)\nResponse: {data}")
             return None
     except Exception as e:
-        st.error(f"주민등록 인구 API 호출 중 오류 발생: {e}")
+        st.error(f"네트워크 또는 파싱 오류 발생: {e}")
         return None
 
 def process_population_df(df, min_age=0, max_age=100):
