@@ -1037,11 +1037,31 @@ def show_sample_design_system():
                         cvals = uploaded_pop[code_col].astype(str).str.strip()
                         
                         if design_level == "광역 시도 단위":
-                            full_display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("00000000") & (cvals != "0000000000")][reg_col].tolist()]
-                        elif design_level == "기초 시/군 단위":
-                            full_display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("000000") & ~cvals.str.endswith("00000000")][reg_col].tolist()]
-                        else: # 구/군 단위 (상세)
-                            full_display_list = [r.split('(')[0].strip() for r in uploaded_pop[cvals.str.endswith("00000") & ~cvals.str.endswith("00000000")][reg_col].tolist()]
+                            mask = cvals.str.endswith("00000000") & (cvals != "0000000000")
+                        elif design_level == "기초 시/군/구 단위":
+                            # 자식이 있는 부모는 남기고, 자식들은 제외
+                            sigungu_mask = cvals.str.endswith("00000") & ~cvals.str.endswith("00000000")
+                            sigungu_codes = cvals[sigungu_mask].unique()
+                            parents = [c for c in sigungu_codes if c.endswith("000000")]
+                            children = [c for c in sigungu_codes if not c.endswith("000000")]
+                            to_exclude = []
+                            for p in parents:
+                                if any(c.startswith(p[:4]) for c in children):
+                                    to_exclude.extend([c for c in children if c.startswith(p[:4])])
+                            mask = sigungu_mask & ~cvals.isin(to_exclude)
+                        else: # 시군구별 상세 단위
+                            # 자식이 있는 부모는 제외
+                            sigungu_mask = cvals.str.endswith("00000") & ~cvals.str.endswith("00000000")
+                            sigungu_codes = cvals[sigungu_mask].unique()
+                            parents = [c for c in sigungu_codes if c.endswith("000000")]
+                            children = [c for c in sigungu_codes if not c.endswith("000000")]
+                            to_exclude = []
+                            for p in parents:
+                                if any(c.startswith(p[:4]) for c in children):
+                                    to_exclude.append(p)
+                            mask = sigungu_mask & ~cvals.isin(to_exclude)
+
+                        full_display_list = [r.split('(')[0].strip() for r in uploaded_pop[mask][reg_col].tolist()]
                         
                         if sejong_merge and "세종특별자치시" in full_display_list:
                             full_display_list = [r for r in full_display_list if r != "세종특별자치시"]

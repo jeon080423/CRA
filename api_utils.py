@@ -235,17 +235,29 @@ def get_mois_region_levels(df):
     codes = df[code_col].astype(str).str.strip()
     
     levels = []
-    # 1. 광역 시도 (끝 8자리가 00000000)
+    # 1. 광역 시도
     if any(codes.str.endswith("00000000") & (codes != "0000000000")):
         levels.append("광역 시도 단위")
     
-    # 2. 기초 시/군 단위 (끝 6자리가 000000)
-    if any(codes.str.endswith("000000") & ~codes.str.endswith("00000000")):
-        levels.append("기초 시/군 단위")
-
-    # 3. 구/군 단위 (상세) (끝 5자리가 00000)
-    if any(codes.str.endswith("00000") & ~codes.str.endswith("000000")):
-        levels.append("구/군 단위 (상세)")
+    # 기초/상세를 구분하기 위해 '구가 있는 시'를 감지
+    # (끝 5자리가 00000인 코드 중, 상위 4자리는 같으면서 5번째 자리가 0인 것과 0이 아닌 것이 공존하면 상세 레벨 존재)
+    sigungu_codes = codes[codes.str.endswith("00000") & ~codes.str.endswith("00000000")]
+    if not sigungu_codes.empty:
+        levels.append("기초 시/군/구 단위")
+        
+        # 상세 레벨 존재 여부 확인: 41110(수원시)와 41111(장안구)가 모두 존재하는지
+        parents = sigungu_codes[sigungu_codes.str.endswith("000000")]
+        children = sigungu_codes[~sigungu_codes.str.endswith("000000")]
+        
+        has_sub_districts = False
+        for p in parents:
+            p_prefix = p[:4]
+            if any(children.str.startswith(p_prefix)):
+                has_sub_districts = True
+                break
+        
+        if has_sub_districts:
+            levels.append("시군구별 상세 단위")
         
     return levels
 
@@ -253,7 +265,7 @@ def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위",
                                   interval=10, include_sejong_in_chungnam=False,
                                   school_level_option=False):
     """MOIS 와이드 포맷 → 지역·성별·연령대 롱 포맷 변환.
-    level: "광역 시도 단위", "기초 시/군 단위", "구/군 단위 (상세)"
+    level: "광역 시도 단위", "기초 시/군/구 단위", "시군구별 상세 단위"
     """
     code_col = df.columns[0]
     region_col = df.columns[1]
@@ -266,27 +278,56 @@ def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위",
         df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
         df = df.groupby(region_col, as_index=False)[list(df.columns[2:])].sum()
 
-    rvals = df[region_col].astype(str)
-    cvals = df[code_col].astype(str)
+    df_filtered = df.copy()
+    df_filtered[code_col] = df_filtered[code_col].astype(str).str.strip()
+    cvals = df_filtered[code_col]
+    rvals = df_filtered[region_col].astype(str)
     
-    # 기본 필터: 전국계 및 무효 행 제외 (전국 코드는 0000000000)
+    # 기본 필터: 전국계 및 무효 행 제외
     mask = ~rvals.isin(["전", "전국", "nan"]) & ~cvals.str.startswith("0000")
     
     if level == "광역 시도 단위":
         mask &= cvals.str.endswith("00000000")
-    elif level == "기초 시/군 단위":
-        # 끝 6자리가 000000이고 8자리가 00000000은 아닌 행
-        mask &= cvals.str.endswith("000000") & ~cvals.str.endswith("00000000")
-    elif level == "구/군 단위 (상세)":
-        # 끝 5자리가 00000이고 6자리가 000000은 아닌 행 (구 단위)
-        # 단, 일부 시군구는 구가 없어도 5자리 코드를 쓸 수 있으므로 논리 보완
-        mask &= cvals.str.endswith("00000") & ~cvals.str.endswith("00000000")
-        # 레벨 3을 택했을 때, 하위 구가 있는 시(예: 수원시 41110)는 제외하고 구만 남김
-        # (코드의 5번째 자리가 0인 기초시 중 하위 구가 정의된 코드가 있으면 제외)
-        # 여기서는 단순하게 사용자가 '상세'를 원하면 5자리 단위의 모든 행을 가져오되 
-        # 나중에 사용자가 지역 선택에서 걸러낸다고 가정하거나 명칭 중복을 피함.
+    elif level == "기초 시/군/구 단위":
+        # 시군구(00000) 중, 하위 구(Child)가 있는 부모 시(Parent)는 남기고, 자식 구들은 제외
+        # 서울처럼 부모-자식 관계가 없으면 그냥 모든 구 포함
+        base_mask = cvals.str.endswith("00000") & ~cvals.str.endswith("00000000")
+        sigungu_codes = cvals[base_mask].unique()
+        
+        parents_with_children = []
+        children_to_exclude = []
+        
+        # 부모-자식 관계 분석
+        # (예: 41110 수원시는 41111 장안구의 부모)
+        parents = [c for c in sigungu_codes if c.endswith("000000")]
+        children = [c for c in sigungu_codes if not c.endswith("000000")]
+        
+        for p in parents:
+            p_prefix = p[:4]
+            if any(c.startswith(p_prefix) for c in children):
+                parents_with_children.append(p)
+                children_to_exclude.extend([c for c in children if c.startswith(p_prefix)])
+        
+        # 필터: 기본 시군구 중 자식 구들만 제외하면 '기초' 단위가 됨
+        mask &= base_mask & ~cvals.isin(children_to_exclude)
+        
+    elif level == "시군구별 상세 단위":
+        # 하위 구가 있는 시의 경우, 부모 시를 제외하고 자식 구들만 남김
+        base_mask = cvals.str.endswith("00000") & ~cvals.str.endswith("00000000")
+        sigungu_codes = cvals[base_mask].unique()
+        
+        parents_to_exclude = []
+        parents = [c for c in sigungu_codes if c.endswith("000000")]
+        children = [c for c in sigungu_codes if not c.endswith("000000")]
+        
+        for p in parents:
+            p_prefix = p[:4]
+            if any(c.startswith(p_prefix) for c in children):
+                parents_to_exclude.append(p)
+        
+        mask &= base_mask & ~cvals.isin(parents_to_exclude)
     
-    df = df[mask]
+    df = df_filtered[mask]
 
     if regions:
         # 지역명으로 시작하는 행만 필터링
