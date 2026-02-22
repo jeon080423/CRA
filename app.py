@@ -1367,64 +1367,63 @@ with st.sidebar:
             st.rerun()
         st.markdown("<hr>", unsafe_allow_html=True)
 
-    # API 키 상태
-    _keys = get_api_keys()
-    api_key = _keys[0] if _keys else None
-    if _keys:
-        st.success(f"API 키 {len(_keys)}개 연결됨", icon="✅")
-        st.caption(f"요청마다 {len(_keys)}개 키 중 랜덤 선택")
-    else:
-        st.error("API 키 없음 — Streamlit Secrets에 GEMINI_API_KEYS를 추가하세요.", icon="⚠️")
+    # [v4.17] 관리자 전용 시스템 도구 (shjeon에게만 노출)
+    if st.session_state.get("logged_in_user") == "shjeon":
+        # API 키 상태
+        _keys = get_api_keys()
+        if _keys:
+            st.success(f"API 키 {len(_keys)}개 연결됨", icon="✅")
+            st.caption(f"요청마다 {len(_keys)}개 키 중 랜덤 선택")
+        else:
+            st.error("API 키 없음 — Streamlit Secrets에 GEMINI_API_KEYS를 추가하세요.", icon="⚠️")
 
-    st.markdown("<hr>", unsafe_allow_html=True)
-    
-    # API 할당량 진단 (v2.9)
-    st.markdown('<div class="qx-section-label">진단 도구</div>', unsafe_allow_html=True)
-    if st.button("🔍 API 할당량 진단 시작", use_container_width=True, key="btn_diag"):
-        with st.expander("진단 결과", expanded=True):
-            diag_prog = st.progress(0, text="진단 대기 중...")
-            diag_status = st.empty()
-            
-            def diag_callback(curr, total, msg):
-                diag_prog.progress(curr/total, text=f"진단 중... ({curr}/{total})")
-                diag_status.caption(msg)
+        st.markdown("<hr>", unsafe_allow_html=True)
+        
+        # API 할당량 진단 (v2.9)
+        st.markdown('<div class="qx-section-label">진단 도구</div>', unsafe_allow_html=True)
+        if st.button("🔍 API 할당량 진단 시작", use_container_width=True, key="btn_diag"):
+            with st.expander("진단 결과", expanded=True):
+                diag_prog = st.progress(0, text="진단 대기 중...")
+                diag_status = st.empty()
                 
-            with st.spinner("모든 키와 모델 상태를 확인 중입니다..."):
-                results = check_key_quotas(progress_callback=diag_callback)
-                diag_prog.empty()
-                diag_status.empty()
-                
-                if results:
-                    import pandas as pd
-                    df = pd.DataFrame(results)
-                    st.dataframe(
-                        df, 
-                        hide_index=True,
-                        column_config={
-                            "상태": st.column_config.TextColumn("상태", width="medium"),
-                            "상세 내용": st.column_config.TextColumn("상세 내용", width="large"),
-                        },
-                        use_container_width=True
-                    )
+                def diag_callback(curr, total, msg):
+                    diag_prog.progress(curr/total, text=f"진단 중... ({curr}/{total})")
+                    diag_status.caption(msg)
                     
-                    ok_count = sum(1 for r in results if "정상" in r["상태"])
+                with st.spinner("모든 키와 모델 상태를 확인 중입니다..."):
+                    results = check_key_quotas(progress_callback=diag_callback)
+                    diag_prog.empty()
+                    diag_status.empty()
                     
-                    # INFO 행에서 발견된 모델 목록 추출 및 표시
-                    info_row = next((r for r in results if r["순번"] == "INFO"), None)
-                    if info_row:
-                        st.info(f"🔍 **발견된 가용 모델 ID 목록:**\n\n`{info_row['상세 내용']}`")
-                        # 분석에 사용 가능한 후보군만 따로 강조
-                        candidates = [m for m in info_row['상세 내용'].split(", ") if "flash" in m or "pro" in m]
-                        st.caption(f"이 중 분석 도구에서 활용 가능한 모델: {', '.join(candidates)}")
+                    if results:
+                        import pandas as pd
+                        df = pd.DataFrame(results)
+                        st.dataframe(
+                            df, 
+                            hide_index=True,
+                            column_config={
+                                "상태": st.column_config.TextColumn("상태", width="medium"),
+                                "상세 내용": st.column_config.TextColumn("상세 내용", width="large"),
+                            },
+                            use_container_width=True
+                        )
+                        
+                        ok_count = sum(1 for r in results if "정상" in r["상태"])
+                        
+                        # INFO 행에서 발견된 모델 목록 추출 및 표시
+                        info_row = next((r for r in results if r["순번"] == "INFO"), None)
+                        if info_row:
+                            st.info(f"🔍 **발견된 가용 모델 ID 목록:**\n\n`{info_row['상세 내용']}`")
+                            candidates = [m for m in info_row['상세 내용'].split(", ") if "flash" in m or "pro" in m]
+                            st.caption(f"이 중 분석 도구에서 활용 가능한 모델: {', '.join(candidates)}")
 
-                    st.success(f"진단 완료: 총 {len(results)-1 if info_row else len(results)}개 조합 중 {ok_count}개 정상")
-
-                    if ok_count == 0:
-                        st.error("사용 가능한 키/모델 조합이 없습니다. API 키를 교체해 주세요.")
-                else:
-                    st.warning("진단할 API 키가 없습니다.")
-    
-    st.markdown("<hr>", unsafe_allow_html=True)
+                        st.success(f"진단 완료: 총 {len(results)-1 if info_row else len(results)}개 조합 중 {ok_count}개 정상")
+                        if ok_count == 0:
+                            st.error("사용 가능한 키/모델 조합이 없습니다. API 키를 교체해 주세요.")
+                    else:
+                        st.warning("진단할 API 키가 없습니다.")
+        
+        st.markdown("<hr>", unsafe_allow_html=True)
 
     # 모델 선택
     st.markdown('<div class="qx-section-label">AI 모델 설정</div>', unsafe_allow_html=True)
