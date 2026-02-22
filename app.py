@@ -1210,14 +1210,46 @@ def show_sample_design_system():
             # 피벗표 Excel 다운로드
             output_pivot = io.BytesIO()
             with pd.ExcelWriter(output_pivot, engine='xlsxwriter') as writer:
-                pivot_int.to_excel(writer, sheet_name='표본배분_피벗')
-                res_df.to_excel(writer, index=False, sheet_name='표본배분_상세')
                 wb = writer.book
-                ws = writer.sheets['표본배분_피벗']
-                # 총계 행 노란색
-                yellow_fmt = wb.add_format({'bg_color': '#FFF176', 'bold': True})
-                last_row = len(pivot_int)
-                ws.set_row(last_row, None, yellow_fmt)
+
+                # ── 공통 포맷 정의 (음영 없음 + 검정 테두리) ─────────────
+                border = {'border': 1, 'border_color': '#000000', 'bg_color': '#FFFFFF'}
+                fmt_normal   = wb.add_format({**border})
+                fmt_header   = wb.add_format({**border, 'bold': True, 'align': 'center', 'valign': 'vcenter'})
+                fmt_total_row = wb.add_format({**border, 'bold': True})
+                fmt_index    = wb.add_format({**border, 'bold': False})
+
+                # ── 피벗 시트 ──────────────────────────────────────────────
+                ws_piv = wb.add_worksheet('표본배분_피벗')
+
+                # 헤더 행 (0행): 인덱스명 + 열명
+                ws_piv.write(0, 0, '지역 구분', fmt_header)
+                for ci, col in enumerate(pivot_int.columns):
+                    ws_piv.write(0, ci + 1, str(col), fmt_header)
+
+                # 데이터 행
+                for ri, (idx, row_data) in enumerate(pivot_int.iterrows()):
+                    row_num = ri + 1
+                    is_total = str(idx) == '총계'
+                    idx_fmt  = fmt_total_row if is_total else fmt_index
+                    cell_fmt = fmt_total_row if is_total else fmt_normal
+                    ws_piv.write(row_num, 0, str(idx), idx_fmt)
+                    for ci, val in enumerate(row_data):
+                        ws_piv.write(row_num, ci + 1, int(val), cell_fmt)
+
+                # 열 너비 조정
+                ws_piv.set_column(0, 0, 18)
+                ws_piv.set_column(1, len(pivot_int.columns), 9)
+
+                # ── 상세 시트 ──────────────────────────────────────────────
+                ws_det = wb.add_worksheet('표본배분_상세')
+                for ci, col in enumerate(res_df.columns):
+                    ws_det.write(0, ci, str(col), fmt_header)
+                for ri, row_data in enumerate(res_df.itertuples(index=False), start=1):
+                    for ci, val in enumerate(row_data):
+                        ws_det.write(ri, ci, val, fmt_normal)
+                ws_det.set_column(0, len(res_df.columns) - 1, 12)
+
             output_pivot.seek(0)
             st.download_button(
                 "📥 표본 설계 결과표 다운로드 (Excel)",
@@ -1240,7 +1272,17 @@ def show_sample_design_system():
             )
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                res_df.to_excel(writer, index=False, sheet_name='Sample_Design')
+                wb2 = writer.book
+                border2 = {'border': 1, 'border_color': '#000000', 'bg_color': '#FFFFFF'}
+                fmt_h2 = wb2.add_format({**border2, 'bold': True, 'align': 'center'})
+                fmt_d2 = wb2.add_format({**border2})
+                ws2 = wb2.add_worksheet('표본배분_상세')
+                for ci, col in enumerate(res_df.columns):
+                    ws2.write(0, ci, str(col), fmt_h2)
+                for ri, row_data in enumerate(res_df.itertuples(index=False), start=1):
+                    for ci, val in enumerate(row_data):
+                        ws2.write(ri, ci, val, fmt_d2)
+                ws2.set_column(0, len(res_df.columns) - 1, 12)
             output.seek(0)
             st.download_button(
                 "📥 상세 표본 설계 내역 다운로드 (Excel)",
@@ -1250,6 +1292,7 @@ def show_sample_design_system():
                 use_container_width=True,
                 key="dl_sample_design_final"
             )
+
 
         # 시각화
         st.markdown("##### 📈 시각화")
