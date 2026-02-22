@@ -948,12 +948,11 @@ def show_sample_design_system():
     with tab_file:
         # ── [v6.14] 다운로드 가이드 ──────────────────────────────────
         with st.expander("📥 행정안전부 인구통계 데이터 다운로드 방법", expanded=False):
-            g_img_col, g_txt_col = st.columns([1, 1], gap="large")
+            g_img_col, g_txt_col = st.columns([0.5, 1.5], gap="large")
             with g_img_col:
                 st.image(
-                    "https://jumin.mois.go.kr/images/common/img_main_banner.png",
-                    width=None,
-                    caption="행정안전부 주민등록 인구통계",
+                    "mois_guide.png",
+                    caption="행정안전부 주민등록 인구통계 설정 예시",
                     use_container_width=True
                 )
             with g_txt_col:
