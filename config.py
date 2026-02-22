@@ -79,7 +79,7 @@ AUTO_MODE_LABEL = "🤖 자동 최적화 (권장)"
 GENERATION_CONFIG = {
     "temperature": 0.2,
     "top_p": 0.95,
-    "max_output_tokens": 4096,   # 8192 → 4096: 속도 개선 (단계별 출력 충분)
+    "max_output_tokens": 8192,   # 4096 -> 8192: 문항이 많은 설문지 분석 시 끊김 방지
 }
 
 # 세이프티 설정 (리서치 보고서 분석을 위해 차단 최소화)
