@@ -26,6 +26,7 @@ import numpy as np
 from data_cleaner import DataImputer, WeightCalculator, DataAugmentor
 from codebook_utils import CodebookParser
 import plotly.express as px
+import api_utils
 from usage_tracker import UsageTracker
 
 # ── 이용 통계 트래커 초기화
@@ -905,48 +906,82 @@ def show_sample_design_system():
 
     st.markdown('<div class="qx-section-label">1. 모집단 데이터 입력 (인구 현황)</div>', unsafe_allow_html=True)
     
-    col_u1, col_u2 = st.columns([1, 1], gap="medium")
-    
-    uploaded_pop = None
-    with col_u1:
-        st.markdown("##### 📁 파일 업로드 (Excel, CSV)")
-        pop_file = st.file_uploader("인구 통계 파일 업로드", type=["xlsx", "csv"], key="sample_pop_file")
-        if pop_file:
-            try:
-                if pop_file.name.endswith(".csv"):
-                    uploaded_pop = pd.read_csv(pop_file)
-                else:
-                    uploaded_pop = pd.read_excel(pop_file)
-                st.success(f"'{pop_file.name}' 로드 완료 ({len(uploaded_pop)}개 행)")
-            except Exception as e:
-                st.error(f"파일 로드 중 오류: {e}")
+    tab_api, tab_file, tab_manual = st.tabs(["🌐 API 실시간 조회", "📁 파일 업로드", "✍️ 직접 입력"])
+    df_raw = None
 
-    with col_u2:
+    with tab_api:
+        st.markdown("##### 🏛️ 행정안전부 주민등록 인구 API 연동")
+        c_api1, c_api2, c_api3 = st.columns(3)
+        with c_api1:
+            sido_name = st.selectbox("지역(시도) 선택", options=list(api_utils.SIDO_MAP.keys()), index=1)
+            sido_cd = api_utils.SIDO_MAP[sido_name]
+        with c_api2:
+            age_interval = st.selectbox("연령 구분 단위", options=[1, 5, 10], index=2, format_func=lambda x: f"{x}세 단위")
+        with c_api3:
+            age_range = st.slider("분석 연령대 설정", 0, 100, (18, 69))
+        
+        if st.button("🔍 실시간 인구 데이터 가져오기", use_container_width=True, type="secondary"):
+            with st.spinner(f"{sido_name} 인구 데이터를 API로 수신 중..."):
+                raw_api_df = api_utils.fetch_population_data(sido_cd=sido_cd)
+                if raw_api_df is not None:
+                    processed_df = api_utils.process_population_df(raw_api_df, min_age=age_range[0], max_age=age_range[1])
+                    if processed_df is not None and not processed_df.empty:
+                        st.session_state["api_pop_df"] = api_utils.aggregate_by_groups(processed_df, interval=age_interval)
+                        st.success(f"{sido_name} 데이터 수신 및 {age_range[0]}세-{age_range[1]}세 필터링 완료 ({age_interval}세 단위)")
+                    else:
+                        st.warning("해당 조건에 맞는 인구 데이터가 없습니다.")
+
+        if "api_pop_df" in st.session_state:
+            st.dataframe(st.session_state["api_pop_df"], hide_index=True, use_container_width=True)
+            if st.button("✅ 위 데이터를 모집단으로 확정", use_container_width=True):
+                st.session_state["pop_source_df"] = st.session_state["api_pop_df"]
+                st.rerun()
+
+    with tab_file:
+        col_u1, col_u2 = st.columns([1, 1], gap="medium")
+        uploaded_pop = None
+        with col_u1:
+            st.markdown("##### 📁 파일 업로드 (Excel, CSV)")
+            pop_file = st.file_uploader("인구 통계 파일 업로드", type=["xlsx", "csv"], key="sample_pop_file")
+            if pop_file:
+                try:
+                    if pop_file.name.endswith(".csv"):
+                        uploaded_pop = pd.read_csv(pop_file)
+                    else:
+                        uploaded_pop = pd.read_excel(pop_file)
+                    st.success(f"'{pop_file.name}' 로드 완료 ({len(uploaded_pop)}개 행)")
+                except Exception as e:
+                    st.error(f"파일 로드 중 오류: {e}")
+
+        if uploaded_pop is not None:
+            st.dataframe(uploaded_pop.head(5), hide_index=True, use_container_width=True)
+            if st.button("✅ 업로드 파일을 모집단으로 확정", use_container_width=True):
+                st.session_state["pop_source_df"] = uploaded_pop
+                st.rerun()
+
+    with tab_manual:
         st.markdown("##### ✍️ 직접 입력 / 예시 데이터")
-        # 다차원 예시 제공
         default_data = "지역, 성별, 연령대, 인구수\n서울, 남, 20대, 650000\n서울, 여, 20대, 680000\n부산, 남, 20대, 210000\n부산, 여, 20대, 220000\n인천, 남, 20대, 195000\n인천, 여, 20대, 198000"
         pop_input = st.text_area(
             "데이터를 CSV 형식으로 입력하세요", 
-            value=default_data if not uploaded_pop else "",
+            value=default_data,
             height=200,
             help="첫 줄에 헤더(지역, 성별 등)를 포함하여 입력하세요."
         )
+        if st.button("✅ 입력 데이터를 모집단으로 확정", use_container_width=True):
+            try:
+                import io
+                st.session_state["pop_source_df"] = pd.read_csv(io.StringIO(pop_input.strip()), skipinitialspace=True)
+                st.rerun()
+            except Exception as e:
+                st.error(f"입력 데이터 파싱 오류: {e}")
 
-    # 데이터 프레임 구성
-    df_raw = None
-    if uploaded_pop is not None:
-        df_raw = uploaded_pop
-    elif pop_input.strip():
-        try:
-            import io
-            df_raw = pd.read_csv(io.StringIO(pop_input.strip()), skipinitialspace=True)
-        except Exception as e:
-            st.error(f"입력 데이터 파싱 오류: {e}")
-            return
-
-    if df_raw is None or df_raw.empty:
-        st.info("모집단 데이터를 입력하거나 파일을 업로드해 주세요.")
+    # 최종 모집단 데이터 확정 확인
+    if "pop_source_df" not in st.session_state:
+        st.info("상단 탭 중 하나를 선택하여 모집단 인구 데이터를 로드하고 '확정' 버튼을 클릭해 주세요.")
         return
+
+    df_raw = st.session_state["pop_source_df"]
 
     # 컬럼 설정 (인구수 컬럼 자동 감지 또는 마지막 컬럼 사용)
     cols = df_raw.columns.tolist()
