@@ -1280,6 +1280,7 @@ def show_sample_design_system():
     if "sample_design_df" in st.session_state:
         st.markdown('<div class="qx-section-label">3. 표본 할당 결과 및 정밀 조정</div>', unsafe_allow_html=True)
         res_df = st.session_state["sample_design_df"]
+        meta = st.session_state["sample_design_meta"]
         
         # [v6.19] 수동 정밀 조정 기능 (Data Editor)
         with st.expander("📝 세포별 정밀 수동 가감 (Manual Tuning)", expanded=False):
