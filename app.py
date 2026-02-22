@@ -810,13 +810,29 @@ def show_questionnaire_optimization_system():
         - **상호배타성:** 보기 간에 중복이 있거나 빠진 항목이 없는가?
         """)
 
-    st.markdown('<div class="qx-section-label">1. 설문 문항 입력</div>', unsafe_allow_html=True)
+    st.markdown('<div class="qx-section-label">1. 설문지 업로드 및 텍스트 입력</div>', unsafe_allow_html=True)
+    
+    q_file = st.file_uploader("설문지 파일 업로드 (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"], key="q_opt_file_up")
+    
+    # 새로운 파일이 업로드된 경우 텍스트 추출
+    if q_file and q_file.name != st.session_state.get("q_opt_file_name"):
+        with st.spinner("설문지 텍스트를 추출하는 중..."):
+            from config import MAX_TEXT_CHARS
+            text, _ = extract_text(q_file)
+            if text:
+                st.session_state["q_opt_input_text"] = truncate_text(text, MAX_TEXT_CHARS)
+                st.session_state["q_opt_file_name"] = q_file.name
+                st.success(f"'{q_file.name}'에서 텍스트를 성공적으로 가져왔습니다.")
+
     q_text = st.text_area(
-        "분석할 설문 문항을 입력하세요", 
-        height=300, 
-        placeholder="예: Q1. 최근 정부의 부동산 정책에 대해 얼마나 만족하십니까?\n1) 매우 만족  2) 만족  3) 보통  4) 불만족  5) 매우 불만족",
-        help="문항 번호를 포함하여 설문 내용을 자유롭게 입력하세요."
+        "분석할 설문 문항 (직접 입력하거나 위에서 파일을 업로드하세요)", 
+        value=st.session_state.get("q_opt_input_text", ""),
+        height=350, 
+        placeholder="예: Q1. 귀하는 본 서비스에 대해 얼마나 만족하십니까?\n1) 매우 만족  2) 만족  3) 보통  4) 불만족  5) 매우 불만족",
+        help="파일을 업로드하면 내용이 자동으로 채워집니다. 직접 수정도 가능합니다."
     )
+    # 직접 수정한 내용을 세션 상태에 동기화
+    st.session_state["q_opt_input_text"] = q_text
 
     if st.button("🚀 AI 설계 최적화 시작", type="primary", use_container_width=True):
         if not q_text.strip():
