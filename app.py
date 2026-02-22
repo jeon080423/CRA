@@ -921,7 +921,11 @@ def show_sample_design_system():
             3. 로그인 및 활용 신청 후 발급된 **'인증키'**를 복사하여 아래 입력란에 붙여넣으세요.
             * 공공데이터포털(data.go.kr)에서 발급받은 '주민등록 인구현황' 서비스키도 사용 가능합니다.
             """)
-            st.image("https://raw.githubusercontent.com/jeon080423/CRA/main/kosis_guide.png", caption="KOSIS OPEN API 인증키 신청 가이드", use_container_width=True)
+            
+            # [v6.6] 이미지 60% 축소 (컬럼 활용)
+            img_c1, img_c2 = st.columns([0.6, 0.4])
+            with img_c1:
+                st.image("https://raw.githubusercontent.com/jeon080423/CRA/main/kosis_guide.png", caption="KOSIS OPEN API 인증키 신청 가이드", use_container_width=True)
             user_key = st.text_input(
                 "API 인증키 입력", 
                 value=st.session_state.get("user_api_key", ""), 
