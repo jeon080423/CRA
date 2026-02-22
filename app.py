@@ -703,14 +703,28 @@ def show_unit_nonresponse_system():
         fig.update_traces(marker_color="#0F6CBD")
         st.plotly_chart(fig, use_container_width=True)
 
-        # 다운로드
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            st.session_state["weighted_df"].to_excel(writer, index=False, sheet_name='WeightedData')
-        output.seek(0)
+        # [v4.9] 리포트 및 Raw Data 분리 다운로드
+        report_output = io.BytesIO()
+        with pd.ExcelWriter(report_output, engine='xlsxwriter') as writer:
+            st.session_state["weighted_df"].to_excel(writer, index=False, sheet_name='Weighted_Data')
+            # 진단 정보 추가 (명사형 요약)
+            diag_df = pd.DataFrame([st.session_state["weight_diag"]]).T
+            diag_df.columns = ["통계치"]
+            diag_df.to_excel(writer, index=True, sheet_name='Diagnostics')
+        report_output.seek(0)
         
-        st.download_button("📥 가중치 포함 데이터 다운로드 (Excel)", data=output, 
-                           file_name=f"가중치보정_{df_file.name}", use_container_width=True)
+        raw_output = io.BytesIO()
+        with pd.ExcelWriter(raw_output, engine='xlsxwriter') as writer:
+            st.session_state["weighted_df"].to_excel(writer, index=False, sheet_name='Raw_Data')
+        raw_output.seek(0)
+
+        col_dl1, col_dl2 = st.columns(2)
+        with col_dl1:
+            st.download_button("� 가중치 리포트 다운로드 (Excel)", data=report_output, file_name=f"가중치리포트_{df_file.name}", 
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="dl_weight_report")
+        with col_dl2:
+            st.download_button("📥 최종 분석용 Raw Data 다운로드", data=raw_output, file_name=f"최종데이터_{df_file.name}", 
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="dl_weight_raw")
 
 
 def show_outlier_inspection_system(mode="outlier"):
@@ -1170,13 +1184,26 @@ def show_outlier_inspection_system(mode="outlier"):
             method_map = {row['인덱스']: row['적용방법'] for row in log_list if row['변수명'] == col}
             export_df[f"{col}_보완방법"] = export_df.index.map(lambda x: method_map.get(x, ""))
 
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            export_df.to_excel(writer, index=False, sheet_name='Result')
-            if not log_df.empty: log_df.to_excel(writer, index=False, sheet_name='AuditLog')
-        output.seek(0)
+        # [v4.9] 리포트 및 Raw Data 분리 다운로드
+        report_output = io.BytesIO()
+        with pd.ExcelWriter(report_output, engine='xlsxwriter') as writer:
+            export_df.to_excel(writer, index=False, sheet_name='Audit_Report')
+            if not log_df.empty: 
+                log_df.to_excel(writer, index=False, sheet_name='Audit_Log')
+        report_output.seek(0)
         
-        st.download_button("📥 보완 데이터 다운로드 (Excel)", data=output, file_name=f"보완완료_{df_file.name}", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key=f"dl_btn_{mode}")
+        raw_output = io.BytesIO()
+        with pd.ExcelWriter(raw_output, engine='xlsxwriter') as writer:
+            adj_df.to_excel(writer, index=False, sheet_name='Raw_Data')
+        raw_output.seek(0)
+
+        col_exp1, col_exp2 = st.columns(2)
+        with col_exp1:
+            st.download_button("📝 감사 리포트 다운로드 (Excel)", data=report_output, file_name=f"보완리포트_{df_file.name}", 
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key=f"dl_report_{mode}")
+        with col_exp2:
+            st.download_button("📥 최종 분석용 Raw Data 다운로드", data=raw_output, file_name=f"최종데이터_{df_file.name}", 
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key=f"dl_raw_{mode}")
         
         with st.expander("📝 상세 보완 내역 (Log)", expanded=True):
             st.dataframe(log_df, use_container_width=True, hide_index=True)
