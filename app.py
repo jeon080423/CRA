@@ -1244,8 +1244,12 @@ with st.sidebar:
         "보고서 검수 AI Tools"
     ]
     
-    # [v4.10] 특정 사용자(metrix26) 권한 제어 - 섹션 숨김
-    if st.session_state.get("logged_in_user") == "metrix26":
+    # [v4.11] 화이트리스트 기반 권한 제어 - 'AI 단위 무응답 검토' 섹션
+    # (shjeon, metirix11 아이디만 접근 허용, 비로그인 시 숨김)
+    allowed_for_nonresponse = ["shjeon", "metirix11"]
+    current_user = st.session_state.get("logged_in_user", "")
+    
+    if current_user not in allowed_for_nonresponse:
         if "AI 단위 무응답 검토" in menu_options:
             menu_options.remove("AI 단위 무응답 검토")
     
