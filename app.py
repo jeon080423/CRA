@@ -906,144 +906,169 @@ def show_sample_design_system():
 
     st.markdown('<div class="qx-section-label">1. 모집단 데이터 입력 (인구 현황)</div>', unsafe_allow_html=True)
     
-    tab_api, tab_file, tab_manual = st.tabs(["🌐 API 실시간 조회", "📁 파일 업로드", "✍️ 직접 입력"])
+    tab_file, tab_manual = st.tabs(["📁 파일 업로드", "✍️ 직접 입력"])
     df_raw = None
 
-    with tab_api:
-        st.markdown("##### 🏛️ 행정안전부 주민등록 인구 API 연동")
-        
-        # [v6.1] API 키 입력 및 안내
-        # [v6.10] 공공데이터포털(data.go.kr) 전용 안내로 변경
-        with st.expander("🔑 [공공데이터포털] API 인증키(Service Key) 발급 및 중요 확인사항", expanded=False):
-            st.info("""
-            **⚠️ 중요: KOSIS 인증키와 다릅니다!**
-            현재 연동된 API는 행정안전부의 **공공데이터포털(data.go.kr)** 서비스입니다.
-            **KOSIS(kosis.kr)**에서 발급받은 32자리 인증키는 작동하지 않으므로 주의해 주세요.
 
-            **API 인증키(서비스키) 발급 방법:**
-            1. **공공데이터포털**([data.go.kr](https://www.data.go.kr)) 접속 및 로그인
-            2. **'행정안전부_주민등록 인구현황'** 검색 후 활용신청
-            3. 마이페이지 > 오픈API > 활용신청 내역에서 **'일반 인증키(Encoding)'**를 복사하여 입력하세요.
-            """)
-        
-        st.markdown("""
-            <style>
-            /* API 키 입력 칸 강조 스타일 */
-            div[data-baseweb="input"] {
-                border: 2px solid #0366d6 !important;
-                border-radius: 4px;
-            }
-            </style>
-        """, unsafe_allow_html=True)
-        
-        user_key = st.text_input(
-            "🔑 API 인증키 입력", 
-            value=st.session_state.get("user_api_key", ""), 
-            type="password",
-            help="발급받은 인증키를 입력하세요. 입력하지 않으면 시스템 기본 키를 시도합니다."
-        )
-        if user_key:
-            st.session_state["user_api_key"] = user_key
-
-        c_api1, c_api2, c_api3 = st.columns([2, 1, 1.5])
-        with c_api1:
-            sido_names = st.multiselect(
-                "분석 대상 지역(시도) 선택", 
-                options=list(api_utils.SIDO_MAP.keys()), 
-                default=["서울특별시"],
-                help="17개 광역 시도 중 원하는 지역을 복수 선택할 수 있습니다."
-            )
-        with c_api2:
-            age_interval = st.selectbox("연령 단위", options=[1, 5, 10], index=2, format_func=lambda x: f"{x}세")
-        with c_api3:
-            age_range = st.slider("연령 범위", 0, 100, (18, 69))
-        
-        if st.button("🔍 실시간 인구 데이터 가져오기", use_container_width=True, type="secondary"):
-            if not sido_names:
-                st.warning("최소 하나 이상의 지역을 선택해 주세요.")
-            else:
-                combined_processed_df = pd.DataFrame()
-                current_key = st.session_state.get("user_api_key")
-                target_ym = api_utils.get_latest_ym()
-                
-                with st.spinner(f"선택한 {len(sido_names)}개 지역의 데이터를 수신 중..."):
-                    for s_name in sido_names:
-                        s_cd = api_utils.SIDO_MAP[s_name]
-                        raw_api_df = api_utils.fetch_population_data(sido_cd=s_cd, ym=target_ym, service_key=current_key)
-                        
-                        if raw_api_df is not None:
-                            p_df = api_utils.process_population_df(raw_api_df, min_age=age_range[0], max_age=age_range[1])
-                            if p_df is not None and not p_df.empty:
-                                combined_processed_df = pd.concat([combined_processed_df, p_df], ignore_index=True)
-                
-                if not combined_processed_df.empty:
-                    st.session_state["api_pop_df"] = api_utils.aggregate_by_groups(combined_processed_df, interval=age_interval)
-                    st.success(f"{len(sido_names)}개 지역 ({target_ym} 기준) 데이터 수집 및 가공 완료")
-                else:
-                    st.error("데이터를 불러오지 못했습니다. API 키 또는 지역 설정을 확인하세요.")
-
-        if "api_pop_df" in st.session_state:
-            st.dataframe(st.session_state["api_pop_df"], hide_index=True, use_container_width=True)
-            if st.button("✅ 위 데이터를 모집단으로 확정", use_container_width=True):
-                st.session_state["pop_source_df"] = st.session_state["api_pop_df"]
-                st.rerun()
 
     with tab_file:
-        col_u1, col_u2 = st.columns([1, 1], gap="medium")
-        uploaded_pop = None
-        with col_u1:
-            st.markdown("##### 📁 파일 업로드 (Excel, CSV)")
-            pop_file = st.file_uploader("인구 통계 파일 업로드", type=["xlsx", "csv"], key="sample_pop_file")
-            if pop_file:
-                try:
-                    if pop_file.name.endswith(".csv"):
-                        uploaded_pop = pd.read_csv(pop_file)
-                    else:
-                        uploaded_pop = pd.read_excel(pop_file)
+        # ── [v6.14] 다운로드 가이드 ──────────────────────────────────
+        with st.expander("📥 행정안전부 인구통계 데이터 다운로드 방법", expanded=False):
+            g_img_col, g_txt_col = st.columns([1, 1], gap="large")
+            with g_img_col:
+                st.image(
+                    "https://jumin.mois.go.kr/images/common/img_main_banner.png",
+                    width=None,
+                    caption="행정안전부 주민등록 인구통계",
+                    use_container_width=True
+                )
+            with g_txt_col:
+                st.markdown("""
+**🌐 사이트:** [jumin.mois.go.kr](https://jumin.mois.go.kr) → **행정동별 연령별 인구현황**
+
+| 단계 | 내용 |
+|:---:|------|
+| ① | 좌측 메뉴 **연령별 인구현황** 클릭 |
+| ② | **연령 구분 단위** 선택 (1세 / 5세 / 10세) |
+| ③ | **연령 조회 범위** 설정 (예: 0세 ~ 100세) |
+| ④ | **검색** 버튼 클릭 |
+| ⑤ | 하단 **xlsx 파일 다운로드** 클릭 후 저장 |
+
+> 💡 다운로드한 파일을 그대로 업로드하면 지역·성별·연령대 자동 파싱됩니다.
+                """)
+
+        # ── 파일 업로드 ──────────────────────────────────────────────
+        st.markdown("##### 📁 파일 업로드 (Excel, CSV)")
+        pop_file = st.file_uploader(
+            "인구 통계 파일 업로드 — 행정안전부 xlsx 또는 일반 CSV/Excel",
+            type=["xlsx", "csv"], key="sample_pop_file"
+        )
+
+        if pop_file:
+            from api_utils import (detect_and_load_mois_excel,
+                                   parse_mois_excel_with_gender, SIDO_LIST)
+            is_mois = False
+            uploaded_pop = None
+            pop_long_df = None
+
+            try:
+                if pop_file.name.endswith(".csv"):
+                    uploaded_pop = pd.read_csv(pop_file)
+                else:
+                    uploaded_pop, is_mois = detect_and_load_mois_excel(pop_file)
+
+                if is_mois:
+                    st.success(f"✅ 행정안전부 연령별 인구현황 형식 자동 감지! ({len(uploaded_pop)}개 지역 행, {len(uploaded_pop.columns)}개 컬럼)")
+                else:
                     st.success(f"'{pop_file.name}' 로드 완료 ({len(uploaded_pop)}개 행)")
-                except Exception as e:
-                    st.error(f"파일 로드 중 오류: {e}")
+            except Exception as e:
+                st.error(f"파일 로드 중 오류: {e}")
 
-        if uploaded_pop is not None:
-            # [v6.13] 연령대 및 성별 필터 옵션
-            with st.expander("🔧 데이터 필터 설정 (연령대 / 성별)", expanded=True):
-                fu1, fu2, fu3 = st.columns([1, 1, 1])
-                with fu1:
-                    # 연령대 컬럼 자동 감지
-                    age_col_candidates = [c for c in uploaded_pop.columns if any(kw in str(c) for kw in ["연령", "age", "나이", "Age"])]
-                    age_col_file = st.selectbox(
-                        "연령대 컬럼 선택",
-                        options=["(없음)"] + uploaded_pop.columns.tolist(),
-                        index=(1 + uploaded_pop.columns.tolist().index(age_col_candidates[0])) if age_col_candidates else 0,
-                        key="age_col_file"
-                    )
-                with fu2:
-                    # 성별 컬럼 자동 감지
-                    gender_col_candidates = [c for c in uploaded_pop.columns if any(kw in str(c) for kw in ["성별", "gender", "sex", "성"])]
-                    gender_col_file = st.selectbox(
-                        "성별 컬럼 선택",
-                        options=["(없음)"] + uploaded_pop.columns.tolist(),
-                        index=(1 + uploaded_pop.columns.tolist().index(gender_col_candidates[0])) if gender_col_candidates else 0,
-                        key="gender_col_file"
-                    )
-                with fu3:
-                    # 성별 값 선택 (컬럼 선택 시)
-                    if gender_col_file != "(없음)":
-                        gender_vals = uploaded_pop[gender_col_file].dropna().unique().tolist()
-                        selected_genders = st.multiselect("포함할 성별 값", options=gender_vals, default=gender_vals, key="gender_vals_file")
-                    else:
-                        selected_genders = []
+            if uploaded_pop is not None:
+                if is_mois:
+                    # ── MOIS 전용 설정 패널 ──────────────────────────
+                    with st.expander("🔧 MOIS 데이터 필터 및 집계 설정", expanded=True):
+                        st.markdown("**📍 지역 선택**")
+                        chk_col0, chk_col1 = st.columns([1, 2])
+                        with chk_col0:
+                            all_regions = st.checkbox("전체 선택", value=True, key="mois_all_regions")
+                        with chk_col1:
+                            sejong_merge = st.checkbox(
+                                "세종특별자치시 → 충청남도 합산",
+                                value=False, key="mois_sejong_merge"
+                            )
 
-            # 필터 적용
-            filtered_pop = uploaded_pop.copy()
-            if gender_col_file != "(없음)" and selected_genders:
-                filtered_pop = filtered_pop[filtered_pop[gender_col_file].isin(selected_genders)]
+                        if not all_regions:
+                            display_list = [s for s in SIDO_LIST if s != "세종특별자치시"] if sejong_merge else SIDO_LIST
+                            r_cols = st.columns(4)
+                            selected_regions = []
+                            for i, region in enumerate(display_list):
+                                with r_cols[i % 4]:
+                                    if st.checkbox(region, value=True, key=f"mois_r_{region}"):
+                                        selected_regions.append(region)
+                        else:
+                            selected_regions = None  # None = 전체
 
-            st.markdown(f"**미리보기** (필터 후 {len(filtered_pop)}행)")
-            st.dataframe(filtered_pop.head(10), hide_index=True, use_container_width=True)
-            if st.button("✅ 업로드 파일을 모집단으로 확정", use_container_width=True):
-                st.session_state["pop_source_df"] = filtered_pop
-                st.rerun()
+                        st.markdown("**📊 연령 설정**")
+                        fa1, fa2 = st.columns(2)
+                        with fa1:
+                            age_interval = st.selectbox(
+                                "연령 구분 단위",
+                                options=[1, 5, 10],
+                                index=2,
+                                format_func=lambda x: f"{x}세 단위",
+                                key="mois_age_interval"
+                            )
+                        with fa2:
+                            age_range = st.slider(
+                                "연령 범위",
+                                min_value=0, max_value=100,
+                                value=(19, 100),
+                                step=1,
+                                key="mois_age_range"
+                            )
+
+                    # MOIS 파싱
+                    try:
+                        pop_long_df = parse_mois_excel_with_gender(
+                            uploaded_pop,
+                            regions=selected_regions,
+                            min_age=age_range[0],
+                            max_age=age_range[1],
+                            interval=age_interval,
+                            include_sejong_in_chungnam=sejong_merge
+                        )
+                        if pop_long_df is not None:
+                            st.markdown(f"**📋 파싱 결과 미리보기** — {len(pop_long_df)}개 층, 총인구 {pop_long_df['인구수'].sum():,}명")
+                            st.dataframe(pop_long_df.head(15), hide_index=True, use_container_width=True)
+                            # 확정 버튼
+                            if st.button("✅ 파싱 결과를 모집단으로 확정", use_container_width=True, key="mois_confirm"):
+                                st.session_state["pop_source_df"] = pop_long_df
+                                st.session_state["pop_col_hint"] = "인구수"
+                                st.session_state["strata_cols_hint"] = ["지역", "성별", "연령대"]
+                                st.rerun()
+                        else:
+                            st.warning("파싱 결과가 없습니다. 지역 선택 또는 연령 범위를 확인해주세요.")
+                    except Exception as e:
+                        st.error(f"MOIS 파싱 오류: {e}")
+
+                else:
+                    # ── 일반 Excel/CSV 필터 (v6.13 유지) ────────────
+                    with st.expander("🔧 데이터 필터 설정 (연령대 / 성별)", expanded=True):
+                        fu1, fu2, fu3 = st.columns([1, 1, 1])
+                        with fu1:
+                            age_col_candidates = [c for c in uploaded_pop.columns if any(kw in str(c) for kw in ["연령", "age", "나이", "Age"])]
+                            age_col_file = st.selectbox(
+                                "연령대 컬럼 선택",
+                                options=["(없음)"] + uploaded_pop.columns.tolist(),
+                                index=(1 + uploaded_pop.columns.tolist().index(age_col_candidates[0])) if age_col_candidates else 0,
+                                key="age_col_file"
+                            )
+                        with fu2:
+                            gender_col_candidates = [c for c in uploaded_pop.columns if any(kw in str(c) for kw in ["성별", "gender", "sex", "성"])]
+                            gender_col_file = st.selectbox(
+                                "성별 컬럼 선택",
+                                options=["(없음)"] + uploaded_pop.columns.tolist(),
+                                index=(1 + uploaded_pop.columns.tolist().index(gender_col_candidates[0])) if gender_col_candidates else 0,
+                                key="gender_col_file"
+                            )
+                        with fu3:
+                            if gender_col_file != "(없음)":
+                                gender_vals = uploaded_pop[gender_col_file].dropna().unique().tolist()
+                                selected_genders = st.multiselect("포함할 성별 값", options=gender_vals, default=gender_vals, key="gender_vals_file")
+                            else:
+                                selected_genders = []
+
+                    filtered_pop = uploaded_pop.copy()
+                    if gender_col_file != "(없음)" and selected_genders:
+                        filtered_pop = filtered_pop[filtered_pop[gender_col_file].isin(selected_genders)]
+
+                    st.markdown(f"**미리보기** (필터 후 {len(filtered_pop)}행)")
+                    st.dataframe(filtered_pop.head(10), hide_index=True, use_container_width=True)
+                    if st.button("✅ 업로드 파일을 모집단으로 확정", use_container_width=True, key="generic_confirm"):
+                        st.session_state["pop_source_df"] = filtered_pop
+                        st.rerun()
+
 
     with tab_manual:
         st.markdown("##### ✍️ 직접 입력 / 예시 데이터")
@@ -1069,29 +1094,51 @@ def show_sample_design_system():
 
     df_raw = st.session_state["pop_source_df"]
 
-    # 컬럼 설정 (인구수 컬럼 자동 감지 또는 마지막 컬럼 사용)
+    # [v6.15] 컬럼 설정 — MOIS 확정 시 저장한 hint 우선 사용, 없으면 키워드 감지
     cols = df_raw.columns.tolist()
-    pop_col = None
-    for c in cols:
-        if any(kw in str(c) for kw in ["인구", "population", "count", "N수", "N"]):
-            pop_col = c
-            break
-    if not pop_col:
-        pop_col = cols[-1]
-    
-    df_raw[pop_col] = pd.to_numeric(df_raw[pop_col], errors='coerce').fillna(0)
-    strata_cols = [c for c in cols if c != pop_col]
 
-    st.info(f"🧬 **층화 구조:** {' > '.join(strata_cols)} | **총 인구:** {df_raw[pop_col].sum():,}")
+    # ① pop_col 결정
+    pop_col_hint = st.session_state.get("pop_col_hint")
+    if pop_col_hint and pop_col_hint in cols:
+        pop_col = pop_col_hint
+    else:
+        pop_col = None
+        for c in cols:
+            if any(kw in str(c) for kw in ["인구", "population", "count", "N수"]):
+                pop_col = c
+                break
+        if not pop_col:
+            pop_col = cols[-1]
+
+    # ② strata_cols 결정
+    strata_hint = st.session_state.get("strata_cols_hint")
+    if strata_hint and all(c in cols for c in strata_hint):
+        strata_cols = strata_hint
+    else:
+        strata_cols = [c for c in cols if c != pop_col]
+
+    df_raw[pop_col] = pd.to_numeric(df_raw[pop_col], errors="coerce").fillna(0)
+
+    # 층화 구조 표시
+    is_mois_data = strata_hint is not None and "성별" in strata_cols and "연령대" in strata_cols
+    layer_label = " > ".join(strata_cols)
+    if is_mois_data:
+        st.info(f"🧬 **층화 구조:** {layer_label} | **총 인구:** {df_raw[pop_col].sum():,} | 📋 MOIS 행정안전부 데이터")
+    else:
+        st.info(f"🧬 **층화 구조:** {layer_label} | **총 인구:** {df_raw[pop_col].sum():,}")
 
     st.markdown('<div class="qx-section-label">2. 표본 설계 설정</div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
     with c1:
         total_n = st.number_input("목표 전체 표본 수 (n)", min_value=1, value=1000)
     with c2:
         method = st.selectbox("할당 방식 선택", options=["인구비례할당", "제곱근 비례 할당", "최소표본 할당 후 비례할당"])
     with c3:
         min_n = st.number_input("최소 할당 표본 (Min)", min_value=1, value=30, disabled=(method != "최소표본 할당 후 비례할당"))
+    with c4:
+        import math
+        sampling_error_pct = round(1.96 * math.sqrt(0.25 / max(total_n, 1)) * 100, 2)
+        st.metric("📐 표본오차", f"±{sampling_error_pct}%", help="95% 신뢰수준, p=0.5 기준")
 
     if st.button("📊 표본 배분 계산 실행", type="primary", use_container_width=True):
         total_pop = df_raw[pop_col].sum()
@@ -1131,45 +1178,86 @@ def show_sample_design_system():
         st.markdown('<div class="qx-section-label">3. 표본 할당 결과</div>', unsafe_allow_html=True)
         res_df = st.session_state["sample_design_df"]
         meta = st.session_state["sample_design_meta"]
-        
-        st.dataframe(
-            res_df, 
-            hide_index=True,
-            column_config={
-                meta["pop_col"]: st.column_config.NumberColumn("모집단(P)", format="%d"),
-                "final_n": st.column_config.NumberColumn("확정 표본(n)", format="%d"),
-            },
-            use_container_width=True
-        )
 
         sc1, sc2, sc3 = st.columns(3)
-        sc1.metric("전체 표본", f"{res_df['final_n'].sum()}명")
-        sc2.metric("최소 할당", f"{res_df['final_n'].min()}명")
-        sc3.metric("최대 할당", f"{res_df['final_n'].max()}명")
+        sc1.metric("전체 표본", f"{res_df['final_n'].sum():,}명")
+        sc2.metric("최소 할당", f"{res_df['final_n'].min():,}명")
+        sc3.metric("최대 할당", f"{res_df['final_n'].max():,}명")
 
-        # 시각화 컬럼 선택
-        st.markdown("##### 📈 시각화 설정")
+        # ── [v6.14] 피벗 테이블 (지역×성별×연령대) ─────────────────
+        from api_utils import format_sample_pivot_table
+        pivot_df = format_sample_pivot_table(res_df)
+
+        if pivot_df is not None:
+            st.markdown("##### 📊 표본 배분 결과표")
+
+            # 스타일 함수 — 총계 행: 노란 배경 / 남 상위헤더: 하늘색 / 여: 연한 분홍
+            def style_pivot(styler):
+                # 총계 행 강조
+                styler.apply(
+                    lambda row: ["background-color:#FFF176; font-weight:bold" if row.name == "총계" else "" for _ in row],
+                    axis=1
+                )
+                return styler
+
+            pivot_int = pivot_df.fillna(0).astype(int)
+            st.dataframe(
+                pivot_int.style.pipe(style_pivot),
+                use_container_width=True
+            )
+
+            # 피벗표 Excel 다운로드
+            output_pivot = io.BytesIO()
+            with pd.ExcelWriter(output_pivot, engine='xlsxwriter') as writer:
+                pivot_int.to_excel(writer, sheet_name='표본배분_피벗')
+                res_df.to_excel(writer, index=False, sheet_name='표본배분_상세')
+                wb = writer.book
+                ws = writer.sheets['표본배분_피벗']
+                # 총계 행 노란색
+                yellow_fmt = wb.add_format({'bg_color': '#FFF176', 'bold': True})
+                last_row = len(pivot_int)
+                ws.set_row(last_row, None, yellow_fmt)
+            output_pivot.seek(0)
+            st.download_button(
+                "📥 표본 설계 결과표 다운로드 (Excel)",
+                data=output_pivot,
+                file_name="표본설계_배분결과.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="dl_sample_design_pivot"
+            )
+        else:
+            # 피벗 불가 시 기존 테이블 표시
+            st.dataframe(
+                res_df,
+                hide_index=True,
+                column_config={
+                    meta["pop_col"]: st.column_config.NumberColumn("모집단(P)", format="%d"),
+                    "final_n": st.column_config.NumberColumn("확정 표본(n)", format="%d"),
+                },
+                use_container_width=True
+            )
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                res_df.to_excel(writer, index=False, sheet_name='Sample_Design')
+            output.seek(0)
+            st.download_button(
+                "📥 상세 표본 설계 내역 다운로드 (Excel)",
+                data=output,
+                file_name="표본설계_상세배분안.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="dl_sample_design_final"
+            )
+
+        # 시각화
+        st.markdown("##### 📈 시각화")
         viz_col = st.selectbox("X축 기준 변수 선택", options=meta["strata_cols"], index=0)
-        
-        # 층화 변수가 여러개면 그룹화하여 표시
         viz_df = res_df.groupby(viz_col)["final_n"].sum().reset_index()
-        fig = px.bar(viz_df, x=viz_col, y="final_n", text="final_n", title=f"{viz_col}별 표본 배분 합계", template="plotly_white")
+        fig = px.bar(viz_df, x=viz_col, y="final_n", text="final_n",
+                     title=f"{viz_col}별 표본 배분 합계", template="plotly_white")
         fig.update_traces(marker_color="#0F6CBD", textposition="outside")
         st.plotly_chart(fig, use_container_width=True)
-
-        # [v6.12] Fix: UnboundLocalError 방지 - st.button 내부 st.download_button 중첩 제거
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            res_df.to_excel(writer, index=False, sheet_name='Sample_Design')
-        output.seek(0)
-        st.download_button(
-            "📥 상세 표본 설계 내역 다운로드 (Excel)", 
-            data=output, 
-            file_name="표본설계_상세배분안.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key="dl_sample_design_final"
-        )
 
 
 def show_outlier_inspection_system(mode="outlier"):
