@@ -927,6 +927,16 @@ def show_sample_design_system():
             with img_c1:
                 st.image("https://raw.githubusercontent.com/jeon080423/CRA/main/kosis_guide.png", caption="KOSIS OPEN API 인증키 신청 가이드", use_container_width=True)
         
+        st.markdown("""
+            <style>
+            /* API 키 입력 칸 강조 스타일 */
+            div[data-baseweb="input"] {
+                border: 2px solid #0366d6 !important;
+                border-radius: 4px;
+            }
+            </style>
+        """, unsafe_allow_value=True)
+        
         user_key = st.text_input(
             "🔑 API 인증키 입력", 
             value=st.session_state.get("user_api_key", ""), 
