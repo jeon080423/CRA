@@ -870,6 +870,7 @@ def show_questionnaire_optimization_system():
 
 def show_sample_design_system():
     """AI 표본설계 자동화 시스템 UI (v5.0)"""
+    import io  # [v6.15] 탭 미선택 시 UnboundLocalError 방지
     st.markdown("""
     <div class="qx-topbar">
         <span class="qx-topbar-logo">AI 표본설계</span>
