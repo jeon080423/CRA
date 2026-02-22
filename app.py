@@ -854,24 +854,36 @@ def show_questionnaire_optimization_system():
                 st.session_state["q_opt_file_name"] = q_file.name
                 st.success(f"'{q_file.name}'에서 텍스트를 성공적으로 가져왔습니다.")
 
-    # [v4.16] 텍스트 영역 높이 축소 및 테두리 색상 상시 강조 + 배경색 흰색 (CSS 보강)
+    # [v4.16] 텍스트 영역 높이 축소 및 테두리 색상 상시 강조 + 배경색 흰색 (최종 보강)
     st.markdown("""
         <style>
-        .q-opt-textarea div[data-baseweb="base-input"],
-        .q-opt-textarea div[data-baseweb="textarea"],
-        .q-opt-textarea div[data-baseweb="textarea"] > div {
+        /* 컨테이너 내부의 모든 요소 배경을 흰색으로 강제 */
+        .q-opt-textarea [data-testid="stTextArea"],
+        .q-opt-textarea [data-testid="stTextArea"] > div,
+        .q-opt-textarea [data-testid="stTextArea"] [data-baseweb="textarea"],
+        .q-opt-textarea [data-baseweb="base-input"],
+        .q-opt-textarea div[role="textbox"] {
             background-color: #FFFFFF !important;
-            border-color: #0F6CBD !important;
         }
+        
+        /* 테두리 색상 강조 (포커스 색상 유지) */
+        .q-opt-textarea [data-baseweb="textarea"] {
+            border: 1px solid #0F6CBD !important;
+            background-color: #FFFFFF !important;
+        }
+        
+        /* 입력 영역 내부 텍스트 및 배경 */
         .q-opt-textarea textarea {
             background-color: #FFFFFF !important;
             color: #1A2237 !important;
-            -webkit-text-fill-color: #1A2237 !important; /* iOS/Safari 대응 */
+            -webkit-text-fill-color: #1A2237 !important;
         }
-        /* 포커스 시 테두리 두께 유지 */
-        .q-opt-textarea div[data-baseweb="textarea"]:focus-within {
+        
+        /* 포커스 시 박스 쉐도우 및 테두리 유지 */
+        .q-opt-textarea [data-baseweb="textarea"]:focus-within {
             box-shadow: 0 0 0 1px #0F6CBD !important;
             border-color: #0F6CBD !important;
+            background-color: #FFFFFF !important;
         }
         </style>
     """, unsafe_allow_html=True)
