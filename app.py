@@ -350,6 +350,14 @@ def show_data_roadmap(current_step=1):
     st.markdown(html, unsafe_allow_html=True)
 
 
+def show_security_notice():
+    """데이터 보안 및 로컬 저장 안내 (v4.13)"""
+    st.warning("""
+    🛡️ **데이터 보안 안내:** 본 시스템은 사용자의 소중한 데이터 보안을 최우선으로 고려하며, 일체의 분석 결과를 서버에 저장하지 않습니다. 
+    귀중한 분석 자료의 유실을 방지하기 위해 생성된 결과물은 반드시 개인 단말기에 실시간으로 다운로드하여 보관해 주시기 바랍니다.
+    """)
+
+
 def show_admin_dashboard():
     """관리자 전용 사용량 통계 대시보드"""
     st.markdown("""
@@ -448,6 +456,7 @@ def show_win_strategy_section():
 
     # 결과 표시 영역
     if st.session_state["rfp_results"]:
+        show_security_notice()
         st.success(f"✅ **[{st.session_state['rfp_project_name']}]** 분석 완료")
         
         # 탭으로 결과 표시
@@ -737,6 +746,7 @@ def show_unit_nonresponse_system():
 
     # 결과 표시
     if "weighted_df" in st.session_state:
+        show_security_notice()
         st.markdown('<div class="qx-section-label">5. 분석 결과 및 다운로드</div>', unsafe_allow_html=True)
         diag = st.session_state["weight_diag"]
         
@@ -1195,6 +1205,7 @@ def show_outlier_inspection_system(mode="outlier"):
 
     # 5. 결과 확인 및 다운로드
     if f"imputed_df_{mode}" in st.session_state:
+        show_security_notice()
         st.markdown('<div class="qx-section-label">4. 결과 요약 및 다운로드</div>', unsafe_allow_html=True)
         
         summary = st.session_state[f"impute_summary_{mode}"]
@@ -1876,6 +1887,10 @@ else:
         st.markdown("<hr>", unsafe_allow_html=True)
 
         # 단일 페이지 분석 UI (v16.0: 한 페이지에 모두 표시)
+        if any(st.session_state["step_results"].values()) or st.session_state["full_result"]:
+            show_security_notice()
+            st.markdown("<hr>", unsafe_allow_html=True)
+            
         for s in [1, 2, 3]:
             st.markdown(f'<div class="qx-section-label">{STEP_LABELS[s]}</div>', unsafe_allow_html=True)
             
@@ -1965,6 +1980,7 @@ else:
         </style>
         """, unsafe_allow_html=True)
 
+        # [v4.13 수정] 잘못된 조건부 호출 제거 (이 부분은 하단 다운로드 영역 전 공통 노출로 대체됨)
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown('<div class="qx-section-label">DOWNLOAD RESULTS</div>', unsafe_allow_html=True)
 
