@@ -854,20 +854,24 @@ def show_questionnaire_optimization_system():
                 st.session_state["q_opt_file_name"] = q_file.name
                 st.success(f"'{q_file.name}'에서 텍스트를 성공적으로 가져왔습니다.")
 
-    # [v4.16] 텍스트 영역 높이 축소 및 테두리 색상 상시 강조 + 배경색 흰색
+    # [v4.16] 텍스트 영역 높이 축소 및 테두리 색상 상시 강조 + 배경색 흰색 (CSS 보강)
     st.markdown("""
         <style>
-        .q-opt-textarea [data-baseweb="textarea"] {
+        .q-opt-textarea div[data-baseweb="base-input"],
+        .q-opt-textarea div[data-baseweb="textarea"],
+        .q-opt-textarea div[data-baseweb="textarea"] > div {
+            background-color: #FFFFFF !important;
             border-color: #0F6CBD !important;
-            background-color: #FFFFFF !important;
-            box-shadow: none !important;
-        }
-        .q-opt-textarea [data-baseweb="textarea"]:focus-within {
-            box-shadow: 0 0 0 1px #0F6CBD !important;
-            background-color: #FFFFFF !important;
         }
         .q-opt-textarea textarea {
             background-color: #FFFFFF !important;
+            color: #1A2237 !important;
+            -webkit-text-fill-color: #1A2237 !important; /* iOS/Safari 대응 */
+        }
+        /* 포커스 시 테두리 두께 유지 */
+        .q-opt-textarea div[data-baseweb="textarea"]:focus-within {
+            box-shadow: 0 0 0 1px #0F6CBD !important;
+            border-color: #0F6CBD !important;
         }
         </style>
     """, unsafe_allow_html=True)
