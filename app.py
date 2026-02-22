@@ -786,6 +786,207 @@ def show_unit_nonresponse_system():
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="dl_weight_raw")
 
 
+def show_questionnaire_optimization_system():
+    """AI 설문지 최적화 컨설턴트 UI (v5.0)"""
+    st.markdown("""
+    <div class="qx-topbar">
+        <span class="qx-topbar-logo">AI 설문지 최적화</span>
+        <span class="qx-topbar-sep"></span>
+        <span class="qx-topbar-title">설문 설계 전문가 컨설팅</span>
+        <span class="qx-topbar-badge">Methodology Optimization</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.expander("📘 AI 설문지 최적화 - 이용 방법 및 체크리스트 가이드", expanded=False):
+        st.markdown("""
+        ### 🛠️ AI 설문지 최적화 프로세스
+        1. **설문안 입력:** 현재 작성 중인 설문지 텍스트(문항 및 보기)를 아래 입력창에 붙여넣습니다.
+        2. **AI 정밀 진단:** 5대 설계 결함(유도 질문, 이중 질문, 보기 정합성, 모호성, 응답 거부 요소)을 전문가 관점에서 분석합니다.
+        3. **개선안 도출:** 분석 결과에 따른 'Before & After' 개선 제언과 기대 효과를 확인합니다.
+        
+        ### 🔍 주요 체크리스트
+        - **유도 질문:** "귀하는 성공적인 정책 A에 찬성하십니까?"와 같이 답을 정해둔 질문인가?
+        - **이중 질문:** "가격과 품질에 만족하십니까?"처럼 한 문항에 두 가지를 묻는가?
+        - **상호배타성:** 보기 간에 중복이 있거나 빠진 항목이 없는가?
+        """)
+
+    st.markdown('<div class="qx-section-label">1. 설문 문항 입력</div>', unsafe_allow_html=True)
+    q_text = st.text_area(
+        "분석할 설문 문항을 입력하세요", 
+        height=300, 
+        placeholder="예: Q1. 최근 정부의 부동산 정책에 대해 얼마나 만족하십니까?\n1) 매우 만족  2) 만족  3) 보통  4) 불만족  5) 매우 불만족",
+        help="문항 번호를 포함하여 설문 내용을 자유롭게 입력하세요."
+    )
+
+    if st.button("🚀 AI 설계 최적화 시작", type="primary", use_container_width=True):
+        if not q_text.strip():
+            st.warning("분석할 설문 텍스트를 입력해 주세요.")
+        else:
+            from prompts import QUESTIONNAIRE_ANALYSIS_PROMPT
+            with st.spinner("설문 설계 전문가가 문항을 심층 분석 중입니다..."):
+                prompt = QUESTIONNAIRE_ANALYSIS_PROMPT.format(questionnaire_text=q_text)
+                res, err = run_analysis("설문 설계 전문가", prompt, "설문 문항 분석 및 개선안 도출 중...")
+                
+                if err:
+                    st.error(f"분석 중 오류 발생: {err}")
+                else:
+                    st.session_state["q_opt_result"] = res
+                    st.rerun()
+
+    if "q_opt_result" in st.session_state:
+        show_security_notice()
+        st.markdown('<div class="qx-section-label">2. 전문가 진단 및 개선 제언</div>', unsafe_allow_html=True)
+        st.markdown(st.session_state["q_opt_result"], unsafe_allow_html=True)
+        
+        # 워드 다운로드 지원
+        if st.button("📝 분석 결과 워드 파일로 다운로드", use_container_width=True):
+            md_content = f"# AI 설문지 최적화 분석 보고서\n\n{st.session_state['q_opt_result']}"
+            docx = export_to_docx(md_content)
+            st.download_button(
+                "📥 클릭하여 워드 저장", 
+                data=docx, 
+                file_name="설문지_최적화_컨설팅.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True
+            )
+
+
+def show_sample_design_system():
+    """AI 표본설계 자동화 시스템 UI (v5.0)"""
+    st.markdown("""
+    <div class="qx-topbar">
+        <span class="qx-topbar-logo">AI 표본설계</span>
+        <span class="qx-topbar-sep"></span>
+        <span class="qx-topbar-title">주민등록 인구 기반 표본 배분 솔루션</span>
+        <span class="qx-topbar-badge">Sample Allocation Engine</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.expander("📘 AI 표본설계 - 주요 할당 방식 및 수식 안내", expanded=False):
+        st.markdown(r"""
+        ### ⚖️ 표본 할당 방식(Allocation Methods)
+        
+        1. **인구비례할당 (Proportional Allocation):**
+           - 각 층(Strata)의 모집단 크기에 정비례하여 표본을 배분합니다. 가장 일반적인 방식입니다.
+           - 산식: $n_h = n \times \frac{P_h}{\sum P_h}$
+        
+        2. **제곱근 비례 할당 (Square Root Proportional):**
+           - 소규모 지역/계층의 대표성이 너무 낮아지는 것을 방지하기 위해 인구수의 제곱근에 비례하여 배분합니다.
+           - 산식: $n_h = n \times \frac{\sqrt{P_h}}{\sum \sqrt{P_h}}$
+        
+        3. **최소표본 할당 후 비례할당 (Min-Proportional):**
+           - 모든 계층에 최소한의 표본($Min$)을 먼저 보장하고, 남은 표본을 인구비례로 배분합니다.
+           - 산식: $n_h = Min + (n - \sum Min) \times \frac{P_h}{\sum P_h}$
+        """)
+
+    st.markdown('<div class="qx-section-label">1. 인구 데이터 입력</div>', unsafe_allow_html=True)
+    
+    # 기본 데이터 셋 제공 (예시용)
+    default_data = "서울, 9411260\n부산, 3317812\n대구, 2375306\n인천, 2967314\n광주, 1431050\n대전, 1446072\n울산, 1106015\n세종, 383547\n경기, 13589155\n강원, 1533357\n충북, 1595058\n충남, 2123037\n전북, 1769607\n전남, 1817629\n경북, 2600492\n경남, 3280815\n제주, 678159"
+    
+    pop_input = st.text_area(
+        "지표/지역과 인구수를 입력하세요 (CSV 형식: 이름, 인구수)", 
+        value=default_data,
+        height=200,
+        help="한 줄에 '지역명, 인구수' 순서로 입력해 주세요."
+    )
+
+    # 데이터 파싱
+    pop_list = []
+    try:
+        for line in pop_input.strip().split("\n"):
+            if "," in line:
+                name, count = line.split(",")
+                pop_list.append({"name": name.strip(), "population": int(count.strip())})
+        df_pop = pd.DataFrame(pop_list)
+    except Exception as e:
+        st.error(f"데이터 형식이 올바르지 않습니다: {e}")
+        return
+
+    st.markdown('<div class="qx-section-label">2. 표본 설계 설정</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        total_n = st.number_input("목표 전체 표본 수 (n)", min_value=1, value=1000)
+    with c2:
+        method = st.selectbox("할당 방식 선택", options=["인구비례할당", "제곱근 비례 할당", "최소표본 할당 후 비례할당"])
+    with c3:
+        min_n = st.number_input("최소 할당 표본 (Min)", min_value=1, value=30, disabled=(method != "최소표본 할당 후 비례할당"))
+
+    if st.button("📊 표본 배분 계산 실행", type="primary", use_container_width=True):
+        total_pop = df_pop["population"].sum()
+        
+        if method == "인구비례할당":
+            df_pop["allocated"] = (df_pop["population"] / total_pop * total_n)
+        elif method == "제곱근 비례 할당":
+            sqrt_sum = df_pop["population"].apply(np.sqrt).sum()
+            df_pop["allocated"] = (df_pop["population"].apply(np.sqrt) / sqrt_sum * total_n)
+        elif method == "최소표본 할당 후 비례할당":
+            num_groups = len(df_pop)
+            if min_n * num_groups > total_n:
+                st.error(f"최소 표본 합계({min_n * num_groups})가 전체 표본({total_n})보다 큽니다. 설정을 조정해 주세요.")
+                return
+            remaining_n = total_n - (min_n * num_groups)
+            df_pop["allocated"] = min_n + (df_pop["population"] / total_pop * remaining_n)
+        
+        # 반올림 및 합계 조정
+        df_pop["final_n"] = df_pop["allocated"].round().astype(int)
+        
+        # 합계가 정확히 n이 되도록 가장 차이가 큰 항목에서 조정 (Residual adjustment)
+        diff = total_n - df_pop["final_n"].sum()
+        if diff != 0:
+            # 반올림 오차가 큰 항목부터 1씩 증감
+            df_pop["remainder"] = df_pop["allocated"] - df_pop["final_n"]
+            if diff > 0: # 표본이 모자란 경우
+                idx = df_pop.nlargest(diff, "remainder").index
+                df_pop.loc[idx, "final_n"] += 1
+            else: # 표본이 넘치는 경우
+                idx = df_pop.nsmallest(abs(diff), "remainder").index
+                df_pop.loc[idx, "final_n"] -= 1
+
+        df_pop["비율(%)"] = (df_pop["final_n"] / total_n * 100).round(1)
+        st.session_state["sample_design_df"] = df_pop[["name", "population", "final_n", "비율(%)"]]
+        st.rerun()
+
+    if "sample_design_df" in st.session_state:
+        st.markdown('<div class="qx-section-label">3. 표본 할당 결과</div>', unsafe_allow_html=True)
+        res_df = st.session_state["sample_design_df"]
+        
+        st.dataframe(
+            res_df, 
+            hide_index=True,
+            column_config={
+                "name": "지표/지역",
+                "population": st.column_config.NumberColumn("모집단(P)", format="%d"),
+                "final_n": st.column_config.NumberColumn("확정 표본(n)", format="%d"),
+            },
+            use_container_width=True
+        )
+
+        # 요약 정보
+        sc1, sc2, sc3 = st.columns(3)
+        sc1.metric("전체 표본", f"{res_df['final_n'].sum()}명")
+        sc2.metric("최소 할당", f"{res_df['final_n'].min()}명")
+        sc3.metric("최대 할당", f"{res_df['final_n'].max()}명")
+
+        # 시각화
+        fig = px.bar(res_df, x="name", y="final_n", text="final_n", title="지역별 표본 배분 현황", template="plotly_white")
+        fig.update_traces(marker_color="#0F6CBD", textposition="outside")
+        st.plotly_chart(fig, use_container_width=True)
+
+        if st.button("📥 표본 설계 내역 엑셀 다운로드", use_container_width=True):
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                res_df.to_excel(writer, index=False, sheet_name='Sample_Design')
+            output.seek(0)
+            st.download_button(
+                "엑셀 파일 저장", 
+                data=output, 
+                file_name="표본설계_배분결과.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+
 def show_outlier_inspection_system(mode="outlier"):
     """AI 이상치/결측치 검토 및 보완 시스템 UI"""
     st.markdown(f"""
@@ -1298,6 +1499,8 @@ with st.sidebar:
     st.markdown('<div class="qx-section-label">NAVIGATION</div>', unsafe_allow_html=True)
     menu_options = [
         "과업 내용 체크 리스트", 
+        "AI 설문지 최적화",
+        "AI 표본설계",
         "AI 이상치 검토 (Call Back, Data Adjustment)", 
         "AI 결측치 검토 (Call Back, Imputation)",
         "AI 단위 무응답 검토",
@@ -1676,6 +1879,12 @@ else:
     elif st.session_state["menu_selection"] == "과업 내용 체크 리스트":
         show_win_strategy_section()
         # End Win Strategy here (early return or just wrap)
+        st.stop()
+    elif st.session_state["menu_selection"] == "AI 설문지 최적화":
+        show_questionnaire_optimization_system()
+        st.stop()
+    elif st.session_state["menu_selection"] == "AI 표본설계":
+        show_sample_design_system()
         st.stop()
     elif st.session_state["menu_selection"] == "AI 이상치 검토 (Call Back, Data Adjustment)":
         show_outlier_inspection_system(mode="outlier")
