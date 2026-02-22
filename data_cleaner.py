@@ -167,3 +167,59 @@ class WeightCalculator:
             "deff": deff,
             "ess": ess
         }
+class DataAugmentor:
+    """단위 무응답 쿼터 충족을 위한 데이터 증계(Augmentation) 엔진"""
+    
+    def __init__(self, df: pd.DataFrame):
+        self.df = df.copy()
+        if 'is_augmented' not in self.df.columns:
+            self.df['is_augmented'] = False
+            
+    def augment_by_filter(self, filters: dict, target_count: int, method: str = "Bootstrap"):
+        """
+        특정 조건(filter)에 해당하는 데이터를 target_count가 될 때까지 생성
+        filters: { '변수명': [값1, 값2, ...] } -> AND 조건으로 결합
+        """
+        # 1. 대상 데이터 필터링
+        mask = pd.Series([True] * len(self.df), index=self.df.index)
+        for col, vals in filters.items():
+            if col in self.df.columns and vals:
+                mask &= self.df[col].isin(vals)
+        
+        source_df = self.df[mask]
+        current_count = len(source_df)
+        gap = target_count - current_count
+        
+        if gap <= 0 or current_count == 0:
+            return 0
+            
+        # 2. 데이터 생성
+        if method == "Bootstrap":
+            # 단순 복원 추출
+            new_samples = source_df.sample(n=gap, replace=True, random_state=42)
+        elif method == "Noise-added":
+            # 수치형 변수에 미세 노이즈 추가 (표준편차의 5%)
+            new_samples = source_df.sample(n=gap, replace=True, random_state=42).copy()
+            numeric_cols = new_samples.select_dtypes(include=[np.number]).columns
+            for col in numeric_cols:
+                std = self.df[col].std()
+                noise = np.random.normal(0, std * 0.05, size=gap)
+                new_samples[col] += noise
+        else:
+            new_samples = source_df.sample(n=gap, replace=True, random_state=42)
+            
+        # 3. 플래그 설정 및 통합
+        new_samples['is_augmented'] = True
+        self.df = pd.concat([self.df, new_samples], ignore_index=True)
+        return gap
+
+    def get_summary(self):
+        """증계 통계 요약"""
+        total = len(self.df)
+        augmented = self.df['is_augmented'].sum()
+        return {
+            "total_count": total,
+            "original_count": total - augmented,
+            "augmented_count": augmented,
+            "augmented_ratio": round(augmented / total * 100, 1) if total > 0 else 0
+        }

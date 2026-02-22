@@ -23,7 +23,8 @@ import rfp_utils
 import io
 import pandas as pd
 import numpy as np
-from data_cleaner import DataImputer, WeightCalculator
+from data_cleaner import DataImputer, WeightCalculator, DataAugmentor
+from codebook_utils import CodebookParser
 import plotly.express as px
 try:
     from docx import Document
@@ -444,8 +445,9 @@ def show_unit_nonresponse_system():
         1. **데이터 업로드:** 가중치 산출이 필요한 설문 완료 데이터를 업로드합니다.
         2. **가중치 변수 선택:** 가중치를 적용할 기준 변수(성별, 연령, 지역 등)를 다중 선택합니다.
         3. **모집단 비율 입력:** 선택한 각 변수 계층별 모집단(Target) 분포 비율(%)을 입력합니다. (합계 100% 필수)
-        4. **가중치 산출:** '가중치 산출 실행' 버튼을 클릭하여 Raking 알고리즘을 가동합니다.
-        5. **결과 검정:** 설계효과(Deff)와 유효 표본 크기를 확인하고 데이터를 엑셀로 다운로드합니다.
+        4. **데이터 증계 (선택):** 특정 지역이나 계층의 표본이 부족한 경우, '목표 기반 데이터 증계' 기능을 통해 통계적으로 데이터를 생성하여 쿼터를 충족시킵니다.
+        5. **가중치 산출:** '가중치 산출 실행' 버튼을 클릭하여 Raking 알고리즘을 가동합니다.
+        6. **결과 검정:** 설계효과(Deff)와 유효 표본 크기를 확인하고 데이터를 엑셀로 다운로드합니다.
         """)
 
     # [v4.1 고도화] 전문가용 가이드 (수식 포함)
@@ -467,37 +469,41 @@ def show_unit_nonresponse_system():
         - **해석:** $Deff$가 1.5 이하일 경우 통계적으로 모델의 안정성이 높다고 판단하며, 2.0을 초과할 경우 특정 계층에 과도한 가중치가 부여되었음을 시사합니다.
         """)
 
-    # 빈 상태 안내
-    st.markdown('<div class="qx-section-label">1. 데이터 업로드 (Survey Data)</div>', unsafe_allow_html=True)
-    df_file = st.file_uploader("가중치 조정을 수행할 데이터를 업로드하세요", type=["xlsx", "csv"], label_visibility="collapsed", key="uploader_unit")
+    # 빈 상태 안내 (2컬럼 업로드 레이아웃)
+    st.markdown('<div class="qx-section-label">1. 데이터 및 코드북 업로드 (Survey Data)</div>', unsafe_allow_html=True)
+    col_u1, col_u2 = st.columns(2)
+    with col_u1:
+        df_file = st.file_uploader("가중치 조정을 수행할 데이터 업로드", type=["xlsx", "csv"], key="uploader_unit")
+    with col_u2:
+        cb_file = st.file_uploader("코드북 업로드 (선택 사항)", type=["xlsx"], key="cb_unit")
 
     if not df_file:
         st.markdown("""
-<div class="qx-card" style="text-align:center; padding:3.5rem 2rem 5rem 2rem; margin-top: 1rem; margin-bottom: 4rem; min-height: 450px;">
-    <div style="font-size:3rem; margin-bottom:1rem;">⚖️</div>
+<div class="qx-card" style="text-align:center; padding:2rem 2rem 2.5rem 2rem; margin-top: 1rem; margin-bottom: 2rem; min-height: 320px;">
+    <div style="font-size:3rem; margin-bottom:0.5rem;">⚖️</div>
     <div style="font-size:1.1rem; font-weight:600; color:#1A2237; margin-bottom:0.5rem;">
         무응답 교정을 위한 데이터를 업로드하세요
     </div>
-    <div style="font-size:0.87rem; color:#8B96A9; margin-bottom:2rem;">
+    <div style="font-size:0.87rem; color:#8B96A9; margin-bottom:1.5rem;">
         응답 표본과 모집단 간의 차이를 분석하고 통계적 가중치(Weighting)를 부여합니다.
     </div>
     <div style="display:flex; justify-content:center; gap:1.5rem; flex-wrap:wrap;">
-        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
-            <div style="font-size:1.4rem;">📊</div>
-            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">편향 진단</div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">📊</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">편향 진단</div>
         </div>
-        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
-            <div style="font-size:1.4rem;">🔢</div>
-            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">Raking 보정</div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">🔢</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">Raking 보정</div>
         </div>
-        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
-            <div style="font-size:1.4rem;">📉</div>
-            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">Deff 평가</div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">📉</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">Deff 평가</div>
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
-        st.markdown("<div style='margin-bottom: 20rem;'></div>", unsafe_allow_html=True) # [v4.3] 하단 잘림 방지용 대형 스페이서
+        st.markdown("<div style='margin-bottom: 5rem;'></div>", unsafe_allow_html=True) 
         return
 
     # 데이터 로드
@@ -508,9 +514,21 @@ def show_unit_nonresponse_system():
         st.error(f"로드 중 오류: {e}")
         return
 
+    # [v4.6] 코드북 파싱 및 매핑
+    cb_parser = None
+    if cb_file:
+        try:
+            with st.spinner("코드북 분석 중..."):
+                cb_parser = CodebookParser(cb_file)
+            st.success("코드북 연동 완료: 변수 및 응답값 라벨이 활성화되었습니다.")
+        except Exception as e:
+            st.error(f"코드북 파싱 오류: {e}")
+
     # 변수 선택
     st.markdown('<div class="qx-section-label">2. 가중치 보정 변수 설정</div>', unsafe_allow_html=True)
-    weight_vars = st.multiselect("가중치를 부여할 기준 변수를 선택하세요 (예: 성별, 연령)", options=df.columns.tolist())
+    all_col_labels = cb_parser.get_all_var_labels(df.columns) if cb_parser else df.columns.tolist()
+    selected_weight_labels = st.multiselect("가중치를 부여할 기준 변수를 선택하세요 (예: 성별, 연령)", options=all_col_labels)
+    weight_vars = [cb_parser.get_column_from_label(lb) for lb in selected_weight_labels] if cb_parser else selected_weight_labels
 
     if not weight_vars:
         st.info("변수를 선택하면 모집단 비율 입력란이 나타납니다.")
@@ -519,14 +537,18 @@ def show_unit_nonresponse_system():
     # 목표 비율 입력
     targets = {}
     st.markdown("##### 📍 모집단 목표 분포 입력 (%)")
-    for var in weight_vars:
-        with st.expander(f"변수: {var}", expanded=True):
-            unique_vals = df[var].dropna().unique().tolist()
+    for i, var in enumerate(weight_vars):
+        display_name = selected_weight_labels[i] if cb_parser else var
+        with st.expander(f"변수: {display_name}", expanded=True):
+            unique_vals = sorted(df[var].dropna().unique().tolist())
             targets[var] = {}
+            
+            # 코드북 라벨 적용 (응답값)
             cols = st.columns(len(unique_vals))
-            for i, val in enumerate(unique_vals):
-                with cols[i]:
-                    prop = st.number_input(f"{val} 비율", min_value=0.0, max_value=100.0, value=100.0/len(unique_vals), key=f"target_{var}_{val}")
+            for j, val in enumerate(unique_vals):
+                label_val = cb_parser.get_value_label(var, val) if cb_parser else val
+                with cols[j]:
+                    prop = st.number_input(f"{label_val} (%)", min_value=0.0, max_value=100.0, value=100.0/len(unique_vals), key=f"target_{var}_{val}")
                     targets[var][val] = prop / 100.0
             
             # 합계 체크
@@ -534,10 +556,77 @@ def show_unit_nonresponse_system():
             if abs(total_p - 1.0) > 0.001:
                 st.warning(f"합계가 {total_p*100:.1f}%입니다. 100%가 되도록 조정하세요.")
 
-    # 실행
-    st.markdown("<hr>", unsafe_allow_html=True)
+    # [v4.7 추가] 목표 기반 데이터 증계 (Data Augmentation)
+    st.markdown('<div class="qx-section-label">3. 목표 기반 데이터 증계 (Target-Driven Augmentation)</div>', unsafe_allow_html=True)
+    with st.expander("🛠️ 소수 표본 및 쿼터 미달 세그먼트 데이터 생성", expanded=False):
+        st.markdown("""
+        표본 수가 부족한 특정 집단(Segment)에 대해 통계적 기법으로 데이터를 생성하여 목표 쿼터를 충족시킵니다.
+        """)
+        
+        aug_cols = st.columns([2, 2, 1])
+        with aug_cols[0]:
+            sel_aug_vars = st.multiselect("증계 조건 변수 선택", options=all_col_labels, key="aug_vars")
+            target_segment_cols = [cb_parser.get_column_from_label(lb) for lb in sel_aug_vars] if cb_parser else sel_aug_vars
+        
+        filter_dict = {}
+        if target_segment_cols:
+            st.markdown("##### 📍 세그먼트 조건 설정")
+            f_cols = st.columns(len(target_segment_cols))
+            for i, col in enumerate(target_segment_cols):
+                unique_vals = sorted(df[col].dropna().unique().tolist())
+                labels = [cb_parser.get_value_label(col, v) for v in unique_vals] if cb_parser else unique_vals
+                with f_cols[i]:
+                    sel_labels = st.multiselect(f"{sel_aug_vars[i]} 선택", options=labels, key=f"f_{col}")
+                    if sel_labels:
+                        if cb_parser:
+                            rev_map = {cb_parser.get_value_label(col, v): v for v in unique_vals}
+                            filter_dict[col] = [rev_map[lb] for lb in sel_labels]
+                        else:
+                            filter_dict[col] = sel_labels
+
+        if filter_dict:
+            mask = pd.Series([True] * len(df), index=df.index)
+            for c, v in filter_dict.items():
+                mask &= df[c].isin(v)
+            current_count = len(df[mask])
+            
+            st.info(f"선택한 세그먼트의 현재 표본 수: **{current_count}**개")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                target_count = st.number_input("목표 표본 수", min_value=current_count + 1, value=max(current_count + 1, 20), key="aug_target_count")
+            with c2:
+                aug_method = st.selectbox("증계 기법", options=["Bootstrap", "Noise-added"], key="aug_method")
+            
+            if st.button("✨ 데이터 증계 실행", use_container_width=True):
+                augmentor = DataAugmentor(df)
+                added = augmentor.augment_by_filter(filter_dict, target_count, method=aug_method)
+                if added > 0:
+                    st.success(f"성공적으로 {added}개의 새로운 레코드가 생성되었습니다. (총 {len(augmentor.df)}명)")
+                    st.session_state["aug_df"] = augmentor.df
+                    st.session_state["aug_summary"] = augmentor.get_summary()
+                    st.rerun() # 전체 UI 갱신 (가중치 섹션에도 반영되도록)
+                else:
+                    st.warning("증계할 데이터가 없거나 조건이 맞지 않습니다.")
+
+        if "aug_summary" in st.session_state:
+            s = st.session_state["aug_summary"]
+            st.markdown(f"""
+            - **전체 표본:** {s['total_count']}명 (원본: {s['original_count']}명 / 증계: {s['augmented_count']}명)
+            - **증계 비율:** {s['augmented_ratio']}%
+            """)
+            if st.button("🗑️ 증계 취소 (원본 복구)"):
+                if "aug_df" in st.session_state: del st.session_state["aug_df"]
+                if "aug_summary" in st.session_state: del st.session_state["aug_summary"]
+                st.rerun()
+
+    # 증계된 데이터가 있으면 그것을 사용하여 가중치 산출 진행
+    active_df = st.session_state["aug_df"] if "aug_df" in st.session_state else df
+
+    # 4. 가중치 산출 실행
+    st.markdown('<div class="qx-section-label">4. 가중치(Weighting) 산출 및 검정</div>', unsafe_allow_html=True)
     if st.button("🚀 가중치 산출(Raking) 실행", type="primary", use_container_width=True):
-        calculator = WeightCalculator(df)
+        calculator = WeightCalculator(active_df)
         with st.spinner("RIM Weighting 알고리즘 가동 중..."):
             iters, diff = calculator.apply_raking(targets)
             st.session_state["weighted_df"] = calculator.df
@@ -546,7 +635,7 @@ def show_unit_nonresponse_system():
 
     # 결과 표시
     if "weighted_df" in st.session_state:
-        st.markdown('<div class="qx-section-label">3. 가중치 검정 및 다운로드</div>', unsafe_allow_html=True)
+        st.markdown('<div class="qx-section-label">5. 분석 결과 및 다운로드</div>', unsafe_allow_html=True)
         diag = st.session_state["weight_diag"]
         
         m1, m2, m3, m4 = st.columns(4)
@@ -582,63 +671,70 @@ def show_outlier_inspection_system(mode="outlier"):
     </div>
     """, unsafe_allow_html=True)
 
-    # [v4.2 고도화] 실무용 이용 가이드
+    # [v4.2 고도화] 실무용 이용 가이드 (명사형 어미)
     with st.expander(f"📘 AI {'이상치' if mode == 'outlier' else '결측치'} 검토 - 이용 방법 안내", expanded=False):
         if mode == "outlier":
             st.markdown("""
             ### 🛠️ 이용 방법 및 단계
-            1. **시각적 탐색:** 상단의 산점도 및 바이올린 플롯을 통해 데이터의 전반적인 분포와 이상 의심치를 확인합니다.
-            2. **검토 변수 선택:** 이상치 탐지가 필요한 수치형/범주형 변수를 선택합니다.
-            3. **보완 방법 설정:** 'AI 추천'을 통해 제안을 받거나, 직접 통계 알고리즘(Z-score 등)을 선택합니다.
-            4. **실행 및 검토:** 보완된 데이터 수치와 감사 로그(Audit Log)를 최종 확인합니다.
-            5. **데이터 저장:** 원본과 보완 데이터가 포함된 통합 엑셀 리포트를 다운로드합니다.
+            1. **시각적 탐색:** 상단 산점도 및 바이올린 플롯을 통한 데이터 전반의 분포 및 이상 의심치 육안 확인
+            2. **검토 변수 선택:** 이상치 탐지가 필요한 수치형/범주형 변수의 다중 선택
+            3. **보안 방법 설정:** AI 추천 제안 수용 또는 직접 통계 알고리즘(Z-score 등) 지정
+            4. **실행 및 검토:** 보완된 데이터 수치 및 감사 로그(Audit Log)의 최종 대조
+            5. **데이터 저장:** 원본 및 보완 데이터를 포함한 통합 엑셀 리포트 추출
             """)
         else:
             st.markdown("""
             ### 🛠️ 이용 방법 및 단계
-            1. **결측 패턴 파악:** '데이터 결측 패턴 분석'을 확장하여 변수별 결측 비중과 AI 진단 결과를 확인합니다.
-            2. **보완 대상 선택:** 결측치가 있는 변수 중 보완 처리를 수행할 대상을 선택합니다.
-            3. **최적 알고리즘 설정:** AI 추천을 활용하거나 MICE, k-NN 등 보완 알고리즘을 지정합니다. (보완 불가 시 Call-back 선택)
-            4. **보완 실행:** '대체 실행' 버튼을 클릭하여 결측값을 통계적으로 생성합니다.
-            5. **조사 가이드 활용:** 재확인(Call-back)이 필요한 경우 AI가 생성한 전수 조사 가이드를 활용합니다.
+            1. **결측 패턴 파악:** '데이터 결측 패턴 분석' 확장을 통한 변수별 결측 비중 및 AI 진단 결과 확인
+            2. **보완 대상 선택:** 결측치가 존재하는 변수 중 보완 처리를 수행할 대상 지정
+            3. **최적 알고리즘 설정:** AI 추천 활용 또는 MICE, k-NN 등 보완 알고리즘 수동 지정 (보완 불가 시 Call-back 설정)
+            4. **보완 실행:** '대체 실행' 버튼을 통한 통계적 결측값 생성
+            5. **조사 가이드 활용:** 재확인(Call-back) 대상에 대한 AI 생성 전수 조사 가이드 참조
             """)
 
-    # [v4.1 고도화] 전문가용 가이드 (수식 포함)
+    # [v4.5 고도화] 전문가용 가이드 (명사형 어미 및 통계 기법 확장)
     with st.expander(f"📘 AI {'이상치' if mode == 'outlier' else '결측치'} 검토 - 통계적 판별 및 보완 알고리즘 안내", expanded=False):
         if mode == "outlier":
             st.markdown("""
             ### 🔍 이상치 탐지 모델 (Outlier Detection)
-            본 시스템은 데이터의 분포 특성에 따라 두 가지 보편적인 통계 기준을 적용합니다.
+            데이터의 분포 특성에 따른 두 가지 보편적 통계 기준 적용 방식
 
-            #### **1. 표준점수 (Z-score) 기준**
-            데이터가 정규분포를 따른다는 가정하에, 평균으로부터 표준편차($\sigma$)의 3배 이상 떨어진 값을 이상치로 판별합니다.
+            #### **1. 표준점수 (Z-score) 기법**
+            데이터가 정규분포를 따른다는 가정 하에 평균으로부터 표준편차($\sigma$)의 3배 이상 이탈한 값을 이상치로 판별하는 방식
             """)
             st.latex(r"z = \frac{x - \mu}{\sigma}")
             st.markdown("""
-            - **판정:** $|z| > 3.0$ 인 경우 통계적 유의수준 99.7% 밖의 극단치로 간주합니다.
+            - **판정 기준:** $|z| > 3.0$ 인 경우 통계적 유의수준 99.7% 범위를 벗어난 극단치로 간주함
 
-            #### **2. IQR (Interquartile Range) 기준**
-            비모수적 분포에서도 강건한(Robust) 탐지를 위해 사분위수를 활용합니다.
+            #### **2. IQR (Interquartile Range) 기법**
+            비모수적 분포에서도 강건한(Robust) 탐지가 가능한 사분위수 기반의 격리 방식
             - **Upper Fence:** $Q3 + 1.5 \times (Q3 - Q1)$
             - **Lower Fence:** $Q1 - 1.5 \times (Q3 - Q1)$
-            - 바이올린 플롯 내부의 박스 구조가 이 범위를 시각화합니다.
+            - 바이올린 플롯 내부 박스 구조를 통한 시각적 가중치 확인 기능 포함
             """)
         else:
             st.markdown("""
-            ### 🔍 결측치 보완 알고리즘 (Imputation)
-            항목 무응답의 성격(MCAR, MAR, MNAR)에 따라 최적의 알고리즘을 선택할 수 있습니다.
+            ### 🔍 결측치 보완 알고리즘 (Imputation Techniques)
+            결측 발생 기제(MCAR, MAR, MNAR)에 따른 최적 알고리즘 선택 및 적용
 
-            #### **1. MICE (Multivariate Imputation by Chained Equations)**
-            다변량 데이터의 결측치를 보완하기 위한 최신 기법으로, 각 변수의 결측치를 다른 변수들을 독립변수로 하는 회귀 모델을 통해 반복적으로 예측합니다.
+            #### **1. 회귀 대체 및 MICE (Multivariate Imputation by Chained Equations)**
+            다변량 데이터의 상관관계 유지를 위한 최신 기법으로, 변수별 결측치를 타 변수들을 독립변수로 하는 회귀 모델을 통해 반복 예측 보완하는 방식 (연쇄 방정식 기반의 회귀 대체 고도화 모델)
             """)
             st.latex(r"Y_j = f(Y_{-j}, X, \beta) + \epsilon")
             st.markdown("""
-            - **장점:** 변수 간의 상관관계를 유지하면서 결측치를 대체하므로 데이터의 편향을 최소화합니다.
+            - **특이점:** 변수 간 상관성을 유지하며 편향을 최소화하는 하이엔드 통계 기법
 
-            #### **2. k-NN (k-Nearest Neighbors) Imputation**
-            유사성이 가장 높은 $k$개의 이웃 사례를 찾아 그 값들의 가중 평균으로 대체합니다.
-            - **거리 척도:** 유클리드 거리(Euclidean Distance)를 활용하여 데이터 간의 유사도를 측정합니다.
+            #### **2. 최근방 대체 및 k-NN (k-Nearest Neighbors) Imputation**
+            유사성이 가장 높은 $k$개의 이웃 사례를 추출하여 해당 관측값들의 가중 평균으로 대체하는 최근방 이웃 방식
+            - **거리 척도:** 유클리드 거리(Euclidean Distance)를 활용한 개체 간 유사도 정밀 측정
+
+            #### **3. 기타 통계적 대체 기법**
+            - **평균/최빈값 대체 (Mean/Mode Imputation):** 데이터의 중심 경향성을 활용한 단순 대체 방식
+            - **유사 사례 기증법 (Hot-deck Imputation):** 현재 조사 내 유사 응답자의 값을 직접 복사하여 기증하는 실무 중심형 방식
+            - **고정값 대체 (Cold-deck Imputation):** 과거 조사 결과나 외부 데이터를 기준값으로 활용하는 보수적 대체 방식
             """)
+
+    # [v3.6 추가] 주요 기능 요약 카드 (메인 화면 스타일)
 
     # [v3.6 추가] 주요 기능 요약 카드 (메인 화면 스타일)
     st.markdown('<div class="qx-section-label">SYSTEM FEATURES</div>', unsafe_allow_html=True)
@@ -675,72 +771,68 @@ def show_outlier_inspection_system(mode="outlier"):
 </div>
 """, unsafe_allow_html=True)
 
-    # 1. 파일 업로드
-    st.markdown('<div class="qx-section-label">1. 데이터 업로드 (Excel/CSV)</div>', unsafe_allow_html=True)
-    df_file = st.file_uploader(f"검토할 데이터를 업로드하세요 ({mode})", type=["xlsx", "csv"], label_visibility="collapsed", key=f"uploader_{mode}")
+    # 1. 파일 업로드 (2컬럼 레이아웃)
+    st.markdown('<div class="qx-section-label">1. 데이터 및 코드북 업로드 (Excel/CSV)</div>', unsafe_allow_html=True)
+    col_up1, col_up2 = st.columns(2)
+    with col_up1:
+        df_file = st.file_uploader(f"분석할 데이터 업로드 ({mode})", type=["xlsx", "csv"], key=f"uploader_{mode}")
+    with col_up2:
+        cb_file = st.file_uploader(f"코드북 업로드 (선택 사항)", type=["xlsx"], key=f"cb_{mode}")
 
     if not df_file:
         if mode == "outlier":
             st.markdown("""
-<div class="qx-card" style="text-align:center; padding:3.5rem 2rem 5rem 2rem; margin-top: 1rem; margin-bottom: 4rem; min-height: 450px;">
-    <div style="font-size:3rem; margin-bottom:1rem;">📈</div>
+<div class="qx-card" style="text-align:center; padding:2rem 2rem 2.5rem 2rem; margin-top: 1rem; margin-bottom: 2rem; min-height: 320px;">
+    <div style="font-size:3rem; margin-bottom:0.5rem;">📈</div>
     <div style="font-size:1.1rem; font-weight:600; color:#1A2237; margin-bottom:0.5rem;">
         검토할 데이터를 업로드하세요
     </div>
-    <div style="font-size:0.87rem; color:#8B96A9; margin-bottom:2rem;">
+    <div style="font-size:0.87rem; color:#8B96A9; margin-bottom:1.5rem;">
         Excel 또는 CSV 데이터를 업로드하면 AI가 이상치 탐지 및 시각적 진단을 수행합니다.
     </div>
     <div style="display:flex; justify-content:center; gap:1.5rem; flex-wrap:wrap;">
-        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
-            <div style="font-size:1.4rem;">📍</div>
-            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">시각적 진단</div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">📍</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">시각적 진단</div>
         </div>
-        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
-            <div style="font-size:1.4rem;">📏</div>
-            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">통계적 탐지</div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">📏</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">통계적 탐지</div>
         </div>
-        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
-            <div style="font-size:1.4rem;">🧠</div>
-            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">AI 보완 방법</div>
-        </div>
-        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
-            <div style="font-size:1.4rem;">📄</div>
-            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">결과 리포트</div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">🧠</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">AI 보완 방법</div>
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
         else:
             st.markdown("""
-<div class="qx-card" style="text-align:center; padding:3.5rem 2rem 5rem 2rem; margin-top: 1rem; margin-bottom: 4rem; min-height: 450px;">
-    <div style="font-size:3rem; margin-bottom:1rem;">📊</div>
+<div class="qx-card" style="text-align:center; padding:2rem 2rem 2.5rem 2rem; margin-top: 1rem; margin-bottom: 2rem; min-height: 320px;">
+    <div style="font-size:3rem; margin-bottom:0.5rem;">📊</div>
     <div style="font-size:1.1rem; font-weight:600; color:#1A2237; margin-bottom:0.5rem;">
         분석할 데이터를 업로드하세요
     </div>
-    <div style="font-size:0.87rem; color:#8B96A9; margin-bottom:2rem;">
+    <div style="font-size:0.87rem; color:#8B96A9; margin-bottom:1.5rem;">
         데이터를 업로드하면 AI가 결측 패턴을 분석하고 최적의 통계적 보완을 제안합니다.
     </div>
     <div style="display:flex; justify-content:center; gap:1.5rem; flex-wrap:wrap;">
-        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
-            <div style="font-size:1.4rem;">🔍</div>
-            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">패턴 분석</div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">🔍</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">패턴 분석</div>
         </div>
-        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
-            <div style="font-size:1.4rem;">🧪</div>
-            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">고급 보완(MICE)</div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">🧪</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">고급 보완(MICE)</div>
         </div>
-        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
-            <div style="font-size:1.4rem;">🚨</div>
-            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">재확인 관리</div>
-        </div>
-        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:1rem 1.5rem;min-width:130px;">
-            <div style="font-size:1.4rem;">🎙️</div>
-            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.4rem;">조사 가이드</div>
+        <div style="background:#F4F6F9;border:1px solid #E5E9F0;border-radius:8px;padding:0.8rem 1.2rem;min-width:120px;">
+            <div style="font-size:1.2rem;">🎙️</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#3D4F6B;margin-top:0.3rem;">조사 가이드</div>
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
-        st.markdown("<div style='margin-bottom: 20rem;'></div>", unsafe_allow_html=True) # [v4.3] 하단 잘림 방지용 대형 스페이서
+        st.markdown("<div style='margin-bottom: 5rem;'></div>", unsafe_allow_html=True) 
         return
 
     # 데이터 로드
@@ -753,6 +845,38 @@ def show_outlier_inspection_system(mode="outlier"):
         st.error(f"데이터 로드 중 오류 발생: {e}")
         return
 
+    # [v4.6] 코드북 파킹 및 매핑
+    cb_parser = None
+    if cb_file:
+        try:
+            with st.spinner("코드북 분석 중..."):
+                cb_parser = CodebookParser(cb_file)
+            st.success("코드북 연동 완료: 변수 설명 및 코드표가 활성화되었습니다.")
+            
+            # [v4.6 추가] 코드북 미리보기 공간
+            with st.expander("📘 연동 코드북 상세 정보 (변수설명 및 코드표)", expanded=False):
+                tab_cb1, tab_cb2 = st.tabs(["📋 변수 리스트 및 설명", "🔢 코드/라벨 매핑 테이블"])
+                with tab_cb1:
+                    if cb_parser.var_map:
+                        var_preview_df = pd.DataFrame([
+                            {"문번호": v['no'], "변수명": k, "변수설명": v['desc']} 
+                            for k, v in cb_parser.var_map.items()
+                        ])
+                        st.dataframe(var_preview_df, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("파싱된 변수 설명 정보가 없습니다.")
+                with tab_cb2:
+                    if cb_parser.code_map:
+                        all_codes = []
+                        for var, codes in cb_parser.code_map.items():
+                            for c, l in codes.items():
+                                all_codes.append({"변수명": var, "코드": c, "라벨": l})
+                        st.dataframe(pd.DataFrame(all_codes), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("파싱된 코드표 정보가 없습니다.")
+        except Exception as e:
+            st.error(f"코드북 파싱 오류: {e}")
+
     st.success(f"데이터 로드 완료: {len(df)} 행, {len(df.columns)} 열")
     
     # [v3.5 추가] 시각적 이상치 판별 섹션
@@ -764,35 +888,80 @@ def show_outlier_inspection_system(mode="outlier"):
             else:
                 viz_tab1, viz_tab2 = st.tabs(["📍 산점도 (Scatter Plot)", "🎻 바이올린 플롯 (Violin Plot)"])
                 
+                # 라벨 맵핑 리스트
+                col_labels = cb_parser.get_all_var_labels(numeric_cols) if cb_parser else numeric_cols
+
                 with viz_tab1:
                     st.markdown("##### 두 변수 간의 관계와 극단값 확인")
                     c1, c2, c3 = st.columns([2, 2, 1])
                     with c1:
-                        x_axis = st.selectbox("X축 변수", options=numeric_cols, key="viz_x")
+                        x_label = st.selectbox("X축 변수", options=col_labels, key="viz_x")
+                        x_axis = cb_parser.get_column_from_label(x_label) if cb_parser else x_label
                     with c2:
-                        y_axis = st.selectbox("Y축 변수", options=numeric_cols, index=min(1, len(numeric_cols)-1), key="viz_y")
+                        y_label = st.selectbox("Y축 변수", options=col_labels, index=min(1, len(col_labels)-1), key="viz_y")
+                        y_axis = cb_parser.get_column_from_label(y_label) if cb_parser else y_label
                     with c3:
                         dot_color = st.color_picker("점 색상", "#0F6CBD", key="viz_color")
                     
                     fig_scatter = px.scatter(df, x=x_axis, y=y_axis, template="plotly_white", 
-                                           title=f"{x_axis} vs {y_axis} 산점도")
+                                           title=f"{x_label} vs {y_label} 산점도",
+                                           labels={x_axis: x_label, y_axis: y_label})
                     fig_scatter.update_traces(marker=dict(color=dot_color, size=8, opacity=0.6))
                     st.plotly_chart(fig_scatter, use_container_width=True)
                 
                 with viz_tab2:
                     st.markdown("##### 데이터의 분포 밀도와 이상치 범위 확인")
-                    v_col = st.selectbox("분석할 변수", options=numeric_cols, key="viz_v")
+                    v_label = st.selectbox("분석할 변수", options=col_labels, key="viz_v")
+                    v_col = cb_parser.get_column_from_label(v_label) if cb_parser else v_label
                     fig_violin = px.violin(df, y=v_col, box=True, points="all", template="plotly_white",
-                                         title=f"{v_col} 분포 분석 (Violin & Box)")
+                                         title=f"{v_label} 분포 분석 (Violin & Box)",
+                                         labels={v_col: v_label})
                     fig_violin.update_traces(fillcolor="#0F6CBD", opacity=0.6, line=dict(color="black"))
                     st.plotly_chart(fig_violin, use_container_width=True)
-    
+
+        # [v4.6 추가] 데이터 이상치 사전 진단 (결측치와 동일한 테이블 형식)
+        with st.expander("📊 데이터 이상치 사전 진단 (v4.6)", expanded=False):
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            outlier_stats = []
+            for c in numeric_cols:
+                m = df[c].mean()
+                s = df[c].std()
+                cnt = len(df[(df[c] < m - 3*s) | (df[c] > m + 3*s)])
+                if cnt > 0:
+                    outlier_stats.append({
+                        "변수명": cb_parser.get_var_label(c) if cb_parser else c,
+                        "원본ID": c,
+                        "이상치건수(Z>3)": cnt,
+                        "비중(%)": round(cnt / len(df) * 100, 1)
+                    })
+            
+            if not outlier_stats:
+                st.info("통계적 이상치(Z-score > 3)가 발견되지 않았습니다. ✨")
+            else:
+                outlier_df = pd.DataFrame(outlier_stats).sort_values("이상치건수(Z>3)", ascending=False)
+                col_o1, col_o2 = st.columns([1, 1])
+                with col_o1:
+                    st.markdown("### 🔍 주요 이상 변수")
+                    st.dataframe(outlier_df.drop(columns=["원본ID"]), hide_index=True, use_container_width=True)
+                with col_o2:
+                    st.markdown("### 🤖 AI 이상치 원인 추론")
+                    if st.button("🧠 AI 이상치 진단 실행", key="diag_btn_out"):
+                        diag_prompt = f"다음 변수들의 이상치 정보를 보고 단순 기입 오류 가능성인지, 실제 극단값 사례 가능성인지 추론해줘.\n{outlier_df.to_string()}"
+                        res, err = run_analysis("데이터 품질 전문가", diag_prompt, "이상 패턴 분석 중...")
+                        if not err: st.info(res)
+                        else: st.error(f"진단 오류: {err}")
+
     # [v3.0 추가] 결측치 패턴 분석 섹션
     if mode == "imputation":
         with st.expander("📊 데이터 결측 패턴 분석 (v3.0)", expanded=False):
             missing_counts = df.isnull().sum()
+            
+            # [v4.6] 변수명 라벨링 적용
+            m_labels = [cb_parser.get_var_label(c) if cb_parser else c for c in missing_counts.index]
+            
             missing_df = pd.DataFrame({
-                "변수명": missing_counts.index,
+                "변수명": m_labels,
+                "원본ID": missing_counts.index,
                 "결측건수": missing_counts.values,
                 "결측비율(%)": (missing_counts.values / len(df) * 100).round(1)
             })
@@ -804,20 +973,20 @@ def show_outlier_inspection_system(mode="outlier"):
                 col_m1, col_m2 = st.columns([1, 1])
                 with col_m1:
                     st.markdown("### 🔍 주요 결측 변수")
-                    st.dataframe(missing_df, hide_index=True, use_container_width=True)
+                    st.dataframe(missing_df.drop(columns=["원본ID"]), hide_index=True, use_container_width=True)
                 with col_m2:
                     st.markdown("### 🤖 AI 결측 유형 진단")
                     if st.button("🧠 AI 패턴 진단 실행", key="diag_btn_ai"):
-                        diag_prompt = f"다음 데이터의 결측 현황을 보고 MCAR(완전무작위), MAR(무작위), MNAR(비무작위) 중 어느 유형에 가까운지 진단하고 조치 전략을 추천해줘.\n{missing_df.to_string()}"
+                        diag_prompt = f"다음 데이터의 결측 현황을 보고 MCAR, MAR, MNAR 중 유형을 진단해줘.\n{missing_df.to_string()}"
                         res, err = run_analysis("데이터 품질 전문가", diag_prompt, "결측 패턴 추론 중...")
-                        if not err:
-                            st.info(res)
-                        else:
-                            st.error(f"진단 오류: {err}")
+                        if not err: st.info(res)
+                        else: st.error(f"진단 오류: {err}")
 
     # 2. 변수 선택
     st.markdown('<div class="qx-section-label">2. 검토 대상 변수 선택</div>', unsafe_allow_html=True)
-    target_cols = st.multiselect("이상치/결측치 검토가 필요한 변수를 선택하세요", options=df.columns.tolist(), key=f"targets_{mode}")
+    all_col_labels = cb_parser.get_all_var_labels(df.columns) if cb_parser else df.columns.tolist()
+    selected_labels = st.multiselect("검토가 필요한 변수를 선택하세요", options=all_col_labels, key=f"targets_{mode}")
+    target_cols = [cb_parser.get_column_from_label(lb) for lb in selected_labels] if cb_parser else selected_labels
 
     if not target_cols:
         st.warning("분석할 변수를 최소 하나 이상 선택해 주세요.")
@@ -828,19 +997,18 @@ def show_outlier_inspection_system(mode="outlier"):
     
     impute_configs = {}
     
-    for col in target_cols:
-        with st.expander(f"📍 변수: {col}", expanded=True):
+    for i, col in enumerate(target_cols):
+        display_name = selected_labels[i] if cb_parser else col
+        with st.expander(f"📍 변수: {display_name}", expanded=True):
             col_a, col_b = st.columns([2, 1])
             
             with col_b:
                 if st.button(f"🪄 AI 추천", key=f"ai_rec_{mode}_{col}"):
-                    # AI 추천 로직 (analyzer 활용)
-                    prompt = f"다음 변수의 데이터 대체 방법을 추천하고 이유를 설명해줘. 변수명: {col}, 데이터 타입: {df[col].dtype}, 샘플 데이터: {df[col].dropna().head(5).tolist()}"
+                    # AI 추천 로직
+                    prompt = f"다음 변수의 데이터 대체 방법을 추천하고 이유를 설명해줘. 변수명: {display_name}, 타입: {df[col].dtype}, 샘플: {df[col].dropna().head(5).tolist()}"
                     res, err = run_analysis("데이터 분석 전문가", prompt, "샘플 데이터 분석 중...")
-                    if not err:
-                        st.session_state[f"rec_{mode}_{col}"] = res
-                    else:
-                        st.session_state[f"rec_{mode}_{col}"] = f"AI 추천 생성 중 오류: {err}"
+                    if not err: st.session_state[f"rec_{mode}_{col}"] = res
+                    else: st.session_state[f"rec_{mode}_{col}"] = f"AI 추천 생성 중 오류: {err}"
                 
                 if f"rec_{mode}_{col}" in st.session_state:
                     st.caption(st.session_state[f"rec_{mode}_{col}"])
@@ -851,10 +1019,12 @@ def show_outlier_inspection_system(mode="outlier"):
                 
                 options = {}
                 if selected_method == "층별 평균 대체":
-                    strata = st.multiselect(f"층(Strata) 변수 선택 ({col})", options=[c for c in df.columns if c != col], key=f"strata_{mode}_{col}")
-                    options["strata"] = strata
+                    # [v4.6] 층별 변수도 라벨링 적용
+                    st_labels = cb_parser.get_all_var_labels([c for c in df.columns if c != col]) if cb_parser else [c for c in df.columns if c != col]
+                    sel_st_labels = st.multiselect(f"층(Strata) 변수 선택 ({display_name})", options=st_labels, key=f"strata_{mode}_{col}")
+                    options["strata"] = [cb_parser.get_column_from_label(lb) for lb in sel_st_labels] if cb_parser else sel_st_labels
                 elif selected_method == "k-NN 대체":
-                    k_val = st.slider(f"k값 설정 ({col})", 1, 10, 5, key=f"k_{mode}_{col}")
+                    k_val = st.slider(f"k값 설정 ({display_name})", 1, 10, 5, key=f"k_{mode}_{col}")
                     options["k"] = k_val
                 elif selected_method == "재확인(Call Back)":
                     st.warning("⚠️ 이 데이터는 보완하지 않고 '재조사 명단'에 포함합니다.")
@@ -868,7 +1038,6 @@ def show_outlier_inspection_system(mode="outlier"):
         
         with st.spinner("통계적 알고리즘 처리 중..."):
             for col, config in impute_configs.items():
-                # 이상치/결측치 인덱스 추출
                 if mode == "imputation":
                     missing_idx = df[df[col].isna()].index.tolist()
                 else:
@@ -879,28 +1048,19 @@ def show_outlier_inspection_system(mode="outlier"):
                     else:
                         missing_idx = df[df[col].isna()].index.tolist()
                 
-                if not missing_idx:
-                    continue
+                if not missing_idx: continue
                 
                 method = config["method"]
                 opts = config["options"]
                 
-                if method == "전체 평균 대체":
-                    imputer.impute_grand_mean(col, missing_idx)
-                elif method == "중앙값 대체":
-                    imputer.impute_median(col, missing_idx)
-                elif method == "최빈값 대체":
-                    imputer.impute_mode(col, missing_idx)
-                elif method == "층별 평균 대체" and opts.get("strata"):
-                    imputer.impute_stratified_mean(col, missing_idx, opts["strata"])
-                elif method == "k-NN 대체":
-                    imputer.impute_knn(col, missing_idx, k=opts.get("k", 5))
-                elif method == "MICE 다중 대체":
-                    imputer.impute_mice(col, missing_idx)
-                elif method == "재확인(Call Back)":
-                    imputer._apply_imputation(col, missing_idx, "CALL_BACK", "재확인 대상분류")
-                else:
-                    imputer.impute_grand_mean(col, missing_idx)
+                if method == "전체 평균 대체": imputer.impute_grand_mean(col, missing_idx)
+                elif method == "중앙값 대체": imputer.impute_median(col, missing_idx)
+                elif method == "최빈값 대체": imputer.impute_mode(col, missing_idx)
+                elif method == "층별 평균 대체" and opts.get("strata"): imputer.impute_stratified_mean(col, missing_idx, opts["strata"])
+                elif method == "k-NN 대체": imputer.impute_knn(col, missing_idx, k=opts.get("k", 5))
+                elif method == "MICE 다중 대체": imputer.impute_mice(col, missing_idx)
+                elif method == "재확인(Call Back)": imputer._apply_imputation(col, missing_idx, "CALL_BACK", "재확인 대상분류")
+                else: imputer.impute_grand_mean(col, missing_idx)
             
             st.session_state[f"imputed_df_{mode}"] = imputer.df
             st.session_state[f"impute_summary_{mode}"] = imputer.get_summary()
@@ -914,14 +1074,32 @@ def show_outlier_inspection_system(mode="outlier"):
         
         summary = st.session_state[f"impute_summary_{mode}"]
         if isinstance(summary, dict) and summary:
-            cols_metric = st.columns(len(summary))
+            cols_metric = st.columns(min(len(summary), 4))
             for i, (col_name, count) in enumerate(summary.items()):
-                cols_metric[i].metric(col_name, f"{count}건 보완")
+                idx = i % 4
+                display_name = cb_parser.get_var_label(col_name) if cb_parser else col_name
+                cols_metric[idx].metric(display_name, f"{count}건")
         
         orig_df = df.copy()
         adj_df = st.session_state[f"imputed_df_{mode}"]
         log_list = st.session_state[f"impute_log_{mode}"]
         log_df = pd.DataFrame(log_list)
+
+        # [v4.6] 로그 프레임에 라벨 추가
+        if not log_df.empty:
+            log_df["변수설명"] = log_df["변수명"].apply(lambda x: cb_parser.get_var_label(x) if cb_parser else x)
+            # 코드값 라벨링 (기존값, 대체값)
+            if cb_parser:
+                log_df["기존라벨"] = log_df.apply(lambda r: cb_parser.get_value_label(r["변수명"], r["기존값"]), axis=1)
+                log_df["대체라벨"] = log_df.apply(lambda r: cb_parser.get_value_label(r["변수명"], r["대체값"]), axis=1)
+            
+            # 컬럼 순서 조정
+            cols_order = ["인덱스", "변수명", "변수설명", "기존값"]
+            if "기존라벨" in log_df.columns: cols_order.append("기존라벨")
+            cols_order.extend(["대체값"])
+            if "대체라벨" in log_df.columns: cols_order.append("대체라벨")
+            cols_order.append("적용방법")
+            log_df = log_df[cols_order]
 
         # 결과 엑셀용 DF 구성
         export_df = orig_df.copy()
@@ -933,35 +1111,24 @@ def show_outlier_inspection_system(mode="outlier"):
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             export_df.to_excel(writer, index=False, sheet_name='Result')
-            if not log_df.empty:
-                log_df.to_excel(writer, index=False, sheet_name='AuditLog')
+            if not log_df.empty: log_df.to_excel(writer, index=False, sheet_name='AuditLog')
         output.seek(0)
         
-        st.download_button(
-            "📥 보완 데이터 다운로드 (Excel)",
-            data=output,
-            file_name=f"보완완료_{df_file.name}",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key=f"dl_btn_{mode}"
-        )
+        st.download_button("📥 보완 데이터 다운로드 (Excel)", data=output, file_name=f"보완완료_{df_file.name}", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key=f"dl_btn_{mode}")
         
         with st.expander("📝 상세 보완 내역 (Log)", expanded=True):
-            st.dataframe(log_df, use_container_width=True)
+            st.dataframe(log_df, use_container_width=True, hide_index=True)
             
-        # [v3.0 추가] 재확인(Call-back) 대상 명단 별도 표시
         callback_df = log_df[log_df["적용방법"] == "재확인 대상분류"]
         if not callback_df.empty:
             st.markdown('<div class="qx-section-label" style="color:#d32f2f;">🚨 재조사(Call-back) 필요 명단</div>', unsafe_allow_html=True)
-            st.error(f"총 {len(callback_df)}건의 데이터가 재확인 대상으로 분류되었습니다. 아래 명단을 조사원에게 전달하세요.")
+            st.error(f"총 {len(callback_df)}건의 데이터가 재확인 대상으로 분류되었습니다.")
             
-            # 조사 가이드 생성 (AI가 각 변수별로 생성)
-            target_callback_vars = callback_df["변수명"].unique().tolist()
+            target_callback_labels = callback_df["변수설명"].unique().tolist()
             if st.button("🎙️ AI 재조사 질문 가이드 생성", key="btn_callback_guide"):
-                guide_prompt = f"다음 변수들에 대해 전화 재조사를 실시할 때, 응답자에게 자연스럽게 물어볼 수 있는 질문 스크립트를 작성해줘.\n변수: {', '.join(target_callback_vars)}"
+                guide_prompt = f"다음 문항들에 대해 전화 재조사를 실시할 때의 스크립트를 작성해줘.\n문항: {', '.join(target_callback_labels)}"
                 res, err = run_analysis("전화조사 슈퍼바이저", guide_prompt, "스크립트 작성 중...")
-                if not err:
-                    st.info(res)
+                if not err: st.info(res)
             
             st.dataframe(callback_df, use_container_width=True, hide_index=True)
 
