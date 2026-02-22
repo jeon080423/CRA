@@ -854,13 +854,28 @@ def show_questionnaire_optimization_system():
                 st.session_state["q_opt_file_name"] = q_file.name
                 st.success(f"'{q_file.name}'에서 텍스트를 성공적으로 가져왔습니다.")
 
+    # [v4.16] 텍스트 영역 높이 축소 및 테두리 색상 상시 강조
+    st.markdown("""
+        <style>
+        .q-opt-textarea [data-baseweb="textarea"] {
+            border-color: #0F6CBD !important;
+            box-shadow: none !important;
+        }
+        .q-opt-textarea [data-baseweb="textarea"]:focus-within {
+            box-shadow: 0 0 0 1px #0F6CBD !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="q-opt-textarea">', unsafe_allow_html=True)
     q_text = st.text_area(
         "분석할 설문 문항 (직접 입력하거나 위에서 파일을 업로드하세요)", 
         value=st.session_state.get("q_opt_input_text", ""),
-        height=350, 
+        height=175, 
         placeholder="예: Q1. 귀하는 본 서비스에 대해 얼마나 만족하십니까?\n1) 매우 만족  2) 만족  3) 보통  4) 불만족  5) 매우 불만족",
         help="파일을 업로드하면 내용이 자동으로 채워집니다. 직접 수정도 가능합니다."
     )
+    st.markdown('</div>', unsafe_allow_html=True)
     # 직접 수정한 내용을 세션 상태에 동기화
     st.session_state["q_opt_input_text"] = q_text
 
