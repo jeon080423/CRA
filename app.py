@@ -1122,19 +1122,19 @@ def show_sample_design_system():
         fig.update_traces(marker_color="#0F6CBD", textposition="outside")
         st.plotly_chart(fig, use_container_width=True)
 
-        if st.button("📥 상세 표본 설계 내역 다운로드 (Excel)", use_container_width=True):
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                res_df.to_excel(writer, index=False, sheet_name='Sample_Design')
-            output.seek(0)
-            st.download_button(
-                "📥 클릭하여 엑셀 파일 저장", 
-                data=output, 
-                file_name="표본설계_상세배분안.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                key="dl_sample_design_final"
-            )
+        # [v6.12] Fix: UnboundLocalError 방지 - st.button 내부 st.download_button 중첩 제거
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            res_df.to_excel(writer, index=False, sheet_name='Sample_Design')
+        output.seek(0)
+        st.download_button(
+            "📥 상세 표본 설계 내역 다운로드 (Excel)", 
+            data=output, 
+            file_name="표본설계_상세배분안.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="dl_sample_design_final"
+        )
 
 
 def show_outlier_inspection_system(mode="outlier"):
