@@ -496,13 +496,16 @@ def show_win_strategy_section():
         for i, sec in enumerate(RFP_SECTIONS):
             with tabs[i]:
                 res = st.session_state["rfp_results"].get(sec["id"], "분석 결과가 없습니다.")
+                # [v2.10] &nbsp; HTML 엔티티가 원문 텍스트로 표시되는 문제 보정
+                res = res.replace("&nbsp;", " ")
                 st.markdown(res, unsafe_allow_html=True)
         
         # 워드 다운로드 (RFP용) - 한 번 클릭으로 바로 다운로드
         st.markdown("<hr>", unsafe_allow_html=True)
         rfp_md = f"# RFP 분석 보고서: {st.session_state['rfp_project_name']}\n\n"
         for sec in RFP_SECTIONS:
-            rfp_md += f"## {sec['title']}\n\n{st.session_state['rfp_results'].get(sec['id'], '')}\n\n"
+            sec_text = st.session_state['rfp_results'].get(sec['id'], '').replace("&nbsp;", " ")
+            rfp_md += f"## {sec['title']}\n\n{sec_text}\n\n"
         
         docx_file = export_to_docx(rfp_md)
         st.download_button(
@@ -920,7 +923,7 @@ def show_questionnaire_optimization_system():
 """, unsafe_allow_html=True)
         st.markdown("<div style='margin-bottom: 5rem;'></div>", unsafe_allow_html=True)
 
-    if st.button("🚀 AI 설계 최적화 시작", type="primary", use_container_width=True):
+    if st.button("🚀 AI 설문지 최적화 시작", type="primary", use_container_width=True):
         if not q_text.strip():
             st.warning("분석할 설문 텍스트를 입력해 주세요.")
         else:
