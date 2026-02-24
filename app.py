@@ -2343,16 +2343,37 @@ with st.sidebar:
 
 
 def export_to_docx(markdown_text: str) -> io.BytesIO:
-    """마크다운-텍스트를 워드(DOCX) 파일로 변환 (표 객체 및 빨간색 강조 지원)"""
+    """마크다운-텍스트를 워드(DOCX) 파일로 변환 (표 객체 및 빨간색 강조 지원, 한국어 폰트 지원)"""
     if Document is None:
         return io.BytesIO(b"python-docx is not installed")
     
+    from docx.shared import RGBColor
+    from docx.oxml.ns import qn
+    import re
+    
+    KOREAN_FONT = '맑은 고딕'
+    
     doc = Document()
+    
+    # ── 기본(Normal) 스타일에 한국어 폰트 설정
     style = doc.styles['Normal']
     style.font.size = Pt(11)
+    style.font.name = KOREAN_FONT
+    # East-Asian 폰트 명시 (Word가 한글을 해당 폰트로 렌더링하도록 보장)
+    style.element.rPr.rFonts.set(qn('w:eastAsia'), KOREAN_FONT)
     
-    from docx.shared import RGBColor
-    import re
+    # ── 제목(Heading) 스타일에도 한국어 폰트 설정
+    for i in range(1, 4):
+        heading_style = doc.styles[f'Heading {i}']
+        heading_style.font.name = KOREAN_FONT
+        if heading_style.element.rPr is None:
+            heading_style.element.get_or_add_rPr()
+        heading_style.element.rPr.rFonts.set(qn('w:eastAsia'), KOREAN_FONT)
+    
+    def _set_run_font(run):
+        """개별 run에 한국어 폰트를 적용하는 헬퍼"""
+        run.font.name = KOREAN_FONT
+        run.element.rPr.rFonts.set(qn('w:eastAsia'), KOREAN_FONT)
     
     lines = markdown_text.split('\n')
     table_buffer = []
@@ -2380,8 +2401,7 @@ def export_to_docx(markdown_text: str) -> io.BytesIO:
         doc.add_paragraph() # 표 뒤에 공백 추가
 
     def add_formatted_text(paragraph, text):
-        """정규표현식을 사용하여 마크다운 볼드(**), span 태그, blue 태그 처리"""
-        import re
+        """정규표현식을 사용하여 마크다운 볼드(**), span 태그, blue 태그 처리 (한국어 폰트 적용)"""
         # <br> 태그를 실제 줄바꿈으로 변환 (워드용)
         text = text.replace("<br>", "\n")
         
@@ -2396,19 +2416,23 @@ def export_to_docx(markdown_text: str) -> io.BytesIO:
                 run = paragraph.add_run(inner)
                 run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
                 run.bold = True
+                _set_run_font(run)
             elif part.startswith("<blue>"):
                 inner = re.sub(r"<blue>(.*?)</blue>", r"\1", part)
                 inner = inner.replace("**", "")
                 run = paragraph.add_run(inner)
                 run.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)
                 run.bold = True
+                _set_run_font(run)
             elif part.startswith("**") and part.endswith("**"):
                 inner = part[2:-2]
                 run = paragraph.add_run(inner)
                 run.bold = True
+                _set_run_font(run)
             else:
                 if part:
-                    paragraph.add_run(part)
+                    run = paragraph.add_run(part)
+                    _set_run_font(run)
 
     for line in lines:
         line_strip = line.strip()
