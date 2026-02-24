@@ -74,6 +74,56 @@ class DataImputer:
             new_val = imputed_data[row_pos, col_idx]
             self._apply_imputation(column, [idx], new_val, "MICE 다중 대체")
 
+    def impute_random(self, column: str, target_indices: list):
+        """랜덤 대체 (Random Imputation): 관측값 분포로부터 무작위 복원 추출하여 대체"""
+        observed = self.df[column].dropna()
+        if observed.empty:
+            return
+        
+        np.random.seed(42)
+        random_values = np.random.choice(observed.values, size=len(target_indices), replace=True)
+        
+        for i, idx in enumerate(target_indices):
+            self._apply_imputation(column, [idx], random_values[i], "랜덤 대체")
+
+    def impute_conditional_mean(self, column: str, target_indices: list):
+        """조건부 평균 대체 (Conditional Mean Imputation): 상관관계가 가장 높은 변수 기준 그룹별 평균 대체"""
+        numeric_df = self.df.select_dtypes(include=[np.number])
+        if column not in numeric_df.columns or len(numeric_df.columns) < 2:
+            # 수치형이 아니거나 다른 수치 변수가 없으면 전체 평균으로 폴백
+            self.impute_grand_mean(column, target_indices)
+            return
+        
+        # 상관관계가 가장 높은 변수 자동 탐지
+        corr_series = numeric_df.corr()[column].drop(column).abs().dropna()
+        if corr_series.empty:
+            self.impute_grand_mean(column, target_indices)
+            return
+            
+        best_corr_col = corr_series.idxmax()
+        best_corr_val = corr_series.max()
+        
+        # 상관계수가 0.1 미만이면 의미 있는 그룹화가 불가하므로 전체 평균 폴백
+        if best_corr_val < 0.1:
+            self.impute_grand_mean(column, target_indices)
+            return
+        
+        # 상관 변수를 구간(Bin)으로 나누어 그룹화 (5분위수)
+        try:
+            bins = pd.qcut(self.df[best_corr_col], q=5, duplicates='drop')
+            grouped_mean = self.df.groupby(bins, observed=True)[column].transform('mean')
+        except (ValueError, TypeError):
+            self.impute_grand_mean(column, target_indices)
+            return
+        
+        grand_mean = self.df[column].mean()
+        
+        for idx in target_indices:
+            cond_val = grouped_mean.get(idx, grand_mean)
+            if pd.isna(cond_val):
+                cond_val = grand_mean
+            self._apply_imputation(column, [idx], cond_val, f"조건부 평균 대체(기준:{best_corr_col}, r={best_corr_val:.2f})")
+
     def _apply_imputation(self, column: str, indices: list, value: any, method: str):
         """공통 보완 적용 및 로그 기록"""
         # NumPy 타입이면 기본 Python 타입으로 변환 (엑셀 저장 시 호환성)

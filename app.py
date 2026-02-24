@@ -1612,13 +1612,15 @@ def show_outlier_inspection_system(mode="outlier"):
             ### 🛠️ 데이터 결측치(Missing) 보완 단계
             1. **결측 패턴 정밀 진단:** 
                - '결측 히트맵'을 통해 변수 간 결측 상관관계를 파악합니다.
-               - AI 진단을 통해 MCAR(무작위 결측) 여부를 판별하고 보완 적합성을 평가합니다.
+               - AI 진단을 통해 결측 기제를 판별합니다: **MCAR**(완전 무작위 결측, 보완 적합), **MAR**(조건부 무작위, 모델 기반 보완 필요), **MNAR**(비무작위, 보완 부적합 → 재조사 권장)
             2. **보완 알고리즘 엔진 가동:** 
-               - **단일 대체:** 평균, 중앙값, 최빈값 등 빠른 보완이 필요한 경우 사용합니다.
-               - **다중 대체(MICE):** 변수 간 회귀 관계를 활용하여 정보 손실을 최소화하는 고난도 보완에 적격입니다.
+               - **단일 대체(평균/중앙값/최빈값):** 결측률이 5% 미만이고 MCAR일 때 적합한 단순 보완 방식입니다.
+               - **랜덤 대체(Random Imputation):** 관측값 분포에서 무작위 추출하여 분산을 보존합니다. 단일 대체의 분산 축소 문제를 해결합니다.
+               - **조건부 평균 대체(Conditional Mean):** 상관관계가 높은 변수를 자동 탐지하여 그룹별 평균으로 대체합니다. 변수 간 관계를 반영한 정교한 평균 대체입니다.
+               - **다중 대체(MICE):** 변수 간 회귀 관계를 활용하여 정보 손실을 최소화하는 고난도 보완에 적격입니다. MAR 상황에서 가장 권장됩니다.
                - **최근접 이웃(k-NN):** 유사한 응답 패턴을 가진 다른 사례의 값을 참조하여 정교하게 대체합니다.
-            3. **조사 가이드 생성:** 보완이 불가능한 필수 항목 결측에 대해 AI가 재조사 스크립트를 자동 생성합니다.
-            4. **통합 데이터 배포:** 보완된 데이터와 원본을 대조할 수 있는 'Imputation Marker'가 포함된 리포트를 다운로드합니다.
+            3. **조사 가이드 생성:** 보완이 불가능한 필수 항목 결측(MNAR)이나 핵심 문항 결측에 대해 AI가 재조사(Call-back) 스크립트를 자동 생성합니다.
+            4. **통합 데이터 배포:** 보완된 데이터와 원본을 대조할 수 있는 'Imputation Marker'가 포함된 감사 리포트(Audit Report)와 최종 Raw Data를 분리 다운로드합니다.
             """)
 
     # [v4.5 고도화] 전문가용 가이드 (명사형 어미 및 통계 기법 확장)
@@ -1646,19 +1648,51 @@ def show_outlier_inspection_system(mode="outlier"):
             ### 🔍 결측치 보완 알고리즘 (Imputation Techniques)
             결측 발생 기제(MCAR, MAR, MNAR)에 따른 최적 알고리즘 선택 및 적용
 
-            #### **1. 회귀 대체 및 MICE (Multivariate Imputation by Chained Equations)**
+            #### **1. 평균 대체 (Mean/Median/Mode Imputation)**
+            결측값을 해당 변수의 **전체 평균(수치형)**, **중앙값**, 또는 **최빈값(범주형)**으로 대체하는 가장 기본적인 단일 대체법
+            """)
+            st.latex(r"\hat{x}_{missing} = \bar{x}_{observed} = \frac{1}{n_{obs}} \sum_{i=1}^{n_{obs}} x_i")
+            st.markdown("""
+            - **적용 조건:** MCAR 상황, 결측률 5~10% 이내, 정규분포에 가까운 데이터
+            - **한계:** 분산이 과소 추정되며$(\hat{\sigma}^2 \downarrow)$, 변수 간 상관관계가 왜곡될 수 있음
+
+            #### **2. 랜덤 대체 (Random Imputation)**
+            결측값을 해당 변수의 **관측값 분포에서 무작위 복원 추출(Random Sampling with Replacement)**하여 대체하는 방식. 단순 평균 대체의 **분산 축소(Variance Underestimation)** 문제를 해결함
+            """)
+            st.latex(r"\hat{x}_{missing} \sim F_{observed}(x) \quad \text{(관측값의 경험적 분포에서 추출)}")
+            st.markdown("""
+            - **장점:** 원래 데이터의 분포 형태(분산, 왜도)를 보존하여 통계적 추론의 편향을 줄임
+            - **적용 조건:** MCAR 상황에서 분포 보존이 중요할 때 권장
+            - **한계:** 변수 간 공분산(Covariance) 구조를 반영하지 못하므로, 다변량 분석 시 주의 필요
+
+            #### **3. 조건부 평균 대체 (Conditional Mean Imputation)**
+            결측 변수와 **상관관계가 가장 높은 보조 변수**를 자동 감지하여, 해당 변수의 구간(Quintile)별 평균으로 대체하는 방식. 단순 전체 평균보다 변수 간 관계를 보존하는 정교한 대체법
+            """)
+            st.latex(r"\hat{x}_{missing} = E[X | Z = z_k] = \bar{x}_{\{i: z_i \in Q_k\}}")
+            st.markdown(r"""
+            - **원리:** 상관계수 $|r|$이 가장 높은 변수 $Z$를 기준으로 5분위(Quintile)로 구간화한 뒤, 해당 구간 내 평균으로 대체
+            - **적용 조건:** 수치형 변수 간 상관관계가 존재할 때 (자동 탐지, $|r| \geq 0.1$)
+            - **장점:** 전체 평균 대체보다 편향이 적고, 층별 평균 대체보다 자동화된 방식
+
+            #### **4. 회귀 대체 및 MICE (Multivariate Imputation by Chained Equations)**
             다변량 데이터의 상관관계 유지를 위한 최신 기법으로, 변수별 결측치를 타 변수들을 독립변수로 하는 회귀 모델을 통해 반복 예측 보완하는 방식 (연쇄 방정식 기반의 회귀 대체 고도화 모델)
             """)
-            st.latex(r"Y_j = f(Y_{-j}, X, \beta) + \epsilon")
+            st.latex(r"Y_j^{(t)} = f(Y_{-j}^{(t-1)}, X, \hat{\beta}_j) + \epsilon_j")
             st.markdown("""
             - **특이점:** 변수 간 상관성을 유지하며 편향을 최소화하는 하이엔드 통계 기법
+            - **적용 조건:** MAR 상황, 결측률 20% 이상의 고결측 데이터, 다변량 분석이 목적인 경우
+            - **한계:** 모델 가정(선형성, 정규성)에 민감하며, 소규모 데이터에서 불안정할 수 있음
 
-            #### **2. 최근방 대체 및 k-NN (k-Nearest Neighbors) Imputation**
+            #### **5. 최근방 대체 및 k-NN (k-Nearest Neighbors) Imputation**
             유사성이 가장 높은 $k$개의 이웃 사례를 추출하여 해당 관측값들의 가중 평균으로 대체하는 최근방 이웃 방식
+            """)
+            st.latex(r"\hat{x}_{missing} = \frac{\sum_{j=1}^{k} w_j \cdot x_j}{\sum_{j=1}^{k} w_j}, \quad w_j = \frac{1}{d(i,j)}")
+            st.markdown("""
             - **거리 척도:** 유클리드 거리(Euclidean Distance)를 활용한 개체 간 유사도 정밀 측정
+            - **적용 조건:** 수치형 변수가 다수이고, 유사한 응답 패턴을 가진 사례가 충분할 때
+            - **한계:** 고차원 데이터에서 '차원의 저주(Curse of Dimensionality)'로 정확도가 저하될 수 있음
 
-            #### **3. 기타 통계적 대체 기법**
-            - **평균/최빈값 대체 (Mean/Mode Imputation):** 데이터의 중심 경향성을 활용한 단순 대체 방식
+            #### **6. 기타 실무 대체 기법 (참고)**
             - **유사 사례 기증법 (Hot-deck Imputation):** 현재 조사 내 유사 응답자의 값을 직접 복사하여 기증하는 실무 중심형 방식
             - **고정값 대체 (Cold-deck Imputation):** 과거 조사 결과나 외부 데이터를 기준값으로 활용하는 보수적 대체 방식
             """)
@@ -1958,7 +1992,7 @@ def show_outlier_inspection_system(mode="outlier"):
                     st.caption(st.session_state[f"rec_{mode}_{col}"])
 
             with col_a:
-                methods = ["전체 평균 대체", "중앙값 대체", "최빈값 대체", "층별 평균 대체", "MICE 다중 대체", "k-NN 대체", "재확인(Call Back)", "직접 입력"]
+                methods = ["전체 평균 대체", "조건부 평균 대체", "랜덤 대체", "중앙값 대체", "최빈값 대체", "층별 평균 대체", "MICE 다중 대체", "k-NN 대체", "재확인(Call Back)", "직접 입력"]
                 selected_method = st.selectbox(f"보완 방법 선택 ({col})", options=methods, key=f"method_{mode}_{col}")
                 
                 options = {}
@@ -1998,6 +2032,8 @@ def show_outlier_inspection_system(mode="outlier"):
                 opts = config["options"]
                 
                 if method == "전체 평균 대체": imputer.impute_grand_mean(col, missing_idx)
+                elif method == "조건부 평균 대체": imputer.impute_conditional_mean(col, missing_idx)
+                elif method == "랜덤 대체": imputer.impute_random(col, missing_idx)
                 elif method == "중앙값 대체": imputer.impute_median(col, missing_idx)
                 elif method == "최빈값 대체": imputer.impute_mode(col, missing_idx)
                 elif method == "층별 평균 대체" and opts.get("strata"): imputer.impute_stratified_mean(col, missing_idx, opts["strata"])
