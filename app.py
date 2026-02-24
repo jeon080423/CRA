@@ -950,10 +950,16 @@ def show_questionnaire_optimization_system():
         if st.button("📝 분석 결과 워드 파일로 다운로드", use_container_width=True):
             md_content = f"# AI 설문지 최적화 분석 보고서\n\n{st.session_state['q_opt_result']}"
             docx = export_to_docx(md_content)
+            # 과업명 기반 파일명 생성
+            q_project = st.session_state.get("rfp_project_name", "").strip()
+            if not q_project:
+                q_base = st.session_state.get("q_opt_file_name", "")
+                q_project = q_base.rsplit(".", 1)[0] if q_base else "설문지"
+            q_safe_name = q_project.replace("/", "_").replace("\\", "_").replace(":", "_")[:80]
             st.download_button(
                 "📥 클릭하여 워드 저장", 
                 data=docx, 
-                file_name="설문지_최적화_컨설팅.docx",
+                file_name=f"{q_safe_name}_설문지최적화.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 use_container_width=True
             )
@@ -2858,6 +2864,13 @@ else:
         col_dl1, _ = st.columns([2, 2])
         report_md = build_full_report()
         base_name = st.session_state.get("file_name", "report").rsplit(".", 1)[0]
+        # 과업명 기반 파일명 생성
+        r_project = st.session_state.get("rfp_project_name", "").strip()
+        if r_project:
+            r_safe_name = r_project.replace("/", "_").replace("\\", "_").replace(":", "_")[:80]
+            docx_filename = f"{r_safe_name}_검수보고서.docx"
+        else:
+            docx_filename = f"{base_name}_검수보고서.docx"
 
         with col_dl1:
             try:
@@ -2865,7 +2878,7 @@ else:
                 st.download_button(
                     label="📝 워드 파일로 다운로드 (.docx)",
                     data=docx_file,
-                    file_name=f"{base_name}_검수보고서.docx",
+                    file_name=docx_filename,
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True,
                 )
