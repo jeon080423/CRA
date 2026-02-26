@@ -1239,7 +1239,7 @@ def show_sample_design_system():
                             school_level_opt = st.checkbox(
                                 "19세 이하 학교급별 구분 (초등/중등/고등)",
                                 value=False,
-                                help="8-10세: 초등 저학년, 11-13세: 초등 고학년, 14-16세: 중등, 17-19세: 고등",
+                                help="8-13세: 초등, 14-16세: 중등, 17-19세: 고등",
                                 key="mois_school_level_opt"
                             )
 

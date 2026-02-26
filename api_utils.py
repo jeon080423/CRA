@@ -357,8 +357,7 @@ def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위",
 
         # [v6.16] 학교급별 구분 옵션 적용 (19세 이하)
         if school_level_option and age <= 19:
-            if 8 <= age <= 10: return "8~10세(초등 저학년)"
-            if 11 <= age <= 13: return "11~13세(초등 고학년)"
+            if 8 <= age <= 13: return "8~13세(초등)"
             if 14 <= age <= 16: return "14~16세(중등)"
             if 17 <= age <= 19: return "17~19세(고등)"
             if age < 8: return f"{min_age}~7세"
@@ -400,8 +399,7 @@ def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위",
 
         if school_level_option and age <= 19:
             if age < 8: return 0
-            if 8 <= age <= 10: return 8
-            if 11 <= age <= 13: return 11
+            if 8 <= age <= 13: return 8
             if 14 <= age <= 16: return 14
             if 17 <= age <= 19: return 17
 
