@@ -1523,7 +1523,15 @@ def show_sample_design_system():
                     ws_det.write(0, ci, str(col), fmt_header)
                 for ri, row_data in enumerate(res_df.itertuples(index=False), start=1):
                     for ci, val in enumerate(row_data):
-                        ws_det.write(ri, ci, val, fmt_normal)
+                        # numpy 타입 → Python 네이티브 변환 (xlsxwriter TypeError 방지)
+                        if pd.isna(val):
+                            ws_det.write(ri, ci, '', fmt_normal)
+                        elif isinstance(val, (int, float)):
+                            ws_det.write(ri, ci, val, fmt_normal)
+                        elif hasattr(val, 'item'):
+                            ws_det.write(ri, ci, val.item(), fmt_normal)
+                        else:
+                            ws_det.write(ri, ci, str(val), fmt_normal)
                 ws_det.set_column(0, len(res_df.columns) - 1, 12)
 
             output_pivot.seek(0)
@@ -1557,7 +1565,15 @@ def show_sample_design_system():
                     ws2.write(0, ci, str(col), fmt_h2)
                 for ri, row_data in enumerate(res_df.itertuples(index=False), start=1):
                     for ci, val in enumerate(row_data):
-                        ws2.write(ri, ci, val, fmt_d2)
+                        # numpy 타입 → Python 네이티브 변환 (xlsxwriter TypeError 방지)
+                        if pd.isna(val):
+                            ws2.write(ri, ci, '', fmt_d2)
+                        elif isinstance(val, (int, float)):
+                            ws2.write(ri, ci, val, fmt_d2)
+                        elif hasattr(val, 'item'):
+                            ws2.write(ri, ci, val.item(), fmt_d2)
+                        else:
+                            ws2.write(ri, ci, str(val), fmt_d2)
                 ws2.set_column(0, len(res_df.columns) - 1, 12)
             output.seek(0)
             st.download_button(
