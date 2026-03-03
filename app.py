@@ -1243,6 +1243,17 @@ def show_sample_design_system():
                                 key="mois_school_level_opt"
                             )
 
+                        # [v6.23] 상위 연령대 통합 옵션
+                        upper_age_map = {"선택 안함": None, "60대 이상": 60, "70대 이상": 70, "80대 이상": 80}
+                        upper_age_sel = st.selectbox(
+                            "상위 연령대 통합",
+                            options=list(upper_age_map.keys()),
+                            index=0,
+                            help="선택 시 해당 연령대 이상을 하나의 그룹으로 통합합니다. 미선택 시 10세 단위로 구분됩니다.",
+                            key="mois_upper_age_group"
+                        )
+                        upper_age_cutoff = upper_age_map[upper_age_sel]
+
                     # MOIS 데이터 추출
                     try:
                         pop_long_df = parse_mois_excel_with_gender(
@@ -1253,7 +1264,8 @@ def show_sample_design_system():
                             max_age=age_range[1],
                             interval=age_interval,
                             include_sejong_in_chungnam=sejong_merge,
-                            school_level_option=school_level_opt
+                            school_level_option=school_level_opt,
+                            upper_age_cutoff=upper_age_cutoff
                         )
                         if pop_long_df is not None:
                             st.markdown(f"**📋 데이터 추출 결과 미리보기** — {len(pop_long_df)}개 층, 총인구 {pop_long_df['인구수'].sum():,}명")

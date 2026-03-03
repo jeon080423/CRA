@@ -263,7 +263,8 @@ def get_mois_region_levels(df):
 
 def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위", min_age=0, max_age=100,
                                   interval=10, include_sejong_in_chungnam=False,
-                                  school_level_option=False):
+                                  school_level_option=False,
+                                  upper_age_cutoff=None):
     """MOIS 와이드 포맷 → 지역·성별·연령대 롱 포맷 변환.
     level: "광역 시도 단위", "기초 시/군/구 단위", "시군구별 상세 단위"
     """
@@ -372,6 +373,10 @@ def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위",
         if min_age < 18 and age <= 19:
             return "10대"
 
+        # [v6.23] 상위 연령대 통합 (60대 이상, 70대 이상, 80대 이상)
+        if upper_age_cutoff is not None and age >= upper_age_cutoff:
+            return f"{upper_age_cutoff}세 이상"
+
         # 20세 이상 그룹핑
         if age >= 20:
              # 19세 이하가 특수 처리된 경우 20세부터 정규 구간(20, 30...)으로 시작
@@ -402,6 +407,10 @@ def parse_mois_excel_with_gender(df, regions=None, level="광역 시도 단위",
             if 8 <= age <= 13: return 8
             if 14 <= age <= 16: return 14
             if 17 <= age <= 19: return 17
+
+        # [v6.23] 상위 연령대 통합 정렬값
+        if upper_age_cutoff is not None and age >= upper_age_cutoff:
+            return upper_age_cutoff
 
         # [v6.21] 18/19세 통합 정렬값
         if not school_level_option and (min_age == 18 or min_age == 19) and age <= 29:
