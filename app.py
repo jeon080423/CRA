@@ -933,13 +933,13 @@ def show_business_info_crawling():
                         _match_name = cleaned_name_col if cleaned_name_col and cleaned_name_col in df.columns else (name_col if name_col != "(선택 안 함)" else "")
 
                         # ── 조회 대상 데이터 준비
-                        query_items = []
+                        query_items = []  # [(idx, brn, name), ...]
                         for idx, row in df.iterrows():
                             brn = normalize_brn(row[brn_col])
                             search_name = str(row.get(_match_name, "")).strip() if _match_name else ""
                             if not search_name:
                                 search_name = str(row.get(name_col, "")).strip() if name_col != "(선택 안 함)" else ""
-                            query_items.append((brn, search_name))
+                            query_items.append((idx, brn, search_name))
 
                         # ── NPS 캐시 확인
                         cached_nps = st.session_state.get("biz_nps_cache", {})
@@ -953,8 +953,8 @@ def show_business_info_crawling():
                         _progress_lock = threading.Lock()
                         _completed = {"nps": 0, "fss": 0}
 
-                        def _extract_nps_field(results_dict, brn, field):
-                            res = results_dict.get(brn)
+                        def _extract_nps_field(results_dict, idx, field):
+                            res = results_dict.get(idx)
                             if not res or "_error" in res:
                                 return "조회불가"
                             val = res.get(field, "")
@@ -971,56 +971,57 @@ def show_business_info_crawling():
                             val = nrow.get(field, "")
                             return str(val) if val else "해당없음"
 
-                        def _query_nps(brn, name):
+                        def _query_nps(idx, brn, name):
                             """국민연금 단건 조회 (스레드에서 실행)"""
                             if not name:
-                                return brn, {"_error": "회사명 없음"}
-                            if brn in cached_nps:
-                                return brn, cached_nps[brn]
+                                return idx, {"_error": "회사명 없음"}
+                            # 캐시는 brn 기반으로 유지하되, 결과는 idx로 반환
+                            if brn and brn in cached_nps:
+                                return idx, cached_nps[brn]
                             try:
                                 result = search_and_match_nps(name, brn, api_service_key)
-                                time.sleep(0.1)
-                                return brn, result
+                                time.sleep(0.05)
+                                return idx, result
                             except PermissionError:
                                 raise
                             except Exception as e:
-                                return brn, {"_error": str(e)[:50]}
+                                return idx, {"_error": str(e)[:50]}
 
-                        def _query_fss(brn, name):
+                        def _query_fss(idx, brn, name):
                             """금융위원회 단건 조회 (스레드에서 실행)"""
                             if not name:
-                                return brn, {"corp": {"_error": "회사명 없음"}, "fina": {"_error": "미조회"}}
+                                return idx, {"corp": {"_error": "회사명 없음"}, "fina": {"_error": "미조회"}}
                             try:
                                 result = search_corp_and_financial(name, brn, api_service_key)
-                                time.sleep(0.15)
-                                return brn, result
+                                time.sleep(0.1)
+                                return idx, result
                             except PermissionError:
                                 raise
                             except Exception as e:
-                                return brn, {"corp": {"_error": str(e)[:50]}, "fina": {"_error": "미조회"}}
+                                return idx, {"corp": {"_error": str(e)[:50]}, "fina": {"_error": "미조회"}}
 
                         # NPS 병렬 조회
                         if selected_nps:
                             status_area.caption("🔍 국민연금 사업장 검색 중... (병렬 처리)")
                             with ThreadPoolExecutor(max_workers=5) as executor:
                                 futures = {
-                                    executor.submit(_query_nps, brn, name): (brn, name)
-                                    for brn, name in query_items
+                                    executor.submit(_query_nps, idx, brn, name): idx
+                                    for idx, brn, name in query_items
                                 }
                                 for i, future in enumerate(as_completed(futures), 1):
-                                    brn_result, data = future.result()
-                                    nps_results[brn_result] = data
+                                    idx_result, data = future.result()
+                                    nps_results[idx_result] = data
                                     if i % 5 == 0 or i == total_rows:
                                         progress.progress(
                                             min(i / total_rows * 0.4, 0.39),
                                             text=f"국민연금 검색 중... ({i}/{total_rows})"
                                         )
 
-                            # NPS 캐시 저장
-                            st.session_state["biz_nps_cache"] = {
-                                **cached_nps,
-                                **{k: v for k, v in nps_results.items() if "_error" not in v}
-                            }
+                            # NPS 캐시 업데이트 (brn이 있는 경우만)
+                            for idx, brn, name in query_items:
+                                if brn and idx in nps_results and "_error" not in nps_results[idx]:
+                                    cached_nps[brn] = nps_results[idx]
+                            st.session_state["biz_nps_cache"] = cached_nps
 
                         # 2) 건강보험: bulk download → 로컬 매칭
                         nhis_df = pd.DataFrame()
@@ -1041,12 +1042,12 @@ def show_business_info_crawling():
                             status_area.caption("🏛️ 금융위원회 기업정보 조회 중... (병렬 처리)")
                             with ThreadPoolExecutor(max_workers=3) as executor:
                                 futures = {
-                                    executor.submit(_query_fss, brn, name): (brn, name)
-                                    for brn, name in query_items
+                                    executor.submit(_query_fss, idx, brn, name): idx
+                                    for idx, brn, name in query_items
                                 }
                                 for i, future in enumerate(as_completed(futures), 1):
-                                    brn_result, data = future.result()
-                                    fss_results[brn_result] = data
+                                    idx_result, data = future.result()
+                                    fss_results[idx_result] = data
                                     if i % 3 == 0 or i == total_rows:
                                         progress.progress(
                                             min(0.55 + i / total_rows * 0.25, 0.79),
@@ -1057,6 +1058,8 @@ def show_business_info_crawling():
                         progress.progress(0.8, text="결과 병합 중...")
                         result_df = df.copy()
                         result_df["_brn"] = result_df[brn_col].apply(normalize_brn)
+                        # API에서 찾은 사업자번호를 담을 컬럼
+                        result_df["[공공데이터] 사업자등록번호"] = ""
 
                         # NPS 결과 컬럼 추가
                         nps_matched = 0
@@ -1064,9 +1067,15 @@ def show_business_info_crawling():
                             for field in selected_nps:
                                 label = NPS_FIELD_LABELS.get(field, field)
                                 col_name = f"[국민연금] {label}"
-                                result_df[col_name] = result_df["_brn"].apply(
-                                    lambda brn, f=field: _extract_nps_field(nps_results, brn, f)
+                                result_df[col_name] = result_df.index.to_series().apply(
+                                    lambda idx, f=field: _extract_nps_field(nps_results, idx, f)
                                 )
+                            # 사업자번호 추출
+                            def _get_nps_brn(idx):
+                                res = nps_results.get(idx, {})
+                                if not res or "_error" in res: return ""
+                                return str(res.get("bzowrRgstNo", "")).replace("-", "").strip()
+                            result_df["[공공데이터] 사업자등록번호"] = result_df.index.to_series().apply(_get_nps_brn)
                             nps_matched = sum(1 for v in nps_results.values() if v and "_error" not in v)
 
                         # NHIS 로컬 매칭 결과 컬럼 추가
@@ -1090,18 +1099,29 @@ def show_business_info_crawling():
                             for field in selected_fss_corp:
                                 label = FSS_CORP_FIELD_LABELS.get(field, field)
                                 col_name = f"[기업정보] {label}"
-                                def _get_fss_corp(brn, f=field):
-                                    fss_data = fss_results.get(brn, {})
+                                def _get_fss_corp(idx, f=field):
+                                    fss_data = fss_results.get(idx, {})
                                     corp = fss_data.get("corp", {})
                                     if "_error" in corp:
                                         return "조회불가"
                                     val = corp.get(f, "")
                                     return str(val) if val else "해당없음"
-                                result_df[col_name] = result_df["_brn"].apply(_get_fss_corp)
+                                result_df[col_name] = result_df.index.to_series().apply(_get_fss_corp)
+                            
+                            # FSS에서 사업자번호 업데이트 (NPS가 못찾았거나 빈 경우)
+                            def _update_brn_from_fss(row):
+                                if row["[공공데이터] 사업자등록번호"]: return row["[공공데이터] 사업자등록번호"]
+                                fss_data = fss_results.get(row.name, {})
+                                bzno = fss_data.get("corp", {}).get("bzno", "")
+                                return str(bzno).replace("-", "").strip() if bzno and "_error" not in fss_data.get("corp", {}) else ""
+                            result_df["[공공데이터] 사업자등록번호"] = result_df.apply(_update_brn_from_fss, axis=1)
+
                             fss_corp_matched = sum(
                                 1 for brn in result_df["_brn"]
                                 if brn in fss_results and "_error" not in fss_results[brn].get("corp", {})
                             )
+                            # matched 계산 방식 수정 (idx 기반이므로)
+                            fss_corp_matched = sum(1 for v in fss_results.values() if "_error" not in v.get("corp", {}))
 
                         # FSS 기업재무정보 결과 컬럼 추가
                         fss_fina_matched = 0
@@ -1109,8 +1129,8 @@ def show_business_info_crawling():
                             for field in selected_fss_fina:
                                 label = FSS_FINA_FIELD_LABELS.get(field, field)
                                 col_name = f"[재무정보] {label}"
-                                def _get_fss_fina(brn, f=field):
-                                    fss_data = fss_results.get(brn, {})
+                                def _get_fss_fina(idx, f=field):
+                                    fss_data = fss_results.get(idx, {})
                                     fina = fss_data.get("fina", {})
                                     if "_error" in fina:
                                         return "조회불가"
@@ -1121,49 +1141,45 @@ def show_business_info_crawling():
                                         except (ValueError, TypeError):
                                             pass
                                     return str(val) if val else "해당없음"
-                                result_df[col_name] = result_df["_brn"].apply(_get_fss_fina)
-                            fss_fina_matched = sum(
-                                1 for brn in result_df["_brn"]
-                                if brn in fss_results and "_error" not in fss_results[brn].get("fina", {})
-                            )
+                                result_df[col_name] = result_df.index.to_series().apply(_get_fss_fina)
+                            fss_fina_matched = sum(1 for v in fss_results.values() if "_error" not in v.get("fina", {}))
 
                         # NPS avgBasSalary 계산 필드 처리
                         if "avgBasSalary" in selected_nps:
                             col_name = "[국민연금] 추정 평균 기준소득월액"
-                            result_df[col_name] = result_df["_brn"].apply(
-                                lambda brn: estimate_avg_salary(nps_results.get(brn, {}))
+                            result_df[col_name] = result_df.index.to_series().apply(
+                                lambda idx: estimate_avg_salary(nps_results.get(idx, {}))
                             )
 
-                            # 유사도 계산
-                            similarities = []
-                            for _, row in result_df.iterrows():
-                                brn = row[brn_col] if brn_col != "(선택 안 함)" else ""
-                                brn_norm = normalize_brn(brn) if brn else ""
+                        # 유사도 계산
+                        similarities = []
+                        for idx, row in result_df.iterrows():
+                            brn_input = row["_brn"]
+                            
+                            nps_data = nps_results.get(idx, {})
+                            has_nps = bool(nps_data and "_error" not in nps_data)
+                            has_nhis = bool(not nhis_df.empty and "_brn" in nhis_df.columns and brn_input in nhis_df["_brn"].values)
+                            has_fss = bool(idx in fss_results and "_error" not in fss_results[idx].get("corp", {}))
+
+                            scores, weights = [], []
+                            # 1. 매칭 성공 여부 (30점)
+                            scores.append(1.0 if (has_nps or has_nhis or has_fss) else 0.0)
+                            weights.append(30)
+
+                            # 2. 회사명 유사도 (추가 70점)
+                            if name_col != "(선택 안 함)" and row.get(name_col):
+                                uname = str(row[name_col]).strip()
+                                api_name = ""
+                                if has_nps: api_name = nps_data.get("wkplNm", "")
+                                elif has_fss: api_name = fss_results[idx]["corp"].get("corpNm", "")
                                 
-                                nps_data = nps_results.get(brn_norm, {})
-                                has_nps = bool(nps_data and "_error" not in nps_data)
-                                has_nhis = bool(not nhis_df.empty and "_brn" in nhis_df.columns and brn_norm in nhis_df["_brn"].values)
-                                has_fss = bool(brn_norm in fss_results and "_error" not in fss_results[brn_norm].get("corp", {}))
+                                if api_name:
+                                    from utils.matcher import text_similarity
+                                    scores.append(text_similarity(uname, api_name))
+                                    weights.append(70)
 
-                                scores, weights = [], []
-                                # 1. 매칭 성공 여부 (기본 30점)
-                                scores.append(1.0 if (has_nps or has_nhis or has_fss) else 0.0)
-                                weights.append(30)
-
-                                # 2. 회사명 유사도 (추가 70점)
-                                if name_col != "(선택 안 함)" and row.get(name_col):
-                                    uname = str(row[name_col]).strip()
-                                    api_name = ""
-                                    if has_nps: api_name = nps_data.get("wkplNm", "")
-                                    elif has_fss: api_name = fss_results[brn_norm]["corp"].get("corpNm", "")
-                                    
-                                    if api_name:
-                                        from utils.matcher import text_similarity
-                                        scores.append(text_similarity(uname, api_name))
-                                        weights.append(70)
-
-                                sim = round(sum(s*w for s, w in zip(scores, weights)) / sum(weights) * 100, 1) if weights else 0.0
-                                similarities.append(sim)
+                            sim = round(sum(s*w for s, w in zip(scores, weights)) / sum(weights) * 100, 1) if weights else 0.0
+                            similarities.append(sim)
 
                         result_df["유사도(%)"] = similarities
                         result_df.drop(columns=["_brn"], inplace=True, errors="ignore")
