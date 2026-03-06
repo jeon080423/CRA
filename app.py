@@ -1091,11 +1091,17 @@ def show_business_info_crawling():
                             has_any_data = False
 
                             # NPS 결과 추출
-                            # NPS 결과 추출
                             if selected_nps:
                                 nps_row = nps_results.get(idx, {})
+                                
+                                # 실질적인 데이터가 있는지 확인 (단순 에러나 빈 리스트 제외)
+                                has_nps_data = False
                                 if nps_row and "_error" not in nps_row:
-                                    has_any_data = True
+                                    # 가입자수나 당월고지금액 등 핵심 필드가 있는지 확인
+                                    if any(nps_row.get(f) for f in ["jnngpCnt", "crrmmNtcAmt", "bzowrRgstNo"]):
+                                        has_nps_data = True
+                                        has_any_data = True
+                                        
                                 for field in selected_nps:
                                     label = NPS_FIELD_LABELS.get(field, field)
                                     col_name = f"[국민연금] {label}"
@@ -1108,7 +1114,10 @@ def show_business_info_crawling():
                             if selected_nhis and master_brn:
                                 nhis_row = nhis_lookup.get(master_brn)
                                 if nhis_row:
-                                    has_any_data = True
+                                    # NHIS 데이터가 있고, 선택한 필드 중 하나라도 값이 있는 경우만 성공으로 인정
+                                    if any(nhis_row.get(f) for f in selected_nhis):
+                                        has_any_data = True
+                                    
                                     for field in selected_nhis:
                                         label = NHIS_FIELD_LABELS.get(field, field)
                                         col_name = f"[건강보험] {label}"
@@ -1120,7 +1129,9 @@ def show_business_info_crawling():
                             if selected_fss_corp:
                                 corp = fss_data.get("corp", {})
                                 if corp and "_error" not in corp:
-                                    has_any_data = True
+                                    # 하나라도 값이 있는지 확인
+                                    if any(corp.get(f) for f in selected_fss_corp):
+                                        has_any_data = True
                                 for field in selected_fss_corp:
                                     label = FSS_CORP_FIELD_LABELS.get(field, field)
                                     col_name = f"[기업정보] {label}"
@@ -1130,7 +1141,9 @@ def show_business_info_crawling():
                             if selected_fss_fina:
                                 fina = fss_data.get("fina", {})
                                 if fina and "_error" not in fina:
-                                    has_any_data = True
+                                    # 하나라도 값이 있는지 확인
+                                    if any(fina.get(f) for f in selected_fss_fina):
+                                        has_any_data = True
                                 for field in selected_fss_fina:
                                     label = FSS_FINA_FIELD_LABELS.get(field, field)
                                     col_name = f"[재무정보] {label}"
@@ -1173,11 +1186,16 @@ def show_business_info_crawling():
                          #     result_df = result_df[result_df["유사도(%)"] >= similarity_threshold].reset_index(drop=True)
                         
                         # 통계 계산 (실제로 데이터를 가져온 행 기준)
+                        # 통계 계산 (실제로 유의미한 데이터를 가져온 행 기준)
                         total_matched = rows_with_data
-                        nps_matched = sum(1 for v in nps_results.values() if v and "_error" not in v)
-                        nhis_matched = sum(1 for idx, res_id in resolved_identities.items() if res_id.get("brn") and nhis_lookup.get(res_id["brn"]))
-                        fss_corp_matched = sum(1 for v in fss_results.values() if "_error" not in v.get("corp", {}))
-                        fss_fina_matched = sum(1 for v in fss_results.values() if "_error" not in v.get("fina", {}))
+                        nps_matched = sum(1 for v in nps_results.values() if v and "_error" not in v and any(v.get(f) for f in ["jnngpCnt", "crrmmNtcAmt", "bzowrRgstNo"]))
+                        nhis_matched = sum(1 for idx, res_id in resolved_identities.items() if res_id.get("brn") and nhis_lookup.get(res_id["brn"]) and any(nhis_lookup[res_id["brn"]].get(f) for f in selected_nhis))
+                        
+                        fss_corp_matched = sum(1 for v in fss_results.values() if "_error" not in v.get("corp", {}) and any(v.get("corp", {}).get(f) for f in FSS_CORP_SELECTABLE_FIELDS))
+                        fss_fina_matched = sum(1 for v in fss_results.values() if "_error" not in v.get("fina", {}) and any(v.get("fina", {}).get(f) for f in FSS_FINA_SELECTABLE_FIELDS))
+                        
+                        # 최종 성공 건수는 이 중 하나라도 데이터를 가진 행의 수
+                        total_matched = rows_with_data
 
                         progress.progress(1.0, text="✅ 조회 완료!")
                         status_area.empty()
@@ -1252,6 +1270,14 @@ def show_business_info_crawling():
         unmatched = stats.get("unmatched", 0)
         success_rate = (matched / total * 100) if total > 0 else 0
 
+        if matched == 0 and total > 0:
+            st.warning(
+                "⚠️ **데이터가 전혀 조회되지 않았습니다.**\n\n"
+                "- **API 키 승인 직후:** 승인 후 실제 데이터 연동까지 **1~2시간(최대 24시간)**이 소요될 수 있습니다.\n"
+                "- **인증 오류:** 공공데이터포털 서비스키가 정확한지, 'Decoding' 버전의 키를 사용했는지 확인해 주세요.\n"
+                "- **권한 부족:** 선택한 공공데이터가 '개발계정' 신청 및 승인이 완료된 상태인지 확인이 필요합니다."
+            )
+
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
         with col_s1:
             st.markdown(f"""
@@ -1277,6 +1303,20 @@ def show_business_info_crawling():
     <div style="font-size:2rem; font-weight:700; color:#7C3AED;">{success_rate:.1f}%</div>
     <div style="font-size:0.8rem; color:#8B96A9;">성공률</div>
 </div>""", unsafe_allow_html=True)
+
+        # API 상태 정보 (디버깅/안내용)
+        with st.expander("🌐 API 서비스 연결 상태 확인", expanded=(matched == 0)):
+            api_cols = st.columns(3)
+            with api_cols[0]:
+                nps_ok = "✅ 정상" if nps_matched > 0 else "⚠️ 미매칭/인증확인필요"
+                st.write(f"**국민연금:** {nps_ok}")
+            with api_cols[1]:
+                nhis_ok = "✅ 정상" if nhis_matched > 0 else "⚠️ 미매칭/인증확인필요"
+                st.write(f"**건강보험:** {nhis_ok}")
+            with api_cols[2]:
+                fss_ok = "✅ 정상" if (fss_corp_matched > 0 or fss_fina_matched > 0) else "⚠️ 미매칭/인증확인필요"
+                st.write(f"**금융위:** {fss_ok}")
+            st.caption("※ '정상'은 유의미한 데이터가 1건 이상 추출되었음을 의미합니다.")
 
         # 유사도 분포 (10% 단위) 표시
         sim_dist = stats.get("sim_dist", {})
