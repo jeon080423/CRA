@@ -560,21 +560,26 @@ def perform_rfp_analysis():
 
 
 
-# ── 사업체 정보 크롤링(행정정보) UI ──
+# ── 기업체 자료 수집(국민연금/건강보험) UI ──
 def show_business_info_crawling():
-    """공공데이터포털 API를 활용한 사업체 정보 크롤링 시스템 UI"""
+    """공공데이터포털 API를 활용한 기업체 자료 수집 시스템 UI"""
     import time
-    from api.nps_api import search_and_match_nps, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP
+    from api.nps_api import search_and_match_nps, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP, estimate_avg_salary
     from api.nhis_api import download_nhis_dataset, NHIS_SELECTABLE_FIELDS, NHIS_FIELD_LABELS, NHIS_FIELD_MAP
+    from api.fss_api import (
+        search_corp_and_financial,
+        FSS_CORP_SELECTABLE_FIELDS, FSS_CORP_FIELD_LABELS,
+        FSS_FINA_SELECTABLE_FIELDS, FSS_FINA_FIELD_LABELS,
+    )
     from utils.excel_handler import load_excel, export_result_excel
     from utils.matcher import normalize_brn, match_with_datasets, clean_company_names_bulk
 
     # 상단 헤더
     st.markdown("""
     <div class="qx-topbar">
-        <span class="qx-topbar-logo">사업체 정보 크롤링</span>
+        <span class="qx-topbar-logo">기업체 자료 수집</span>
         <span class="qx-topbar-sep"></span>
-        <span class="qx-topbar-title">행정정보 (국민연금·건강보험)</span>
+        <span class="qx-topbar-title">국민연금/건강보험</span>
         <span class="qx-topbar-badge">공공데이터 API 연동</span>
     </div>
     """, unsafe_allow_html=True)
@@ -775,7 +780,9 @@ def show_business_info_crawling():
                 selected_nps = []
                 for field in NPS_SELECTABLE_FIELDS:
                     label = NPS_FIELD_LABELS.get(field, field)
-                    if st.checkbox(label, value=True, key=f"nps_{field}"):
+                    if field == "avgBasSalary":
+                        label += " 💡"
+                    if st.checkbox(label, value=(field != "avgBasSalary"), key=f"nps_{field}"):
                         selected_nps.append(field)
 
             with col_nhis:
@@ -791,7 +798,46 @@ def show_business_info_crawling():
                     if st.checkbox(label, value=True, key=f"nhis_{field}"):
                         selected_nhis.append(field)
 
-            if not selected_nps and not selected_nhis:
+            # ── 금융위원회 기업정보 (3번째 컬럼)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown('<div class="qx-section-label">금융위원회 기업정보 (자동 조회)</div>', unsafe_allow_html=True)
+
+            fss_available = (name_col != "(선택 안 함)")
+            if not fss_available:
+                st.warning("⚠️ 금융위원회 기업정보를 조회하려면 **회사명** 컬럼을 매핑해야 합니다.")
+
+            col_fss_corp, col_fss_fina = st.columns(2)
+
+            with col_fss_corp:
+                st.markdown("""
+<div class="qx-card">
+    <div class="qx-card-title">🏛️ 기업기본정보</div>
+    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">회사명 → 종업원수, 평균급여 등 자동 조회</div>
+</div>
+""", unsafe_allow_html=True)
+                selected_fss_corp = []
+                for field in FSS_CORP_SELECTABLE_FIELDS:
+                    label = FSS_CORP_FIELD_LABELS.get(field, field)
+                    checked = st.checkbox(label, value=fss_available, key=f"fss_corp_{field}", disabled=not fss_available)
+                    if checked and fss_available:
+                        selected_fss_corp.append(field)
+
+            with col_fss_fina:
+                st.markdown("""
+<div class="qx-card">
+    <div class="qx-card-title">📊 기업재무정보</div>
+    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">법인등록번호 자동 획득 → 매출액, 영업이익 등</div>
+</div>
+""", unsafe_allow_html=True)
+                selected_fss_fina = []
+                for field in FSS_FINA_SELECTABLE_FIELDS:
+                    label = FSS_FINA_FIELD_LABELS.get(field, field)
+                    checked = st.checkbox(label, value=fss_available, key=f"fss_fina_{field}", disabled=not fss_available)
+                    if checked and fss_available:
+                        selected_fss_fina.append(field)
+
+            has_any_selection = selected_nps or selected_nhis or selected_fss_corp or selected_fss_fina
+            if not has_any_selection:
                 st.info("조회할 항목을 하나 이상 선택하세요.")
             else:
                 st.markdown("<hr>", unsafe_allow_html=True)
@@ -874,7 +920,38 @@ def show_business_info_crawling():
                                 st.session_state["biz_nhis_dataset"] = nhis_df
                                 status_area.caption(f"✅ 건강보험 데이터셋 다운로드 완료 ({len(nhis_df):,}건)")
 
-                        # 3) 결과 병합
+                        # 3) 금융위원회 기업정보: 회사명 → 기업기본정보 + 재무정보
+                        fss_results = {}  # {정규화 brn: {"corp": ..., "fina": ...}}
+                        if selected_fss_corp or selected_fss_fina:
+                            status_area.caption("🏛️ 금융위원회 기업정보 조회 중...")
+                            for idx, row in df.iterrows():
+                                row_num = idx + 1
+                                progress.progress(
+                                    min(0.7 + row_num / total_rows * 0.1, 0.79),
+                                    text=f"금융위원회 기업정보 조회 중... ({row_num}/{total_rows})"
+                                )
+
+                                brn = normalize_brn(row[brn_col])
+                                search_name = str(row.get(_match_name, "")).strip() if _match_name else ""
+                                if not search_name:
+                                    search_name = str(row.get(name_col, "")).strip() if name_col != "(선택 안 함)" else ""
+
+                                if not search_name:
+                                    fss_results[brn] = {"corp": {"_error": "회사명 없음"}, "fina": {"_error": "미조회"}}
+                                    continue
+
+                                company_display = search_name or brn
+                                status_area.caption(f"🏛️ [{row_num}/{total_rows}] {company_display}")
+
+                                try:
+                                    result = search_corp_and_financial(search_name, brn, api_service_key)
+                                    fss_results[brn] = result
+                                except PermissionError:
+                                    raise
+
+                                time.sleep(0.3)  # Rate limit
+
+                        # 4) 결과 병합
                         progress.progress(0.8, text="결과 병합 중...")
                         result_df = df.copy()
                         result_df["_brn"] = result_df[brn_col].apply(normalize_brn)
@@ -904,6 +981,56 @@ def show_business_info_crawling():
                                     lambda brn, f=field, lk=nhis_lookup: _extract_nhis_field(lk, brn, f)
                                 )
                             nhis_matched = sum(1 for brn in result_df["_brn"] if brn in nhis_lookup)
+
+                        # FSS 기업기본정보 결과 컬럼 추가
+                        fss_corp_matched = 0
+                        if selected_fss_corp:
+                            for field in selected_fss_corp:
+                                label = FSS_CORP_FIELD_LABELS.get(field, field)
+                                col_name = f"[기업정보] {label}"
+                                def _get_fss_corp(brn, f=field):
+                                    fss_data = fss_results.get(brn, {})
+                                    corp = fss_data.get("corp", {})
+                                    if "_error" in corp:
+                                        return "조회불가"
+                                    val = corp.get(f, "")
+                                    return str(val) if val else "해당없음"
+                                result_df[col_name] = result_df["_brn"].apply(_get_fss_corp)
+                            fss_corp_matched = sum(
+                                1 for brn in result_df["_brn"]
+                                if brn in fss_results and "_error" not in fss_results[brn].get("corp", {})
+                            )
+
+                        # FSS 기업재무정보 결과 컬럼 추가
+                        fss_fina_matched = 0
+                        if selected_fss_fina:
+                            for field in selected_fss_fina:
+                                label = FSS_FINA_FIELD_LABELS.get(field, field)
+                                col_name = f"[재무정보] {label}"
+                                def _get_fss_fina(brn, f=field):
+                                    fss_data = fss_results.get(brn, {})
+                                    fina = fss_data.get("fina", {})
+                                    if "_error" in fina:
+                                        return "조회불가"
+                                    val = fina.get(f, "")
+                                    if val and str(val).replace("-", "").replace(".", "").isdigit():
+                                        try:
+                                            return f"{int(float(val)):,}"
+                                        except (ValueError, TypeError):
+                                            pass
+                                    return str(val) if val else "해당없음"
+                                result_df[col_name] = result_df["_brn"].apply(_get_fss_fina)
+                            fss_fina_matched = sum(
+                                1 for brn in result_df["_brn"]
+                                if brn in fss_results and "_error" not in fss_results[brn].get("fina", {})
+                            )
+
+                        # NPS avgBasSalary 계산 필드 처리
+                        if "avgBasSalary" in selected_nps:
+                            col_name = "[국민연금] 추정 평균 기준소득월액"
+                            result_df[col_name] = result_df["_brn"].apply(
+                                lambda brn: estimate_avg_salary(nps_results.get(brn, {}))
+                            )
 
                         # 유사도 계산
                         from utils.matcher import text_similarity
@@ -938,7 +1065,7 @@ def show_business_info_crawling():
                         progress.progress(1.0, text="✅ 조회 완료!")
                         status_area.empty()
 
-                        total_matched = max(nps_matched, nhis_matched)
+                        total_matched = max(nps_matched, nhis_matched, fss_corp_matched)
                         stats = {
                             "total": total_rows,
                             "matched": total_matched,
@@ -948,6 +1075,8 @@ def show_business_info_crawling():
                             "nps_matched": nps_matched,
                             "nhis_size": len(nhis_df),
                             "nhis_matched": nhis_matched,
+                            "fss_corp_matched": fss_corp_matched,
+                            "fss_fina_matched": fss_fina_matched,
                         }
 
                         st.session_state["biz_crawl_result"] = result_df
@@ -1022,6 +1151,12 @@ def show_business_info_crawling():
                 info_parts.append(f"국민연금 {nps_size:,}건")
             if nhis_size:
                 info_parts.append(f"건강보험 {nhis_size:,}건")
+            fss_corp_m = stats.get("fss_corp_matched", 0)
+            fss_fina_m = stats.get("fss_fina_matched", 0)
+            if fss_corp_m:
+                info_parts.append(f"기업정보 {fss_corp_m:,}건 매칭")
+            if fss_fina_m:
+                info_parts.append(f"재무정보 {fss_fina_m:,}건 매칭")
             st.caption(f"📦 참조 데이터셋: {' · '.join(info_parts)}")
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1040,6 +1175,10 @@ def show_business_info_crawling():
                 column_config[col] = st.column_config.TextColumn(col, help="국민연금공단 데이터")
             elif col.startswith("[건강보험]"):
                 column_config[col] = st.column_config.TextColumn(col, help="건강보험공단 데이터")
+            elif col.startswith("[기업정보]"):
+                column_config[col] = st.column_config.TextColumn(col, help="금융위원회 기업기본정보")
+            elif col.startswith("[재무정보]"):
+                column_config[col] = st.column_config.TextColumn(col, help="금융위원회 기업재무정보")
 
         st.dataframe(
             result_df,
@@ -2726,7 +2865,7 @@ with st.sidebar:
         "AI 이상치 검토 (Call Back, Data Adjustment)", 
         "AI 결측치 검토 (Call Back, Imputation)",
         "AI 단위 무응답 검토",
-        "사업체 정보 크롤링(행정정보)",
+        "기업체 자료 수집(국민연금/건강보험)",
         "보고서 검수 AI Tools"
     ]
     
@@ -2738,8 +2877,8 @@ with st.sidebar:
     if current_user not in allowed_for_nonresponse:
         if "AI 단위 무응답 검토" in menu_options:
             menu_options.remove("AI 단위 무응답 검토")
-        if "사업체 정보 크롤링(행정정보)" in menu_options:
-            menu_options.remove("사업체 정보 크롤링(행정정보)")
+        if "기업체 자료 수집(국민연금/건강보험)" in menu_options:
+            menu_options.remove("기업체 자료 수집(국민연금/건강보험)")
     
     # [v4.12] 관리자(shjeon) 전용 메뉴 추가
     if st.session_state.get("logged_in_user") == "shjeon":
@@ -2932,7 +3071,7 @@ with st.sidebar:
         st.session_state["step_results"] = {1: "", 2: "", 3: ""}
         st.session_state["rfp_results"] = {}
         st.session_state["file_pages"] = 0
-        # 사업체 정보 크롤링 세션 초기화
+        # 기업체 자료 수집 세션 초기화
         for k in ["biz_crawl_result", "biz_crawl_stats", "biz_crawl_selected_nps", "biz_crawl_selected_nhis", "biz_cleaned_df", "biz_clean_stats", "biz_nps_dataset", "biz_nhis_dataset"]:
             if k in st.session_state:
                 del st.session_state[k]
@@ -3133,7 +3272,7 @@ else:
         show_win_strategy_section()
         # End Win Strategy here (early return or just wrap)
         st.stop()
-    elif st.session_state["menu_selection"] == "사업체 정보 크롤링(행정정보)":
+    elif st.session_state["menu_selection"] == "기업체 자료 수집(국민연금/건강보험)":
         show_business_info_crawling()
         st.stop()
     elif st.session_state["menu_selection"] == "AI 설문지 최적화":

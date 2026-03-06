@@ -19,6 +19,7 @@ DETAIL_URL = f"{BASE_URL}/getDetailInfoSearchV2"
 NPS_SELECTABLE_FIELDS = [
     "jnngpCnt",       # 가입자수
     "crrmmNtcAmt",    # 당월고지금액
+    "avgBasSalary",   # 추정 평균 기준소득월액 (계산 필드)
     "nwAcqzrCnt",     # 신규취득자수
     "lssJnngpCnt",    # 상실가입자수
     "bzowrRgstNo",    # 사업자등록번호
@@ -30,6 +31,7 @@ NPS_SELECTABLE_FIELDS = [
 NPS_FIELD_LABELS = {
     "jnngpCnt": "가입자수",
     "crrmmNtcAmt": "당월고지금액",
+    "avgBasSalary": "추정 평균 기준소득월액",
     "nwAcqzrCnt": "신규취득자수",
     "lssJnngpCnt": "상실가입자수",
     "bzowrRgstNo": "사업자등록번호",
@@ -133,3 +135,32 @@ def search_and_match_nps(
 
     # 여러 결과 중 매칭 실패
     return {"_error": f"검색결과 {len(results)}건 중 사업자번호 매칭 실패", "_candidates": len(results)}
+
+
+def estimate_avg_salary(nps_data: dict) -> str:
+    """
+    국민연금 데이터에서 추정 평균 기준소득월액 계산
+
+    공식: 당월고지금액(crrmmNtcAmt) ÷ 연금보험료율(0.09) ÷ 가입자수(jnngpCnt)
+
+    Args:
+        nps_data: NPS API 검색 결과 dict
+
+    Returns:
+        str: 추정 평균 기준소득월액 (원) 또는 "산출불가"
+    """
+    if not nps_data or "_error" in nps_data:
+        return "조회불가"
+
+    try:
+        ntc_amt = float(nps_data.get("crrmmNtcAmt", 0))
+        jnngp_cnt = int(nps_data.get("jnngpCnt", 0))
+
+        if jnngp_cnt <= 0 or ntc_amt <= 0:
+            return "산출불가"
+
+        # 국민연금 보험료율: 9% (사업주 4.5% + 근로자 4.5%)
+        avg_salary = ntc_amt / 0.09 / jnngp_cnt
+        return f"{int(round(avg_salary)):,}원"
+    except (ValueError, TypeError, ZeroDivisionError):
+        return "산출불가"
