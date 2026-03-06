@@ -932,34 +932,77 @@ def show_business_info_crawling():
                     try:
                         _match_name = cleaned_name_col if cleaned_name_col and cleaned_name_col in df.columns else (name_col if name_col != "(선택 안 함)" else "")
 
-                        # 1) 국민연금: 건별 사업장명 검색 → 사업자번호 매칭
-                        nps_results = {}  # {정규화 brn: API 결과 dict}
+                        # ── 조회 대상 데이터 준비
+                        query_items = []
+                        for idx, row in df.iterrows():
+                            brn = normalize_brn(row[brn_col])
+                            search_name = str(row.get(_match_name, "")).strip() if _match_name else ""
+                            if not search_name:
+                                search_name = str(row.get(name_col, "")).strip() if name_col != "(선택 안 함)" else ""
+                            query_items.append((brn, search_name))
+
+                        # ── NPS 캐시 확인
+                        cached_nps = st.session_state.get("biz_nps_cache", {})
+
+                        # ── 1) 국민연금 + 금융위원회 병렬 처리
+                        from concurrent.futures import ThreadPoolExecutor, as_completed
+                        import threading
+
+                        nps_results = {}
+                        fss_results = {}
+                        _progress_lock = threading.Lock()
+                        _completed = {"nps": 0, "fss": 0}
+
+                        def _query_nps(brn, name):
+                            """국민연금 단건 조회 (스레드에서 실행)"""
+                            if not name:
+                                return brn, {"_error": "회사명 없음"}
+                            if brn in cached_nps:
+                                return brn, cached_nps[brn]
+                            try:
+                                result = search_and_match_nps(name, brn, api_service_key)
+                                time.sleep(0.1)
+                                return brn, result
+                            except PermissionError:
+                                raise
+                            except Exception as e:
+                                return brn, {"_error": str(e)[:50]}
+
+                        def _query_fss(brn, name):
+                            """금융위원회 단건 조회 (스레드에서 실행)"""
+                            if not name:
+                                return brn, {"corp": {"_error": "회사명 없음"}, "fina": {"_error": "미조회"}}
+                            try:
+                                result = search_corp_and_financial(name, brn, api_service_key)
+                                time.sleep(0.15)
+                                return brn, result
+                            except PermissionError:
+                                raise
+                            except Exception as e:
+                                return brn, {"corp": {"_error": str(e)[:50]}, "fina": {"_error": "미조회"}}
+
+                        # NPS 병렬 조회
                         if selected_nps:
-                            status_area.caption("🔍 국민연금 사업장 검색 중...")
-                            for idx, row in df.iterrows():
-                                row_num = idx + 1
-                                progress.progress(min(row_num / total_rows * 0.5, 0.49), text=f"국민연금 검색 중... ({row_num}/{total_rows})")
+                            status_area.caption("🔍 국민연금 사업장 검색 중... (병렬 처리)")
+                            with ThreadPoolExecutor(max_workers=5) as executor:
+                                futures = {
+                                    executor.submit(_query_nps, brn, name): (brn, name)
+                                    for brn, name in query_items
+                                }
+                                for i, future in enumerate(as_completed(futures), 1):
+                                    brn_result, data = future.result()
+                                    nps_results[brn_result] = data
+                                    if i % 5 == 0 or i == total_rows:
+                                        progress.progress(
+                                            min(i / total_rows * 0.4, 0.39),
+                                            text=f"국민연금 검색 중... ({i}/{total_rows})"
+                                        )
 
-                                brn = normalize_brn(row[brn_col])
-                                search_name = str(row.get(_match_name, "")).strip() if _match_name else ""
-
-                                if not search_name:
-                                    search_name = str(row.get(name_col, "")).strip() if name_col != "(선택 안 함)" else ""
-
-                                company_display = search_name or brn
-                                status_area.caption(f"🔍 [{row_num}/{total_rows}] {company_display}")
-
-                                if not search_name:
-                                    nps_results[brn] = {"_error": "회사명 없음"}
-                                    continue
-
-                                try:
-                                    result = search_and_match_nps(search_name, brn, api_service_key)
-                                    nps_results[brn] = result
-                                except PermissionError:
-                                    raise
-
-                                time.sleep(0.2)  # Rate limit
+                            # NPS 캐시 저장
+                            st.session_state["biz_nps_cache"] = {
+                                **cached_nps,
+                                **{k: v for k, v in nps_results.items() if "_error" not in v}
+                            }
 
                         # 2) 건강보험: bulk download → 로컬 매칭
                         nhis_df = pd.DataFrame()
@@ -969,42 +1012,28 @@ def show_business_info_crawling():
                                 status_area.caption(f"✅ 건강보험 데이터셋 캐시 사용 ({len(nhis_df):,}건)")
                             else:
                                 def nhis_progress(page, total, msg):
-                                    progress.progress(min(0.5 + page / total * 0.2, 0.69), text=msg)
+                                    progress.progress(min(0.4 + page / total * 0.15, 0.54), text=msg)
                                     status_area.caption(msg)
                                 nhis_df = download_nhis_dataset(api_service_key, progress_callback=nhis_progress)
                                 st.session_state["biz_nhis_dataset"] = nhis_df
                                 status_area.caption(f"✅ 건강보험 데이터셋 다운로드 완료 ({len(nhis_df):,}건)")
 
-                        # 3) 금융위원회 기업정보: 회사명 → 기업기본정보 + 재무정보
-                        fss_results = {}  # {정규화 brn: {"corp": ..., "fina": ...}}
+                        # 3) 금융위원회 기업정보 병렬 조회
                         if selected_fss_corp or selected_fss_fina:
-                            status_area.caption("🏛️ 금융위원회 기업정보 조회 중...")
-                            for idx, row in df.iterrows():
-                                row_num = idx + 1
-                                progress.progress(
-                                    min(0.7 + row_num / total_rows * 0.1, 0.79),
-                                    text=f"금융위원회 기업정보 조회 중... ({row_num}/{total_rows})"
-                                )
-
-                                brn = normalize_brn(row[brn_col])
-                                search_name = str(row.get(_match_name, "")).strip() if _match_name else ""
-                                if not search_name:
-                                    search_name = str(row.get(name_col, "")).strip() if name_col != "(선택 안 함)" else ""
-
-                                if not search_name:
-                                    fss_results[brn] = {"corp": {"_error": "회사명 없음"}, "fina": {"_error": "미조회"}}
-                                    continue
-
-                                company_display = search_name or brn
-                                status_area.caption(f"🏛️ [{row_num}/{total_rows}] {company_display}")
-
-                                try:
-                                    result = search_corp_and_financial(search_name, brn, api_service_key)
-                                    fss_results[brn] = result
-                                except PermissionError:
-                                    raise
-
-                                time.sleep(0.3)  # Rate limit
+                            status_area.caption("🏛️ 금융위원회 기업정보 조회 중... (병렬 처리)")
+                            with ThreadPoolExecutor(max_workers=3) as executor:
+                                futures = {
+                                    executor.submit(_query_fss, brn, name): (brn, name)
+                                    for brn, name in query_items
+                                }
+                                for i, future in enumerate(as_completed(futures), 1):
+                                    brn_result, data = future.result()
+                                    fss_results[brn_result] = data
+                                    if i % 3 == 0 or i == total_rows:
+                                        progress.progress(
+                                            min(0.55 + i / total_rows * 0.25, 0.79),
+                                            text=f"금융위원회 기업정보 조회 중... ({i}/{total_rows})"
+                                        )
 
                         # 4) 결과 병합
                         progress.progress(0.8, text="결과 병합 중...")
