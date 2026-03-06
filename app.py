@@ -707,11 +707,11 @@ def show_business_info_crawling():
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # ── Step 2: 엑셀 파일 업로드
-    st.markdown('<div class="qx-section-label">STEP 2 · 엑셀 파일 업로드</div>', unsafe_allow_html=True)
-    st.caption("📋 사업체 목록이 담긴 엑셀 파일(.xlsx, .xls)을 아래에 업로드하세요.")
+    st.markdown('<div class="qx-section-label">STEP 2 · 사업체 목록 업로드</div>', unsafe_allow_html=True)
+    st.caption("📋 **사업체 목록**이 담긴 엑셀 파일(.xlsx, .xls)을 아래에 업로드하세요.")
 
     uploaded_excel = st.file_uploader(
-        "엑셀 파일 선택",
+        "사업체 목록 엑셀 파일 선택 (XLSX, XLS)",
         type=["xlsx", "xls"],
         label_visibility="collapsed",
         key="biz_excel_uploader",
@@ -3401,9 +3401,8 @@ else:
     """, unsafe_allow_html=True)
     elif st.session_state["menu_selection"] == "과업내용 체크 (RFP 분석)":
         show_win_strategy_section()
-        # End Win Strategy here (early return or just wrap)
         st.stop()
-    elif st.session_state["menu_selection"] == "기업체 자료 수집(국민연금/건강보험)":
+    elif st.session_state["menu_selection"] == "기업체 일반 현황 행정자료 비교":
         show_business_info_crawling()
         st.stop()
     elif st.session_state["menu_selection"] == "AI 설문지 최적화":
@@ -3442,16 +3441,16 @@ else:
     col_up, col_items = st.columns([3, 2], gap="large")
 
     with col_up:
-        st.markdown('<div class="qx-section-label">UPLOAD REPORT</div>', unsafe_allow_html=True)
+        st.markdown('<div class="qx-section-label">UPLOAD REPORT (보고서 분석용)</div>', unsafe_allow_html=True)
         st.markdown("""
 <div class="qx-upload-zone">
     <div class="qx-upload-icon">&#128203;</div>
-    <div class="qx-upload-text">PDF · DOCX · TXT 파일을 업로드하세요</div>
-    <div class="qx-upload-hint">최대 50MB · PDF는 페이지 번호 자동 태그</div>
+    <div class="qx-upload-text">보고서 분석용 (PDF · DOCX · TXT) 파일 업로드</div>
+    <div class="qx-upload-hint">엑셀 파일은 '기업체 일반 현황...' 메뉴를 이용해 주세요</div>
 </div>
 """, unsafe_allow_html=True)
         uploaded_file = st.file_uploader(
-            "파일 선택",
+            "보고서 파일 선택 (PDF, DOCX, TXT)",
             type=["pdf", "docx", "txt"],
             label_visibility="collapsed",
         )
