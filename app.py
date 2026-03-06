@@ -1183,6 +1183,24 @@ def show_business_info_crawling():
                         status_area.empty()
 
                         total_matched = max(nps_matched, nhis_matched, fss_corp_matched)
+                        # 유사도 분포 계산 (10% 단위)
+                        sim_dist = [0] * 11 # 0, 10, 20, ..., 100
+                        for s in result_df["유사도(%)"]:
+                            idx_bin = int(s // 10)
+                            if idx_bin > 10: idx_bin = 10
+                            sim_dist[idx_bin] += 1
+                        
+                        dist_labels = ["0-10%", "11-20%", "21-30%", "31-40%", "41-50%", "51-60%", "61-70%", "71-80%", "81-90%", "91-100%", "보정매칭"]
+                        # 보정매칭은 사실상 90-100% 구간에 포함되나, 필요시 별도 표기 가능. 일단 10개 구간으로 정리
+                        dist_bins = {}
+                        for i in range(10):
+                            start = i * 10
+                            end = (i+1) * 10
+                            count = sum(1 for s in result_df["유사도(%)"] if start < s <= end)
+                            if i == 0: # 0점 포함
+                                count = sum(1 for s in result_df["유사도(%)"] if start <= s <= end)
+                            dist_bins[f"{start+1 if i>0 else 0}-{end}%"] = count
+
                         stats = {
                             "total": total_rows,
                             "matched": total_matched,
@@ -1194,6 +1212,7 @@ def show_business_info_crawling():
                             "nhis_matched": nhis_matched,
                             "fss_corp_matched": fss_corp_matched,
                             "fss_fina_matched": fss_fina_matched,
+                            "sim_dist": dist_bins
                         }
 
                         st.session_state["biz_crawl_result"] = result_df
@@ -1258,6 +1277,21 @@ def show_business_info_crawling():
     <div style="font-size:2rem; font-weight:700; color:#7C3AED;">{success_rate:.1f}%</div>
     <div style="font-size:0.8rem; color:#8B96A9;">성공률</div>
 </div>""", unsafe_allow_html=True)
+
+        # 유사도 분포 (10% 단위) 표시
+        sim_dist = stats.get("sim_dist", {})
+        if sim_dist:
+            st.markdown("#### 📊 유사도 분포 (10% 단위)")
+            cols_dist = st.columns(len(sim_dist))
+            for i, (label, count) in enumerate(sim_dist.items()):
+                with cols_dist[i]:
+                    color = "#0F6CBD" if count > 0 else "#8B96A9"
+                    st.markdown(f"""
+                    <div style="text-align:center; padding:0.5rem; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0;">
+                        <div style="font-size:0.7rem; color:#64748B; margin-bottom:0.2rem;">{label}</div>
+                        <div style="font-size:1rem; font-weight:700; color:{color};">{count}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
         # 데이터셋 정보
         nps_size = stats.get("nps_size", 0)
