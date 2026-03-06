@@ -604,28 +604,24 @@ def show_business_info_crawling():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Step 1: API 키 설정
-    st.markdown('<div class="qx-section-label">STEP 1 · API 키 설정</div>', unsafe_allow_html=True)
-    with st.container():
-        # secrets.toml에서 우선 로드
-        default_key = ""
-        try:
-            default_key = st.secrets.get("api_keys", {}).get("DATA_GO_KR_KEY", "")
-        except Exception:
-            pass
+    # ── API 키 로드 (Streamlit Cloud secrets 전용)
+    api_service_key = ""
+    try:
+        api_service_key = st.secrets.get("api_keys", {}).get("DATA_GO_KR_KEY", "")
+    except Exception:
+        pass
 
-        if default_key:
-            st.success("✅ API 키가 secrets.toml에서 자동 로드되었습니다.", icon="🔑")
-            api_service_key = default_key
-        else:
-            api_service_key = st.text_input(
-                "공공데이터포털 API 서비스 키 (Decoding Key)",
-                type="password",
-                placeholder="공공데이터포털에서 발급받은 서비스 키를 입력하세요",
-                key="biz_api_key_input",
-            )
-            if not api_service_key:
-                st.warning("API 키를 입력하세요. 공공데이터포털(data.go.kr)에서 발급받을 수 있습니다.", icon="⚠️")
+    if api_service_key:
+        st.success("✅ 공공데이터포털 API 키가 연결되어 있습니다.", icon="🔑")
+    else:
+        st.error(
+            "⚠️ **API 키가 설정되지 않았습니다.**\n\n"
+            "Streamlit Cloud의 **Secrets** 설정에서 아래 형식으로 API 키를 등록해주세요:\n\n"
+            "```\n[api_keys]\nDATA_GO_KR_KEY = \"발급받은_서비스키\"\n```\n\n"
+            "공공데이터포털(data.go.kr)에서 API 활용 신청 후 발급받을 수 있습니다.",
+            icon="🔑",
+        )
+        st.stop()
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -763,9 +759,7 @@ def show_business_info_crawling():
                 # ── Step 4: 조회 실행
                 st.markdown('<div class="qx-section-label">STEP 4 · 데이터 매칭 실행</div>', unsafe_allow_html=True)
 
-                if not api_service_key:
-                    st.error("API 키가 설정되지 않았습니다. STEP 1에서 API 키를 입력하세요.")
-                else:
+                if True:  # API 키는 이미 검증됨 (secrets 로드 실패 시 st.stop())
                     # 매핑된 컬럼 수 확인
                     mapped_count = sum(1 for c in [brn_col, name_col, ceo_col, addr_col] if c != "(선택 안 함)")
 
@@ -825,6 +819,18 @@ def show_business_info_crawling():
                                     stats["success_nps"] += 1
                                 else:
                                     stats["fail_nps"] += 1
+                                    # 키 만료/인증 오류 감지 → 즉시 중단
+                                    err_msg = result.get("_error", "")
+                                    if any(kw in err_msg for kw in ["401", "403", "인증", "Unauthorized", "Forbidden"]):
+                                        progress.empty()
+                                        status_area.empty()
+                                        st.error(
+                                            "🔑 **API 키의 유효기간이 만료되었거나 인증에 실패했습니다.**\n\n"
+                                            "공공데이터포털(data.go.kr)에서 API 키를 갱신한 후, "
+                                            "Streamlit Cloud Secrets의 `DATA_GO_KR_KEY` 값을 업데이트해주세요.\n\n"
+                                            f"오류 상세: `{err_msg}`"
+                                        )
+                                        st.stop()
 
                             # 건강보험 API 호출
                             if selected_nhis and brn not in nhis_results:
@@ -834,6 +840,17 @@ def show_business_info_crawling():
                                     stats["success_nhis"] += 1
                                 else:
                                     stats["fail_nhis"] += 1
+                                    err_msg = result.get("_error", "")
+                                    if any(kw in err_msg for kw in ["401", "403", "인증", "Unauthorized", "Forbidden"]):
+                                        progress.empty()
+                                        status_area.empty()
+                                        st.error(
+                                            "🔑 **API 키의 유효기간이 만료되었거나 인증에 실패했습니다.**\n\n"
+                                            "공공데이터포털(data.go.kr)에서 API 키를 갱신한 후, "
+                                            "Streamlit Cloud Secrets의 `DATA_GO_KR_KEY` 값을 업데이트해주세요.\n\n"
+                                            f"오류 상세: `{err_msg}`"
+                                        )
+                                        st.stop()
 
                             # Rate limit 방지
                             time.sleep(0.2)
