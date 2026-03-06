@@ -560,9 +560,9 @@ def perform_rfp_analysis():
 
 
 
-# ── 기업체 자료 수집(국민연금/건강보험) UI ──
+# ── 기업체 일반 현황 행정자료 비교 UI ──
 def show_business_info_crawling():
-    """공공데이터포털 API를 활용한 기업체 자료 수집 시스템 UI"""
+    """공공데이터포털 API를 활용한 기업체 일반 현황 행정자료 비교 시스템 UI"""
     import time
     from api.nps_api import search_and_match_nps, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP, estimate_avg_salary
     from api.nhis_api import download_nhis_dataset, NHIS_SELECTABLE_FIELDS, NHIS_FIELD_LABELS, NHIS_FIELD_MAP
@@ -577,9 +577,9 @@ def show_business_info_crawling():
     # 상단 헤더
     st.markdown("""
     <div class="qx-topbar">
-        <span class="qx-topbar-logo">기업체 자료 수집</span>
+        <span class="qx-topbar-logo">행정자료 비교</span>
         <span class="qx-topbar-sep"></span>
-        <span class="qx-topbar-title">국민연금/건강보험</span>
+        <span class="qx-topbar-title">기업체 일반 현황</span>
         <span class="qx-topbar-badge">공공데이터 API 연동</span>
     </div>
     """, unsafe_allow_html=True)
@@ -2996,7 +2996,7 @@ with st.sidebar:
         "AI 이상치 검토 (Call Back, Data Adjustment)", 
         "AI 결측치 검토 (Call Back, Imputation)",
         "AI 단위 무응답 검토",
-        "기업체 자료 수집(국민연금/건강보험)",
+        "기업체 일반 현황 행정자료 비교",
         "보고서 검수 AI Tools"
     ]
     
@@ -3008,8 +3008,8 @@ with st.sidebar:
     if current_user not in allowed_for_nonresponse:
         if "AI 단위 무응답 검토" in menu_options:
             menu_options.remove("AI 단위 무응답 검토")
-        if "기업체 자료 수집(국민연금/건강보험)" in menu_options:
-            menu_options.remove("기업체 자료 수집(국민연금/건강보험)")
+        if "기업체 일반 현황 행정자료 비교" in menu_options:
+            menu_options.remove("기업체 일반 현황 행정자료 비교")
     
     # [v4.12] 관리자(shjeon) 전용 메뉴 추가
     if st.session_state.get("logged_in_user") == "shjeon":
