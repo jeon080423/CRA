@@ -588,24 +588,85 @@ def show_business_info_crawling():
     with st.expander("📘 사용 방법 안내", expanded=False):
         st.markdown("""
         ### 🛠️ 이용 방법
-        1. **API 키 설정:** 좌측 사이드바 또는 아래 입력란에 공공데이터포털 API 서비스 키를 입력합니다.
+        1. **API 키 설정:** 공공데이터포털 API 서비스 키가 Streamlit Secrets에 등록되어 있어야 합니다.
         2. **엑셀 파일 업로드:** 조회할 사업체 목록이 담긴 엑셀 파일(.xlsx, .xls)을 업로드합니다.
         3. **컬럼 매핑:** 업로드된 파일의 컬럼 중 사업자등록번호, 회사명, 대표자명, 주소에 해당하는 컬럼을 지정합니다.
-        4. **조회 항목 선택:** 국민연금공단 / 건강보험공단에서 조회할 항목을 선택합니다.
+        4. **조회 항목 선택:** 아래 4개 기관의 데이터 중 필요한 항목을 선택합니다.
         5. **조회 실행:** '조회 시작' 버튼을 클릭하여 API 조회를 수행합니다.
         6. **결과 다운로드:** 조회 결과를 엑셀 파일로 다운로드합니다.
 
+        ### 🏛️ 데이터 출처 및 수집 항목
+
+        | 출처 기관 | 데이터 항목 | 조회 키 |
+        |-----------|-------------|---------|
+        | **국민연금공단** | 가입자수, 당월고지금액, 추정 평균 기준소득월액, 신규취득자수, 상실가입자수, 사업장형태 | 회사명 → 사업자번호 매칭 |
+        | **건강보험공단** | 직장가입자수, 사업장관리상태, 업종코드 | 사업자등록번호 매칭 |
+        | **금융위원회 (기업기본정보)** | 1인평균급여금액, 종업원수, 설립일, 표준산업분류명, 중소기업여부, 평균근속기간 | 회사명 자동 검색 |
+        | **금융위원회 (기업재무정보)** | 매출액, 영업이익, 당기순이익, 총자산, 총부채, 자본금 | 법인등록번호 자동 획득 |
+
         ### 🔑 API 키 발급 방법
         1. [공공데이터포털(data.go.kr)](https://data.go.kr) 회원가입
-        2. "국민연금 가입 사업장 내역" 및 "건강보험공단 사업장관리 현황" API 활용 신청
-        3. 발급받은 **Decoding Key**를 아래 입력란에 붙여넣기
+        2. 아래 **4개 API** 활용 신청 (동일한 서비스키 사용 가능):
+           - 국민연금 가입 사업장 내역
+           - 건강보험공단 사업장관리 현황
+           - **금융위원회 기업기본정보** (`GetCorpBasicInfoService_V2`)
+           - **금융위원회 기업재무정보** (`GetFinaStatInfoService_V2`)
+        3. 발급받은 **Decoding Key**를 Streamlit Secrets에 등록
 
         ### ⚠️ 주의사항
         - 국민연금 API는 **가입자 3인 이상 법인사업장**, **10인 이상 개인사업장**만 조회 가능합니다.
         - 개발 계정 기준 **일 10,000건** 조회 제한이 있습니다.
         - 건강보험공단 데이터는 **정기 갱신** 기반이며, 실시간 데이터가 아닙니다.
+        - 금융위원회 기업정보는 **공시 대상 법인(상장사·외감법인 등)** 위주로 조회되며, 소규모 개인사업장은 결과가 없을 수 있습니다.
+        - 재무정보는 **직전 사업연도** 기준이며, 미공시 시 2년 전 데이터를 자동 조회합니다.
         - 대표자명은 개인정보보호를 위해 API 조회 키로 사용하지 않습니다.
         """)
+
+    # ── 데이터 수집 흐름도
+    st.markdown("""
+<div class="qx-card" style="padding: 1.5rem 2rem;">
+    <div class="qx-card-title" style="margin-bottom: 1rem; font-size: 1rem;">📊 기업체 자료 수집 흐름도</div>
+    <div style="display:flex; flex-direction:column; gap:0.8rem;">
+        <!-- 입력 -->
+        <div style="display:flex; align-items:center; gap:0.8rem;">
+            <div style="background:#0F6CBD; color:white; padding:0.6rem 1.2rem; border-radius:8px; font-weight:600; font-size:0.85rem; min-width:140px; text-align:center;">
+                📋 엑셀 업로드<br><span style="font-size:0.72rem; font-weight:400;">회사명 · 사업자번호</span>
+            </div>
+            <div style="color:#8B96A9; font-size:1.2rem;">→</div>
+            <div style="background:#F4F6F9; border:1px solid #E5E9F0; padding:0.6rem 1rem; border-radius:8px; font-size:0.82rem; color:#3D4F6B; font-weight:500; text-align:center;">
+                ⚙️ API 자동 조회
+            </div>
+            <div style="color:#8B96A9; font-size:1.2rem;">→</div>
+            <div style="background:#059669; color:white; padding:0.6rem 1.2rem; border-radius:8px; font-weight:600; font-size:0.85rem; min-width:140px; text-align:center;">
+                📥 결과 엑셀 다운로드
+            </div>
+        </div>
+        <!-- 4개 기관 -->
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap; margin-top:0.5rem;">
+            <div style="flex:1; min-width:130px; background:#EEF4FD; border:1px solid #BDD7F5; border-radius:8px; padding:0.7rem; text-align:center;">
+                <div style="font-size:1.2rem;">🏢</div>
+                <div style="font-size:0.78rem; font-weight:700; color:#0F6CBD; margin:0.2rem 0;">국민연금공단</div>
+                <div style="font-size:0.68rem; color:#5A6B82; line-height:1.4;">가입자수 · 고지금액<br>추정 기준소득월액</div>
+            </div>
+            <div style="flex:1; min-width:130px; background:#FEF3E2; border:1px solid #FCD34D; border-radius:8px; padding:0.7rem; text-align:center;">
+                <div style="font-size:1.2rem;">🏥</div>
+                <div style="font-size:0.78rem; font-weight:700; color:#B45309; margin:0.2rem 0;">건강보험공단</div>
+                <div style="font-size:0.68rem; color:#5A6B82; line-height:1.4;">직장가입자수<br>사업장상태 · 업종코드</div>
+            </div>
+            <div style="flex:1; min-width:130px; background:#F0FDF4; border:1px solid #86EFAC; border-radius:8px; padding:0.7rem; text-align:center;">
+                <div style="font-size:1.2rem;">🏛️</div>
+                <div style="font-size:0.78rem; font-weight:700; color:#059669; margin:0.2rem 0;">금융위원회 (기본정보)</div>
+                <div style="font-size:0.68rem; color:#5A6B82; line-height:1.4;">1인평균급여 · 종업원수<br>설립일 · 산업분류</div>
+            </div>
+            <div style="flex:1; min-width:130px; background:#F5F3FF; border:1px solid #C4B5FD; border-radius:8px; padding:0.7rem; text-align:center;">
+                <div style="font-size:1.2rem;">📊</div>
+                <div style="font-size:0.78rem; font-weight:700; color:#7C3AED; margin:0.2rem 0;">금융위원회 (재무정보)</div>
+                <div style="font-size:0.68rem; color:#5A6B82; line-height:1.4;">매출액 · 영업이익<br>당기순이익 · 자본금</div>
+            </div>
+        </div>
+    </div>
+</div>
+    """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
