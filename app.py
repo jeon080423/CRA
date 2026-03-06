@@ -918,23 +918,7 @@ def show_business_info_crawling():
                 # 매핑된 컬럼 수 확인
                 mapped_count = sum(1 for c in [brn_col, name_col, ceo_col, addr_col] if c != "(선택 안 함)")
 
-                if mapped_count >= 2:
-                    st.markdown("""<div class="qx-card">
-    <div class="qx-card-title">🎯 유사도 기반 필터링</div>
-    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">
-        매핑된 컬럼 정보(사업자번호·회사명·주소)를 조합하여 API 결과와의 유사도를 계산합니다.<br>
-        설정한 임계값 이상인 결과만 표시됩니다.
-    </div>
-</div>""", unsafe_allow_html=True)
-                    similarity_threshold = st.slider(
-                        "유사도 임계값 (%)",
-                        min_value=0, max_value=100, value=50, step=5,
-                        help="이 값 이상의 유사도를 가진 결과만 표시합니다. 0%면 모든 결과를 표시합니다.",
-                        key="biz_sim_threshold",
-                    )
-                else:
-                    similarity_threshold = 0
-                    st.info("💡 컬럼을 2개 이상 매핑하면 유사도 기반 필터링이 활성화됩니다.")
+                similarity_threshold = 0
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 total_rows = len(df)
@@ -1089,36 +1073,54 @@ def show_business_info_crawling():
                         progress.progress(0.8, text="결과 병합 중...")
                         result_df = df.copy()
                         
+                        # NHIS 룩업 사전 구축 (속도 최적화)
+                        nhis_lookup = {}
+                        if not nhis_df.empty and "_brn" in nhis_df.columns:
+                            nhis_lookup = nhis_df.set_index("_brn").to_dict('index')
+
                         # 식별된 마스터 ID를 기반으로 신뢰도 및 기본 정보 세팅
                         result_df["[공공데이터] 사업자등록번호"] = ""
                         result_df["유사도(%)"] = 0.0
 
+                        rows_with_data = 0
                         for idx, row in result_df.iterrows():
                             res_id = resolved_identities.get(idx, {})
                             master_brn = res_id.get("brn", "")
                             result_df.at[idx, "[공공데이터] 사업자등록번호"] = master_brn
+                            
+                            has_any_data = False
 
                             # NPS 결과 추출
+                            # NPS 결과 추출
                             if selected_nps:
+                                nps_row = nps_results.get(idx, {})
+                                if nps_row and "_error" not in nps_row:
+                                    has_any_data = True
                                 for field in selected_nps:
                                     label = NPS_FIELD_LABELS.get(field, field)
                                     col_name = f"[국민연금] {label}"
                                     result_df.at[idx, col_name] = _extract_nps_field(nps_results, idx, field)
                                 
                                 if "avgBasSalary" in selected_nps:
-                                    result_df.at[idx, "[국민연금] 추정 평균 기준소득월액"] = estimate_avg_salary(nps_results.get(idx, {}))
+                                    result_df.at[idx, "[국민연금] 추정 평균 기준소득월액"] = estimate_avg_salary(nps_row)
 
                             # NHIS 결과 추출 (확정된 master_brn 기준)
-                            if selected_nhis and not nhis_df.empty:
-                                for field in selected_nhis:
-                                    label = NHIS_FIELD_LABELS.get(field, field)
-                                    col_name = f"[건강보험] {label}"
-                                    result_df.at[idx, col_name] = _extract_nhis_field(nhis_df.set_index("_brn").to_dict('index'), master_brn, field)
+                            if selected_nhis and master_brn:
+                                nhis_row = nhis_lookup.get(master_brn)
+                                if nhis_row:
+                                    has_any_data = True
+                                    for field in selected_nhis:
+                                        label = NHIS_FIELD_LABELS.get(field, field)
+                                        col_name = f"[건강보험] {label}"
+                                        val = nhis_row.get(field, "")
+                                        result_df.at[idx, col_name] = str(val) if val else "해당없음"
 
                             # FSS 결과 추출
                             fss_data = fss_results.get(idx, {})
                             if selected_fss_corp:
                                 corp = fss_data.get("corp", {})
+                                if corp and "_error" not in corp:
+                                    has_any_data = True
                                 for field in selected_fss_corp:
                                     label = FSS_CORP_FIELD_LABELS.get(field, field)
                                     col_name = f"[기업정보] {label}"
@@ -1127,17 +1129,19 @@ def show_business_info_crawling():
 
                             if selected_fss_fina:
                                 fina = fss_data.get("fina", {})
+                                if fina and "_error" not in fina:
+                                    has_any_data = True
                                 for field in selected_fss_fina:
                                     label = FSS_FINA_FIELD_LABELS.get(field, field)
                                     col_name = f"[재무정보] {label}"
-                                    if "_error" in fina:
-                                        result_df.at[idx, col_name] = "조회불가"
-                                    else:
-                                        val = fina.get(field, "")
-                                        if val and str(val).replace("-", "").replace(".", "").isdigit():
-                                            try: val = f"{int(float(val)):,}"
-                                            except: pass
-                                        result_df.at[idx, col_name] = str(val) if val else "해당없음"
+                                    val = fina.get(field, "")
+                                    if val and str(val).replace("-", "").replace(".", "").isdigit():
+                                        try: val = f"{int(float(val)):,}"
+                                        except: pass
+                                    result_df.at[idx, col_name] = str(val) if val else "해당없음"
+                            
+                            if has_any_data:
+                                rows_with_data += 1
 
                             # ── 유사도 계산 (Identity Resolution 결과 활용)
                             scores, weights = [], []
@@ -1164,13 +1168,14 @@ def show_business_info_crawling():
                             final_sim = round(sum(s*w for s, w in zip(scores, weights)) / sum(weights) * 100, 1) if weights else 0.0
                             result_df.at[idx, "유사도(%)"] = final_sim
 
-                        # 유사도 필터링
-                        if similarity_threshold > 0:
-                            result_df = result_df[result_df["유사도(%)"] >= similarity_threshold].reset_index(drop=True)
+                         # 유사도 필터링 제거 (모든 결과 표시)
+                         # if similarity_threshold > 0:
+                         #     result_df = result_df[result_df["유사도(%)"] >= similarity_threshold].reset_index(drop=True)
                         
-                        # 통계 계산을 위한 카운트
+                        # 통계 계산 (실제로 데이터를 가져온 행 기준)
+                        total_matched = rows_with_data
                         nps_matched = sum(1 for v in nps_results.values() if v and "_error" not in v)
-                        nhis_matched = sum(1 for brn in result_df["[공공데이터] 사업자등록번호"] if brn and not nhis_df.empty and brn in nhis_df["_brn"].values)
+                        nhis_matched = sum(1 for idx, res_id in resolved_identities.items() if res_id.get("brn") and nhis_lookup.get(res_id["brn"]))
                         fss_corp_matched = sum(1 for v in fss_results.values() if "_error" not in v.get("corp", {}))
                         fss_fina_matched = sum(1 for v in fss_results.values() if "_error" not in v.get("fina", {}))
 
