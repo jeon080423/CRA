@@ -646,6 +646,26 @@ def show_business_info_crawling():
         key="biz_excel_uploader",
     )
 
+    # 표준 양식 다운로드
+    import io as _io
+    _tpl_df = pd.DataFrame({
+        "사업자등록번호": ["123-45-67890"],
+        "회사명": ["(주)예시기업"],
+        "대표자명": ["홍길동"],
+        "주소": ["서울특별시 종로구 세종대로 209"],
+    })
+    _tpl_buf = _io.BytesIO()
+    with pd.ExcelWriter(_tpl_buf, engine="openpyxl") as _w:
+        _tpl_df.to_excel(_w, index=False, sheet_name="사업체목록")
+    _tpl_buf.seek(0)
+    st.download_button(
+        label="📋 표준 엑셀 양식 다운로드",
+        data=_tpl_buf,
+        file_name="사업체정보_표준양식.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="btn_biz_template_dl",
+    )
+
     df = None
     if uploaded_excel is not None:
         try:
