@@ -693,13 +693,7 @@ def show_business_info_crawling():
 
     # ── Step 2: 엑셀 파일 업로드
     st.markdown('<div class="qx-section-label">STEP 2 · 엑셀 파일 업로드</div>', unsafe_allow_html=True)
-    st.markdown("""
-<div class="qx-upload-zone">
-    <div class="qx-upload-icon">&#128203;</div>
-    <div class="qx-upload-text">사업체 목록 엑셀 파일을 업로드하세요</div>
-    <div class="qx-upload-hint">xlsx · xls 형식 지원</div>
-</div>
-""", unsafe_allow_html=True)
+    st.caption("📋 사업체 목록이 담긴 엑셀 파일(.xlsx, .xls)을 아래에 업로드하세요.")
 
     uploaded_excel = st.file_uploader(
         "엑셀 파일 선택",
