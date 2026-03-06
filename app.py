@@ -766,6 +766,28 @@ def show_business_info_crawling():
                 if not api_service_key:
                     st.error("API 키가 설정되지 않았습니다. STEP 1에서 API 키를 입력하세요.")
                 else:
+                    # 매핑된 컬럼 수 확인
+                    mapped_count = sum(1 for c in [brn_col, name_col, ceo_col, addr_col] if c != "(선택 안 함)")
+
+                    if mapped_count >= 2:
+                        st.markdown("""<div class="qx-card">
+    <div class="qx-card-title">🎯 유사도 기반 필터링</div>
+    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">
+        매핑된 컬럼 정보(사업자번호·회사명·주소)를 조합하여 API 결과와의 유사도를 계산합니다.<br>
+        설정한 임계값 이상인 결과만 표시됩니다.
+    </div>
+</div>""", unsafe_allow_html=True)
+                        similarity_threshold = st.slider(
+                            "유사도 임계값 (%)",
+                            min_value=0, max_value=100, value=50, step=5,
+                            help="이 값 이상의 유사도를 가진 결과만 표시합니다. 0%면 모든 결과를 표시합니다.",
+                            key="biz_sim_threshold",
+                        )
+                    else:
+                        similarity_threshold = 0
+                        st.info("💡 컬럼을 2개 이상 매핑하면 유사도 기반 필터링이 활성화됩니다.")
+
+                    st.markdown("<br>", unsafe_allow_html=True)
                     total_rows = len(df)
                     st.caption(f"총 {total_rows:,}건의 사업체를 조회합니다. (건당 약 0.2초 소요)")
 
@@ -819,11 +841,14 @@ def show_business_info_crawling():
                         progress.progress(1.0, text="✅ 조회 완료!")
                         status_area.empty()
 
-                        # 매칭 결과 생성
+                        # 매칭 결과 생성 (유사도 포함)
                         result_df = match_api_data(
                             df, brn_col,
                             nps_results, nhis_results,
                             selected_nps, selected_nhis,
+                            name_col=name_col if name_col != "(선택 안 함)" else "",
+                            addr_col=addr_col if addr_col != "(선택 안 함)" else "",
+                            similarity_threshold=similarity_threshold,
                         )
 
                         # 세션에 결과 저장
@@ -879,7 +904,14 @@ def show_business_info_crawling():
                         st.markdown("<br>", unsafe_allow_html=True)
 
                         # 결과 DataFrame 표시 (컬럼별 색상 하이라이트)
-                        column_config = {}
+                        column_config = {
+                            "유사도(%)": st.column_config.ProgressColumn(
+                                "유사도(%)",
+                                help="업로드 데이터와 API 조회 결과 간 유사도",
+                                min_value=0, max_value=100,
+                                format="%.1f%%",
+                            ),
+                        }
                         for col in result_df.columns:
                             if col.startswith("[국민연금]"):
                                 column_config[col] = st.column_config.TextColumn(
