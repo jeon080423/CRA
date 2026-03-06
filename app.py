@@ -564,7 +564,7 @@ def perform_rfp_analysis():
 def show_business_info_crawling():
     """공공데이터포털 API를 활용한 사업체 정보 크롤링 시스템 UI"""
     import time
-    from api.nps_api import download_nps_dataset, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP
+    from api.nps_api import search_and_match_nps, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP
     from api.nhis_api import download_nhis_dataset, NHIS_SELECTABLE_FIELDS, NHIS_FIELD_LABELS, NHIS_FIELD_MAP
     from utils.excel_handler import load_excel, export_result_excel
     from utils.matcher import normalize_brn, match_with_datasets, clean_company_names_bulk
@@ -825,25 +825,42 @@ def show_business_info_crawling():
                 st.caption(f"총 {total_rows:,}건의 사업체를 매칭합니다.")
 
                 if st.button("🔍 조회 시작", use_container_width=True, type="primary", key="btn_biz_start"):
-                    progress = st.progress(0, text="데이터셋 다운로드 준비 중...")
+                    progress = st.progress(0, text="조회 준비 중...")
                     status_area = st.empty()
 
                     try:
-                        # 1) 국민연금 데이터셋 다운로드 (캐시 확인)
-                        nps_df = pd.DataFrame()
-                        if selected_nps:
-                            if "biz_nps_dataset" in st.session_state and st.session_state["biz_nps_dataset"] is not None:
-                                nps_df = st.session_state["biz_nps_dataset"]
-                                status_area.caption(f"✅ 국민연금 데이터셋 캐시 사용 ({len(nps_df):,}건)")
-                            else:
-                                def nps_progress(page, total, msg):
-                                    progress.progress(min(page / total * 0.4, 0.39), text=msg)
-                                    status_area.caption(msg)
-                                nps_df = download_nps_dataset(api_service_key, progress_callback=nps_progress)
-                                st.session_state["biz_nps_dataset"] = nps_df
-                                status_area.caption(f"✅ 국민연금 데이터셋 다운로드 완료 ({len(nps_df):,}건)")
+                        _match_name = cleaned_name_col if cleaned_name_col and cleaned_name_col in df.columns else (name_col if name_col != "(선택 안 함)" else "")
 
-                        # 2) 건강보험 데이터셋 다운로드 (캐시 확인)
+                        # 1) 국민연금: 건별 사업장명 검색 → 사업자번호 매칭
+                        nps_results = {}  # {정규화 brn: API 결과 dict}
+                        if selected_nps:
+                            status_area.caption("🔍 국민연금 사업장 검색 중...")
+                            for idx, row in df.iterrows():
+                                row_num = idx + 1
+                                progress.progress(min(row_num / total_rows * 0.5, 0.49), text=f"국민연금 검색 중... ({row_num}/{total_rows})")
+
+                                brn = normalize_brn(row[brn_col])
+                                search_name = str(row.get(_match_name, "")).strip() if _match_name else ""
+
+                                if not search_name:
+                                    search_name = str(row.get(name_col, "")).strip() if name_col != "(선택 안 함)" else ""
+
+                                company_display = search_name or brn
+                                status_area.caption(f"🔍 [{row_num}/{total_rows}] {company_display}")
+
+                                if not search_name:
+                                    nps_results[brn] = {"_error": "회사명 없음"}
+                                    continue
+
+                                try:
+                                    result = search_and_match_nps(search_name, brn, api_service_key)
+                                    nps_results[brn] = result
+                                except PermissionError:
+                                    raise
+
+                                time.sleep(0.2)  # Rate limit
+
+                        # 2) 건강보험: bulk download → 로컬 매칭
                         nhis_df = pd.DataFrame()
                         if selected_nhis:
                             if "biz_nhis_dataset" in st.session_state and st.session_state["biz_nhis_dataset"] is not None:
@@ -851,43 +868,86 @@ def show_business_info_crawling():
                                 status_area.caption(f"✅ 건강보험 데이터셋 캐시 사용 ({len(nhis_df):,}건)")
                             else:
                                 def nhis_progress(page, total, msg):
-                                    progress.progress(min(0.4 + page / total * 0.3, 0.69), text=msg)
+                                    progress.progress(min(0.5 + page / total * 0.2, 0.69), text=msg)
                                     status_area.caption(msg)
                                 nhis_df = download_nhis_dataset(api_service_key, progress_callback=nhis_progress)
                                 st.session_state["biz_nhis_dataset"] = nhis_df
                                 status_area.caption(f"✅ 건강보험 데이터셋 다운로드 완료 ({len(nhis_df):,}건)")
 
-                        # 3) 로컬 매칭
-                        progress.progress(0.7, text="사업자번호 기반 매칭 중...")
-                        _match_name = cleaned_name_col if cleaned_name_col and cleaned_name_col in df.columns else (name_col if name_col != "(선택 안 함)" else "")
+                        # 3) 결과 병합
+                        progress.progress(0.8, text="결과 병합 중...")
+                        result_df = df.copy()
+                        result_df["_brn"] = result_df[brn_col].apply(normalize_brn)
 
-                        def match_progress(curr, total, msg):
-                            progress.progress(min(0.7 + curr / total * 0.29, 0.99), text=msg)
-                            status_area.caption(msg)
+                        # NPS 결과 컬럼 추가
+                        nps_matched = 0
+                        if selected_nps:
+                            for field in selected_nps:
+                                label = NPS_FIELD_LABELS.get(field, field)
+                                col_name = f"[국민연금] {label}"
+                                result_df[col_name] = result_df["_brn"].apply(
+                                    lambda brn, f=field: _extract_nps_field(nps_results, brn, f)
+                                )
+                            nps_matched = sum(1 for v in nps_results.values() if v and "_error" not in v)
 
-                        result_df = match_with_datasets(
-                            df, brn_col,
-                            nps_df, nhis_df,
-                            selected_nps, selected_nhis,
-                            name_col=_match_name,
-                            addr_col=addr_col if addr_col != "(선택 안 함)" else "",
-                            similarity_threshold=similarity_threshold,
-                            progress_callback=match_progress,
-                        )
+                        # NHIS 로컬 매칭 결과 컬럼 추가
+                        nhis_matched = 0
+                        if selected_nhis and not nhis_df.empty and "_brn" in nhis_df.columns:
+                            nhis_lookup = {}
+                            for _, nrow in nhis_df.iterrows():
+                                nhis_lookup[nrow["_brn"]] = nrow
 
-                        progress.progress(1.0, text="✅ 매칭 완료!")
+                            for field in selected_nhis:
+                                label = NHIS_FIELD_LABELS.get(field, field)
+                                col_name = f"[건강보험] {label}"
+                                result_df[col_name] = result_df["_brn"].apply(
+                                    lambda brn, f=field, lk=nhis_lookup: _extract_nhis_field(lk, brn, f)
+                                )
+                            nhis_matched = sum(1 for brn in result_df["_brn"] if brn in nhis_lookup)
+
+                        # 유사도 계산
+                        from utils.matcher import text_similarity
+                        similarities = []
+                        for _, row in result_df.iterrows():
+                            brn = row["_brn"]
+                            nps_data = nps_results.get(brn, {})
+                            has_nps = bool(nps_data and "_error" not in nps_data)
+                            has_nhis = bool(not nhis_df.empty and "_brn" in nhis_df.columns and brn in nhis_df["_brn"].values)
+
+                            scores, weights = [], []
+                            scores.append(1.0 if (has_nps or has_nhis) else 0.0)
+                            weights.append(30)
+
+                            if _match_name and _match_name in row.index:
+                                uname = str(row[_match_name]) if pd.notna(row.get(_match_name)) else ""
+                                api_name = nps_data.get("wkplNm", "") if has_nps else ""
+                                if uname and api_name:
+                                    scores.append(text_similarity(uname, api_name))
+                                    weights.append(40)
+
+                            sim = round(sum(s*w for s, w in zip(scores, weights)) / sum(weights) * 100, 1) if weights else 0.0
+                            similarities.append(sim)
+
+                        result_df["유사도(%)"] = similarities
+                        result_df.drop(columns=["_brn"], inplace=True, errors="ignore")
+
+                        # 유사도 필터링
+                        if similarity_threshold > 0:
+                            result_df = result_df[result_df["유사도(%)"] >= similarity_threshold].reset_index(drop=True)
+
+                        progress.progress(1.0, text="✅ 조회 완료!")
                         status_area.empty()
 
-                        # 통계 계산
-                        total_matched = len(result_df)
-                        brn_matched = int((result_df["유사도(%)"] > 0).sum()) if "유사도(%)" in result_df.columns else 0
+                        total_matched = max(nps_matched, nhis_matched)
                         stats = {
                             "total": total_rows,
-                            "matched": brn_matched,
-                            "unmatched": total_rows - brn_matched,
-                            "result_rows": total_matched,
-                            "nps_size": len(nps_df),
+                            "matched": total_matched,
+                            "unmatched": total_rows - total_matched,
+                            "result_rows": len(result_df),
+                            "nps_searched": len(nps_results),
+                            "nps_matched": nps_matched,
                             "nhis_size": len(nhis_df),
+                            "nhis_matched": nhis_matched,
                         }
 
                         st.session_state["biz_crawl_result"] = result_df
@@ -1014,6 +1074,28 @@ def show_business_info_crawling():
                 if k in st.session_state:
                     del st.session_state[k]
             st.rerun()
+
+
+def _extract_nps_field(nps_results: dict, brn: str, field: str) -> str:
+    """NPS 결과 dict에서 특정 필드값 추출"""
+    data = nps_results.get(brn, {})
+    if not data or "_error" in data:
+        return "조회불가"
+    val = data.get(field)
+    if val is None:
+        return "해당없음"
+    return str(val)
+
+
+def _extract_nhis_field(nhis_lookup: dict, brn: str, field: str) -> str:
+    """NHIS lookup dict에서 특정 필드값 추출"""
+    data = nhis_lookup.get(brn)
+    if data is None:
+        return "조회불가"
+    val = data.get(field)
+    if val is None or (hasattr(val, '__class__') and str(val) == 'nan'):
+        return "해당없음"
+    return str(val)
 
 
 def _auto_detect_col(col_options: list, keywords: list) -> int:
