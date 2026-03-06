@@ -911,112 +911,109 @@ def show_business_info_crawling():
                         status_area.empty()
                         st.error(f"데이터 조회 중 오류가 발생했습니다: {str(e)}")
 
-                    # ── Step 5: 결과 표시
-                    if "biz_crawl_result" in st.session_state and st.session_state["biz_crawl_result"] is not None:
-                        result_df = st.session_state["biz_crawl_result"]
-                        stats = st.session_state.get("biz_crawl_stats", {})
-                        s_nps = st.session_state.get("biz_crawl_selected_nps", [])
-                        s_nhis = st.session_state.get("biz_crawl_selected_nhis", [])
+    # ══════════════════════════════════════════════════════════════
+    # ── Step 5: 결과 표시 (세션 상태 기반 — 중첩 외부에서 독립 렌더링)
+    # ══════════════════════════════════════════════════════════════
+    if "biz_crawl_result" in st.session_state and st.session_state["biz_crawl_result"] is not None:
+        result_df = st.session_state["biz_crawl_result"]
+        stats = st.session_state.get("biz_crawl_stats", {})
 
-                        st.markdown("<hr>", unsafe_allow_html=True)
-                        st.markdown('<div class="qx-section-label">STEP 5 · 조회 결과</div>', unsafe_allow_html=True)
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown('<div class="qx-section-label">STEP 5 · 조회 결과</div>', unsafe_allow_html=True)
 
-                        # 요약 통계 카드
-                        total = stats.get("total", len(result_df))
-                        matched = stats.get("matched", 0)
-                        unmatched = stats.get("unmatched", 0)
-                        success_rate = (matched / total * 100) if total > 0 else 0
+        # 요약 통계 카드
+        total = stats.get("total", len(result_df))
+        matched = stats.get("matched", 0)
+        unmatched = stats.get("unmatched", 0)
+        success_rate = (matched / total * 100) if total > 0 else 0
 
-                        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
-                        with col_s1:
-                            st.markdown(f"""
+        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+        with col_s1:
+            st.markdown(f"""
 <div class="qx-card" style="text-align:center;">
     <div style="font-size:2rem; font-weight:700; color:#0F6CBD;">{total:,}</div>
     <div style="font-size:0.8rem; color:#8B96A9;">전체 건수</div>
 </div>""", unsafe_allow_html=True)
-                        with col_s2:
-                            st.markdown(f"""
+        with col_s2:
+            st.markdown(f"""
 <div class="qx-card" style="text-align:center;">
     <div style="font-size:2rem; font-weight:700; color:#059669;">{matched:,}</div>
     <div style="font-size:0.8rem; color:#8B96A9;">매칭 성공</div>
 </div>""", unsafe_allow_html=True)
-                        with col_s3:
-                            st.markdown(f"""
+        with col_s3:
+            st.markdown(f"""
 <div class="qx-card" style="text-align:center;">
     <div style="font-size:2rem; font-weight:700; color:#DC2626;">{unmatched:,}</div>
     <div style="font-size:0.8rem; color:#8B96A9;">매칭 실패</div>
 </div>""", unsafe_allow_html=True)
-                        with col_s4:
-                            st.markdown(f"""
+        with col_s4:
+            st.markdown(f"""
 <div class="qx-card" style="text-align:center;">
     <div style="font-size:2rem; font-weight:700; color:#7C3AED;">{success_rate:.1f}%</div>
     <div style="font-size:0.8rem; color:#8B96A9;">성공률</div>
 </div>""", unsafe_allow_html=True)
 
-                        # 데이터셋 정보 표시
-                        nps_size = stats.get("nps_size", 0)
-                        nhis_size = stats.get("nhis_size", 0)
-                        if nps_size or nhis_size:
-                            info_parts = []
-                            if nps_size:
-                                info_parts.append(f"국민연금 {nps_size:,}건")
-                            if nhis_size:
-                                info_parts.append(f"건강보험 {nhis_size:,}건")
-                            st.caption(f"📦 참조 데이터셋: {' · '.join(info_parts)}")
+        # 데이터셋 정보
+        nps_size = stats.get("nps_size", 0)
+        nhis_size = stats.get("nhis_size", 0)
+        if nps_size or nhis_size:
+            info_parts = []
+            if nps_size:
+                info_parts.append(f"국민연금 {nps_size:,}건")
+            if nhis_size:
+                info_parts.append(f"건강보험 {nhis_size:,}건")
+            st.caption(f"📦 참조 데이터셋: {' · '.join(info_parts)}")
 
-                        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
-                        # 결과 DataFrame 표시 (컬럼별 색상 하이라이트)
-                        column_config = {
-                            "유사도(%)": st.column_config.ProgressColumn(
-                                "유사도(%)",
-                                help="업로드 데이터와 API 조회 결과 간 유사도",
-                                min_value=0, max_value=100,
-                                format="%.1f%%",
-                            ),
-                        }
-                        for col in result_df.columns:
-                            if col.startswith("[국민연금]"):
-                                column_config[col] = st.column_config.TextColumn(
-                                    col, help="국민연금공단 데이터"
-                                )
-                            elif col.startswith("[건강보험]"):
-                                column_config[col] = st.column_config.TextColumn(
-                                    col, help="건강보험공단 데이터"
-                                )
+        # 결과 DataFrame 표시
+        column_config = {
+            "유사도(%)": st.column_config.ProgressColumn(
+                "유사도(%)",
+                help="업로드 데이터와 API 조회 결과 간 유사도",
+                min_value=0, max_value=100,
+                format="%.1f%%",
+            ),
+        }
+        for col in result_df.columns:
+            if col.startswith("[국민연금]"):
+                column_config[col] = st.column_config.TextColumn(col, help="국민연금공단 데이터")
+            elif col.startswith("[건강보험]"):
+                column_config[col] = st.column_config.TextColumn(col, help="건강보험공단 데이터")
 
-                        st.dataframe(
-                            result_df,
-                            use_container_width=True,
-                            hide_index=True,
-                            column_config=column_config,
-                        )
+        st.dataframe(
+            result_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config=column_config,
+        )
 
-                        # 다운로드
-                        st.markdown("<hr>", unsafe_allow_html=True)
-                        st.markdown('<div class="qx-section-label">DOWNLOAD RESULTS</div>', unsafe_allow_html=True)
+        # 다운로드
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown('<div class="qx-section-label">DOWNLOAD RESULTS</div>', unsafe_allow_html=True)
 
-                        col_dl, _ = st.columns([2, 2])
-                        with col_dl:
-                            try:
-                                excel_bytes = export_result_excel(result_df)
-                                dl_filename = uploaded_excel.name.rsplit(".", 1)[0] if uploaded_excel else "조회결과"
-                                st.download_button(
-                                    label="📥 조회 결과 엑셀 다운로드 (.xlsx)",
-                                    data=excel_bytes,
-                                    file_name=f"{dl_filename}_행정정보조회결과.xlsx",
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                    use_container_width=True,
-                                )
-                            except Exception as e:
-                                st.error(f"엑셀 변환 중 오류: {e}")
+        from utils.excel_handler import export_result_excel
+        col_dl, _ = st.columns([2, 2])
+        with col_dl:
+            try:
+                excel_bytes = export_result_excel(result_df)
+                st.download_button(
+                    label="📥 조회 결과 엑셀 다운로드 (.xlsx)",
+                    data=excel_bytes,
+                    file_name="사업체정보_행정정보조회결과.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="btn_biz_download_result",
+                )
+            except Exception as e:
+                st.error(f"엑셀 변환 중 오류: {e}")
 
-                        # 결과 초기화 버튼
-                        if st.button("🔄 결과 초기화", key="btn_biz_reset"):
-                            for k in ["biz_crawl_result", "biz_crawl_stats", "biz_crawl_selected_nps", "biz_crawl_selected_nhis"]:
-                                if k in st.session_state:
-                                    del st.session_state[k]
-                            st.rerun()
+        # 결과 초기화 버튼
+        if st.button("🔄 결과 초기화", key="btn_biz_reset"):
+            for k in ["biz_crawl_result", "biz_crawl_stats", "biz_crawl_selected_nps", "biz_crawl_selected_nhis"]:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.rerun()
 
 
 def _auto_detect_col(col_options: list, keywords: list) -> int:
