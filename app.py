@@ -1307,14 +1307,19 @@ def show_business_info_crawling():
         # API 상태 정보 (디버깅/안내용)
         with st.expander("🌐 API 서비스 연결 상태 확인", expanded=(matched == 0)):
             api_cols = st.columns(3)
+            s_nps = stats.get("nps_matched", 0)
+            s_nhis = stats.get("nhis_matched", 0)
+            s_fss_corp = stats.get("fss_corp_matched", 0)
+            s_fss_fina = stats.get("fss_fina_matched", 0)
+
             with api_cols[0]:
-                nps_ok = "✅ 정상" if nps_matched > 0 else "⚠️ 미매칭/인증확인필요"
+                nps_ok = "✅ 정상" if s_nps > 0 else "⚠️ 미매칭/인증확인필요"
                 st.write(f"**국민연금:** {nps_ok}")
             with api_cols[1]:
-                nhis_ok = "✅ 정상" if nhis_matched > 0 else "⚠️ 미매칭/인증확인필요"
+                nhis_ok = "✅ 정상" if s_nhis > 0 else "⚠️ 미매칭/인증확인필요"
                 st.write(f"**건강보험:** {nhis_ok}")
             with api_cols[2]:
-                fss_ok = "✅ 정상" if (fss_corp_matched > 0 or fss_fina_matched > 0) else "⚠️ 미매칭/인증확인필요"
+                fss_ok = "✅ 정상" if (s_fss_corp > 0 or s_fss_fina > 0) else "⚠️ 미매칭/인증확인필요"
                 st.write(f"**금융위:** {fss_ok}")
             st.caption("※ '정상'은 유의미한 데이터가 1건 이상 추출되었음을 의미합니다.")
 
