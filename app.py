@@ -953,6 +953,24 @@ def show_business_info_crawling():
                         _progress_lock = threading.Lock()
                         _completed = {"nps": 0, "fss": 0}
 
+                        def _extract_nps_field(results_dict, brn, field):
+                            res = results_dict.get(brn)
+                            if not res or "_error" in res:
+                                return "조회불가"
+                            val = res.get(field, "")
+                            if field == "crrmmNtcAmt" and val:
+                                try:
+                                    return f"{int(float(val)):,}"
+                                except: pass
+                            return str(val) if val else "해당없음"
+
+                        def _extract_nhis_field(nhis_lookup, brn, field):
+                            nrow = nhis_lookup.get(brn)
+                            if nrow is None:
+                                return "조회불가"
+                            val = nrow.get(field, "")
+                            return str(val) if val else "해당없음"
+
                         def _query_nps(brn, name):
                             """국민연금 단건 조회 (스레드에서 실행)"""
                             if not name:
@@ -1116,28 +1134,36 @@ def show_business_info_crawling():
                                 lambda brn: estimate_avg_salary(nps_results.get(brn, {}))
                             )
 
-                        # 유사도 계산
-                        from utils.matcher import text_similarity
-                        similarities = []
-                        for _, row in result_df.iterrows():
-                            brn = row["_brn"]
-                            nps_data = nps_results.get(brn, {})
-                            has_nps = bool(nps_data and "_error" not in nps_data)
-                            has_nhis = bool(not nhis_df.empty and "_brn" in nhis_df.columns and brn in nhis_df["_brn"].values)
+                            # 유사도 계산
+                            similarities = []
+                            for _, row in result_df.iterrows():
+                                brn = row[brn_col] if brn_col != "(선택 안 함)" else ""
+                                brn_norm = normalize_brn(brn) if brn else ""
+                                
+                                nps_data = nps_results.get(brn_norm, {})
+                                has_nps = bool(nps_data and "_error" not in nps_data)
+                                has_nhis = bool(not nhis_df.empty and "_brn" in nhis_df.columns and brn_norm in nhis_df["_brn"].values)
+                                has_fss = bool(brn_norm in fss_results and "_error" not in fss_results[brn_norm].get("corp", {}))
 
-                            scores, weights = [], []
-                            scores.append(1.0 if (has_nps or has_nhis) else 0.0)
-                            weights.append(30)
+                                scores, weights = [], []
+                                # 1. 매칭 성공 여부 (기본 30점)
+                                scores.append(1.0 if (has_nps or has_nhis or has_fss) else 0.0)
+                                weights.append(30)
 
-                            if _match_name and _match_name in row.index:
-                                uname = str(row[_match_name]) if pd.notna(row.get(_match_name)) else ""
-                                api_name = nps_data.get("wkplNm", "") if has_nps else ""
-                                if uname and api_name:
-                                    scores.append(text_similarity(uname, api_name))
-                                    weights.append(40)
+                                # 2. 회사명 유사도 (추가 70점)
+                                if name_col != "(선택 안 함)" and row.get(name_col):
+                                    uname = str(row[name_col]).strip()
+                                    api_name = ""
+                                    if has_nps: api_name = nps_data.get("wkplNm", "")
+                                    elif has_fss: api_name = fss_results[brn_norm]["corp"].get("corpNm", "")
+                                    
+                                    if api_name:
+                                        from utils.matcher import text_similarity
+                                        scores.append(text_similarity(uname, api_name))
+                                        weights.append(70)
 
-                            sim = round(sum(s*w for s, w in zip(scores, weights)) / sum(weights) * 100, 1) if weights else 0.0
-                            similarities.append(sim)
+                                sim = round(sum(s*w for s, w in zip(scores, weights)) / sum(weights) * 100, 1) if weights else 0.0
+                                similarities.append(sim)
 
                         result_df["유사도(%)"] = similarities
                         result_df.drop(columns=["_brn"], inplace=True, errors="ignore")
