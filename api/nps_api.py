@@ -8,8 +8,6 @@ V2 API는 사업장명을 기반으로 검색하는 REST API입니다.
 사업자등록번호로 매칭합니다.
 """
 import requests
-import pandas as pd
-import time
 
 
 # V2 API 엔드포인트
