@@ -564,10 +564,10 @@ def perform_rfp_analysis():
 def show_business_info_crawling():
     """공공데이터포털 API를 활용한 사업체 정보 크롤링 시스템 UI"""
     import time
-    from api.nps_api import fetch_nps_info, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP
-    from api.nhis_api import fetch_nhis_info, NHIS_SELECTABLE_FIELDS, NHIS_FIELD_LABELS, NHIS_FIELD_MAP
+    from api.nps_api import download_nps_dataset, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP
+    from api.nhis_api import download_nhis_dataset, NHIS_SELECTABLE_FIELDS, NHIS_FIELD_LABELS, NHIS_FIELD_MAP
     from utils.excel_handler import load_excel, export_result_excel
-    from utils.matcher import normalize_brn, match_api_data, clean_company_names_bulk
+    from utils.matcher import normalize_brn, match_with_datasets, clean_company_names_bulk
 
     # 상단 헤더
     st.markdown("""
@@ -799,122 +799,117 @@ def show_business_info_crawling():
                 # ── Step 4: 조회 실행
                 st.markdown('<div class="qx-section-label">STEP 4 · 데이터 매칭 실행</div>', unsafe_allow_html=True)
 
-                if True:  # API 키는 이미 검증됨 (secrets 로드 실패 시 st.stop())
-                    # 매핑된 컬럼 수 확인
-                    mapped_count = sum(1 for c in [brn_col, name_col, ceo_col, addr_col] if c != "(선택 안 함)")
+                # 매핑된 컬럼 수 확인
+                mapped_count = sum(1 for c in [brn_col, name_col, ceo_col, addr_col] if c != "(선택 안 함)")
 
-                    if mapped_count >= 2:
-                        st.markdown("""<div class="qx-card">
+                if mapped_count >= 2:
+                    st.markdown("""<div class="qx-card">
     <div class="qx-card-title">🎯 유사도 기반 필터링</div>
     <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">
         매핑된 컬럼 정보(사업자번호·회사명·주소)를 조합하여 API 결과와의 유사도를 계산합니다.<br>
         설정한 임계값 이상인 결과만 표시됩니다.
     </div>
 </div>""", unsafe_allow_html=True)
-                        similarity_threshold = st.slider(
-                            "유사도 임계값 (%)",
-                            min_value=0, max_value=100, value=50, step=5,
-                            help="이 값 이상의 유사도를 가진 결과만 표시합니다. 0%면 모든 결과를 표시합니다.",
-                            key="biz_sim_threshold",
-                        )
-                    else:
-                        similarity_threshold = 0
-                        st.info("💡 컬럼을 2개 이상 매핑하면 유사도 기반 필터링이 활성화됩니다.")
+                    similarity_threshold = st.slider(
+                        "유사도 임계값 (%)",
+                        min_value=0, max_value=100, value=50, step=5,
+                        help="이 값 이상의 유사도를 가진 결과만 표시합니다. 0%면 모든 결과를 표시합니다.",
+                        key="biz_sim_threshold",
+                    )
+                else:
+                    similarity_threshold = 0
+                    st.info("💡 컬럼을 2개 이상 매핑하면 유사도 기반 필터링이 활성화됩니다.")
 
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    total_rows = len(df)
-                    st.caption(f"총 {total_rows:,}건의 사업체를 조회합니다. (건당 약 0.2초 소요)")
+                st.markdown("<br>", unsafe_allow_html=True)
+                total_rows = len(df)
+                st.caption(f"총 {total_rows:,}건의 사업체를 매칭합니다.")
 
-                    if st.button("🔍 조회 시작", use_container_width=True, type="primary", key="btn_biz_start"):
-                        nps_results = {}
-                        nhis_results = {}
+                if st.button("🔍 조회 시작", use_container_width=True, type="primary", key="btn_biz_start"):
+                    progress = st.progress(0, text="데이터셋 다운로드 준비 중...")
+                    status_area = st.empty()
 
-                        progress = st.progress(0, text="조회 준비 중...")
-                        status_area = st.empty()
-                        stats = {"success_nps": 0, "success_nhis": 0, "fail_nps": 0, "fail_nhis": 0}
+                    try:
+                        # 1) 국민연금 데이터셋 다운로드 (캐시 확인)
+                        nps_df = pd.DataFrame()
+                        if selected_nps:
+                            if "biz_nps_dataset" in st.session_state and st.session_state["biz_nps_dataset"] is not None:
+                                nps_df = st.session_state["biz_nps_dataset"]
+                                status_area.caption(f"✅ 국민연금 데이터셋 캐시 사용 ({len(nps_df):,}건)")
+                            else:
+                                def nps_progress(page, total, msg):
+                                    progress.progress(min(page / total * 0.4, 0.39), text=msg)
+                                    status_area.caption(msg)
+                                nps_df = download_nps_dataset(api_service_key, progress_callback=nps_progress)
+                                st.session_state["biz_nps_dataset"] = nps_df
+                                status_area.caption(f"✅ 국민연금 데이터셋 다운로드 완료 ({len(nps_df):,}건)")
 
-                        for idx, row in df.iterrows():
-                            brn = normalize_brn(row[brn_col])
-                            row_num = idx + 1
-                            progress_pct = min(row_num / total_rows, 0.99)
-                            progress.progress(progress_pct, text=f"조회 중... ({row_num}/{total_rows})")
+                        # 2) 건강보험 데이터셋 다운로드 (캐시 확인)
+                        nhis_df = pd.DataFrame()
+                        if selected_nhis:
+                            if "biz_nhis_dataset" in st.session_state and st.session_state["biz_nhis_dataset"] is not None:
+                                nhis_df = st.session_state["biz_nhis_dataset"]
+                                status_area.caption(f"✅ 건강보험 데이터셋 캐시 사용 ({len(nhis_df):,}건)")
+                            else:
+                                def nhis_progress(page, total, msg):
+                                    progress.progress(min(0.4 + page / total * 0.3, 0.69), text=msg)
+                                    status_area.caption(msg)
+                                nhis_df = download_nhis_dataset(api_service_key, progress_callback=nhis_progress)
+                                st.session_state["biz_nhis_dataset"] = nhis_df
+                                status_area.caption(f"✅ 건강보험 데이터셋 다운로드 완료 ({len(nhis_df):,}건)")
 
-                            company_name = row.get(name_col, "") if name_col != "(선택 안 함)" else ""
-                            status_area.caption(f"🔍 [{row_num}/{total_rows}] {company_name} (사업자번호: {brn})")
-
-                            if not brn or len(brn) != 10:
-                                if selected_nps:
-                                    nps_results[brn] = {"_error": "사업자번호 형식 오류"}
-                                    stats["fail_nps"] += 1
-                                if selected_nhis:
-                                    nhis_results[brn] = {"_error": "사업자번호 형식 오류"}
-                                    stats["fail_nhis"] += 1
-                                continue
-
-                            # 국민연금 API 호출
-                            if selected_nps and brn not in nps_results:
-                                result = fetch_nps_info(brn, api_service_key)
-                                nps_results[brn] = result
-                                if result and "_error" not in result:
-                                    stats["success_nps"] += 1
-                                else:
-                                    stats["fail_nps"] += 1
-                                    # 키 만료/인증 오류 감지 → 즉시 중단
-                                    err_msg = result.get("_error", "")
-                                    if any(kw in err_msg for kw in ["401", "403", "인증", "Unauthorized", "Forbidden"]):
-                                        progress.empty()
-                                        status_area.empty()
-                                        st.error(
-                                            "🔑 **API 키의 유효기간이 만료되었거나 인증에 실패했습니다.**\n\n"
-                                            "공공데이터포털(data.go.kr)에서 API 키를 갱신한 후, "
-                                            "Streamlit Cloud Secrets의 `DATA_GO_KR_KEY` 값을 업데이트해주세요.\n\n"
-                                            f"오류 상세: `{err_msg}`"
-                                        )
-                                        st.stop()
-
-                            # 건강보험 API 호출
-                            if selected_nhis and brn not in nhis_results:
-                                result = fetch_nhis_info(brn, api_service_key)
-                                nhis_results[brn] = result
-                                if result and "_error" not in result:
-                                    stats["success_nhis"] += 1
-                                else:
-                                    stats["fail_nhis"] += 1
-                                    err_msg = result.get("_error", "")
-                                    if any(kw in err_msg for kw in ["401", "403", "인증", "Unauthorized", "Forbidden"]):
-                                        progress.empty()
-                                        status_area.empty()
-                                        st.error(
-                                            "🔑 **API 키의 유효기간이 만료되었거나 인증에 실패했습니다.**\n\n"
-                                            "공공데이터포털(data.go.kr)에서 API 키를 갱신한 후, "
-                                            "Streamlit Cloud Secrets의 `DATA_GO_KR_KEY` 값을 업데이트해주세요.\n\n"
-                                            f"오류 상세: `{err_msg}`"
-                                        )
-                                        st.stop()
-
-                            # Rate limit 방지
-                            time.sleep(0.2)
-
-                        progress.progress(1.0, text="✅ 조회 완료!")
-                        status_area.empty()
-
-                        # 매칭 결과 생성 (유사도 포함, 정제된 회사명 사용)
+                        # 3) 로컬 매칭
+                        progress.progress(0.7, text="사업자번호 기반 매칭 중...")
                         _match_name = cleaned_name_col if cleaned_name_col and cleaned_name_col in df.columns else (name_col if name_col != "(선택 안 함)" else "")
-                        result_df = match_api_data(
+
+                        def match_progress(curr, total, msg):
+                            progress.progress(min(0.7 + curr / total * 0.29, 0.99), text=msg)
+                            status_area.caption(msg)
+
+                        result_df = match_with_datasets(
                             df, brn_col,
-                            nps_results, nhis_results,
+                            nps_df, nhis_df,
                             selected_nps, selected_nhis,
                             name_col=_match_name,
                             addr_col=addr_col if addr_col != "(선택 안 함)" else "",
                             similarity_threshold=similarity_threshold,
+                            progress_callback=match_progress,
                         )
 
-                        # 세션에 결과 저장
+                        progress.progress(1.0, text="✅ 매칭 완료!")
+                        status_area.empty()
+
+                        # 통계 계산
+                        total_matched = len(result_df)
+                        brn_matched = int((result_df["유사도(%)"] > 0).sum()) if "유사도(%)" in result_df.columns else 0
+                        stats = {
+                            "total": total_rows,
+                            "matched": brn_matched,
+                            "unmatched": total_rows - brn_matched,
+                            "result_rows": total_matched,
+                            "nps_size": len(nps_df),
+                            "nhis_size": len(nhis_df),
+                        }
+
                         st.session_state["biz_crawl_result"] = result_df
                         st.session_state["biz_crawl_stats"] = stats
                         st.session_state["biz_crawl_selected_nps"] = selected_nps
                         st.session_state["biz_crawl_selected_nhis"] = selected_nhis
                         st.rerun()
+
+                    except PermissionError as e:
+                        progress.empty()
+                        status_area.empty()
+                        st.error(
+                            "🔑 **API 키의 유효기간이 만료되었거나 인증에 실패했습니다.**\n\n"
+                            "공공데이터포털(data.go.kr)에서 API 키를 갱신한 후, "
+                            "Streamlit Cloud Secrets의 `DATA_GO_KR_KEY` 값을 업데이트해주세요.\n\n"
+                            f"오류 상세: `{str(e)}`"
+                        )
+                        st.stop()
+                    except Exception as e:
+                        progress.empty()
+                        status_area.empty()
+                        st.error(f"데이터 조회 중 오류가 발생했습니다: {str(e)}")
 
                     # ── Step 5: 결과 표시
                     if "biz_crawl_result" in st.session_state and st.session_state["biz_crawl_result"] is not None:
@@ -927,11 +922,10 @@ def show_business_info_crawling():
                         st.markdown('<div class="qx-section-label">STEP 5 · 조회 결과</div>', unsafe_allow_html=True)
 
                         # 요약 통계 카드
-                        total = len(result_df)
-                        success_total = stats.get("success_nps", 0) + stats.get("success_nhis", 0)
-                        fail_total = stats.get("fail_nps", 0) + stats.get("fail_nhis", 0)
-                        api_calls = success_total + fail_total
-                        success_rate = (success_total / api_calls * 100) if api_calls > 0 else 0
+                        total = stats.get("total", len(result_df))
+                        matched = stats.get("matched", 0)
+                        unmatched = stats.get("unmatched", 0)
+                        success_rate = (matched / total * 100) if total > 0 else 0
 
                         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
                         with col_s1:
@@ -943,13 +937,13 @@ def show_business_info_crawling():
                         with col_s2:
                             st.markdown(f"""
 <div class="qx-card" style="text-align:center;">
-    <div style="font-size:2rem; font-weight:700; color:#059669;">{success_total:,}</div>
+    <div style="font-size:2rem; font-weight:700; color:#059669;">{matched:,}</div>
     <div style="font-size:0.8rem; color:#8B96A9;">매칭 성공</div>
 </div>""", unsafe_allow_html=True)
                         with col_s3:
                             st.markdown(f"""
 <div class="qx-card" style="text-align:center;">
-    <div style="font-size:2rem; font-weight:700; color:#DC2626;">{fail_total:,}</div>
+    <div style="font-size:2rem; font-weight:700; color:#DC2626;">{unmatched:,}</div>
     <div style="font-size:0.8rem; color:#8B96A9;">매칭 실패</div>
 </div>""", unsafe_allow_html=True)
                         with col_s4:
@@ -958,6 +952,17 @@ def show_business_info_crawling():
     <div style="font-size:2rem; font-weight:700; color:#7C3AED;">{success_rate:.1f}%</div>
     <div style="font-size:0.8rem; color:#8B96A9;">성공률</div>
 </div>""", unsafe_allow_html=True)
+
+                        # 데이터셋 정보 표시
+                        nps_size = stats.get("nps_size", 0)
+                        nhis_size = stats.get("nhis_size", 0)
+                        if nps_size or nhis_size:
+                            info_parts = []
+                            if nps_size:
+                                info_parts.append(f"국민연금 {nps_size:,}건")
+                            if nhis_size:
+                                info_parts.append(f"건강보험 {nhis_size:,}건")
+                            st.caption(f"📦 참조 데이터셋: {' · '.join(info_parts)}")
 
                         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -2849,7 +2854,7 @@ with st.sidebar:
         st.session_state["rfp_results"] = {}
         st.session_state["file_pages"] = 0
         # 사업체 정보 크롤링 세션 초기화
-        for k in ["biz_crawl_result", "biz_crawl_stats", "biz_crawl_selected_nps", "biz_crawl_selected_nhis", "biz_cleaned_df", "biz_clean_stats"]:
+        for k in ["biz_crawl_result", "biz_crawl_stats", "biz_crawl_selected_nps", "biz_crawl_selected_nhis", "biz_cleaned_df", "biz_clean_stats", "biz_nps_dataset", "biz_nhis_dataset"]:
             if k in st.session_state:
                 del st.session_state[k]
         st.rerun()
