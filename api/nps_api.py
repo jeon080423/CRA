@@ -99,6 +99,7 @@ def search_and_match_nps(
     company_name: str,
     brn: str,
     service_key: str,
+    address: str = "",
 ) -> dict:
     """
     사업장명으로 검색 후 사업자등록번호로 매칭
@@ -122,19 +123,44 @@ def search_and_match_nps(
     if not results:
         return {"_error": "검색결과 없음"}
 
-    # 사업자등록번호로 매칭 시도
+    # 2) 사업자등록번호로 매칭 시도
     brn_clean = brn.replace("-", "").replace(" ", "").zfill(10) if brn else ""
-    for item in results:
-        item_brn = str(item.get("bzowrRgstNo", "")).replace("-", "").replace(" ", "").zfill(10)
-        if item_brn == brn_clean:
-            return item
+    if brn_clean:
+        for item in results:
+            item_brn = str(item.get("bzowrRgstNo", "")).replace("-", "").replace(" ", "").zfill(10)
+            if item_brn == brn_clean:
+                return item
 
-    # 정확한 매칭이 안 되면 첫 번째 결과라도 반환 (유사도로 판별)
+    # 3) 주소 유사도로 매칭 시도 (BRN 매칭 실패 혹은 BRN이 없을 때)
+    if address and address.strip():
+        best_item = None
+        max_sim = 0
+        from difflib import SequenceMatcher
+        
+        def _get_sim(a, b):
+            if not a or not b: return 0.0
+            # 정규화: 공백 제거, 특수문자 제거 등은 간단히
+            a_norm = str(a).replace(" ", "").replace("-", "")
+            b_norm = str(b).replace(" ", "").replace("-", "")
+            return SequenceMatcher(None, a_norm, b_norm).ratio()
+
+        for item in results:
+            api_addr = item.get("wkplRoadNmAddr", "") or item.get("ldongAddrMgpDgCd", "") # 우선순위: 도로명주소 > 법정동지역코드
+            sim = _get_sim(address, api_addr)
+            if sim > max_sim:
+                max_sim = sim
+                best_item = item
+        
+        # 주소 유사도가 일정 수준 이상인 경우만 반환 (예: 40%)
+        if best_item and max_sim > 0.4:
+            return best_item
+
+    # 4) 정확한 매칭이 안 되면 첫 번째 결과라도 반환 (단일 결과인 경우)
     if len(results) == 1:
         return results[0]
 
     # 여러 결과 중 매칭 실패
-    return {"_error": f"검색결과 {len(results)}건 중 사업자번호 매칭 실패", "_candidates": len(results)}
+    return {"_error": f"검색결과 {len(results)}건 중 매칭 실패 (주소 불일치)", "_candidates": len(results)}
 
 
 def estimate_avg_salary(nps_data: dict) -> str:

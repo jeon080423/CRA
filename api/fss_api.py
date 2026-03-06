@@ -63,7 +63,7 @@ def _normalize_brn(brn: str) -> str:
     return re.sub(r"[^0-9]", "", str(brn)).zfill(10)
 
 
-def search_corp_by_name(company_name: str, service_key: str, brn: str = "") -> dict:
+def search_corp_by_name(company_name: str, service_key: str, brn: str = "", address: str = "") -> dict:
     """
     기업기본정보 API: 회사명으로 기업 개황 조회
 
@@ -116,7 +116,29 @@ def search_corp_by_name(company_name: str, service_key: str, brn: str = "") -> d
                 if item_brn == brn_clean:
                     return item
 
-        # 회사명 정확 매칭 시도
+        # 3) 주소 유사도 매칭 시도
+        if address and address.strip():
+            best_item = None
+            max_sim = 0
+            from difflib import SequenceMatcher
+            
+            def _get_sim(a, b):
+                if not a or not b: return 0.0
+                a_norm = str(a).replace(" ", "").replace("-", "")
+                b_norm = str(b).replace(" ", "").replace("-", "")
+                return SequenceMatcher(None, a_norm, b_norm).ratio()
+
+            for item in item_list:
+                api_addr = item.get("enpAddr", "")
+                sim = _get_sim(address, api_addr)
+                if sim > max_sim:
+                    max_sim = sim
+                    best_item = item
+            
+            if best_item and max_sim > 0.4:
+                return best_item
+
+        # 4) 회사명 정확 매칭 시도
         search_norm = company_name.strip().replace(" ", "").lower()
         for item in item_list:
             item_name = str(item.get("corpNm", "")).strip().replace(" ", "").lower()
@@ -128,7 +150,7 @@ def search_corp_by_name(company_name: str, service_key: str, brn: str = "") -> d
             return item_list[0]
 
         # 여러 결과 중 매칭 실패
-        return {"_error": f"검색결과 {len(item_list)}건 중 매칭 실패"}
+        return {"_error": f"검색결과 {len(item_list)}건 중 매칭 실패 (주소 불일치)"}
 
     except requests.exceptions.HTTPError as e:
         status = e.response.status_code if e.response else 0
@@ -200,6 +222,7 @@ def search_corp_and_financial(
     brn: str,
     service_key: str,
     biz_year: str = "",
+    address: str = "",
 ) -> dict:
     """
     통합 검색: 회사명 → 기업기본정보 → 법인등록번호 → 재무정보
@@ -216,7 +239,7 @@ def search_corp_and_financial(
         biz_year = str(datetime.datetime.now().year - 1)  # 직전 사업연도
 
     # 1) 기업기본정보 조회
-    corp_info = search_corp_by_name(company_name, service_key, brn)
+    corp_info = search_corp_by_name(company_name, service_key, brn, address)
 
     result = {"corp": corp_info, "fina": {"_error": "미조회"}}
 

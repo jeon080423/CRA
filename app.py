@@ -933,13 +933,17 @@ def show_business_info_crawling():
                         _match_name = cleaned_name_col if cleaned_name_col and cleaned_name_col in df.columns else (name_col if name_col != "(선택 안 함)" else "")
 
                         # ── 조회 대상 데이터 준비
-                        query_items = []  # [(idx, brn, name), ...]
+                        query_items = []  # [(idx, brn, name, addr), ...]
                         for idx, row in df.iterrows():
                             brn = normalize_brn(row[brn_col])
                             search_name = str(row.get(_match_name, "")).strip() if _match_name else ""
                             if not search_name:
                                 search_name = str(row.get(name_col, "")).strip() if name_col != "(선택 안 함)" else ""
-                            query_items.append((idx, brn, search_name))
+                            
+                            # 주소 데이터 획득
+                            search_addr = str(row.get(addr_col, "")).strip() if addr_col != "(선택 안 함)" else ""
+                            
+                            query_items.append((idx, brn, search_name, search_addr))
 
                         # ── NPS 캐시 확인
                         cached_nps = st.session_state.get("biz_nps_cache", {})
@@ -971,7 +975,7 @@ def show_business_info_crawling():
                             val = nrow.get(field, "")
                             return str(val) if val else "해당없음"
 
-                        def _query_nps(idx, brn, name):
+                        def _query_nps(idx, brn, name, addr):
                             """국민연금 단건 조회 (스레드에서 실행)"""
                             if not name:
                                 return idx, {"_error": "회사명 없음"}
@@ -979,7 +983,7 @@ def show_business_info_crawling():
                             if brn and brn in cached_nps:
                                 return idx, cached_nps[brn]
                             try:
-                                result = search_and_match_nps(name, brn, api_service_key)
+                                result = search_and_match_nps(name, brn, api_service_key, address=addr)
                                 time.sleep(0.05)
                                 return idx, result
                             except PermissionError:
@@ -987,12 +991,12 @@ def show_business_info_crawling():
                             except Exception as e:
                                 return idx, {"_error": str(e)[:50]}
 
-                        def _query_fss(idx, brn, name):
+                        def _query_fss(idx, brn, name, addr):
                             """금융위원회 단건 조회 (스레드에서 실행)"""
                             if not name:
                                 return idx, {"corp": {"_error": "회사명 없음"}, "fina": {"_error": "미조회"}}
                             try:
-                                result = search_corp_and_financial(name, brn, api_service_key)
+                                result = search_corp_and_financial(name, brn, api_service_key, address=addr)
                                 time.sleep(0.1)
                                 return idx, result
                             except PermissionError:
@@ -1005,8 +1009,8 @@ def show_business_info_crawling():
                             status_area.caption("🔍 국민연금 사업장 검색 중... (병렬 처리)")
                             with ThreadPoolExecutor(max_workers=5) as executor:
                                 futures = {
-                                    executor.submit(_query_nps, idx, brn, name): idx
-                                    for idx, brn, name in query_items
+                                    executor.submit(_query_nps, idx, brn, name, addr): idx
+                                    for idx, brn, name, addr in query_items
                                 }
                                 for i, future in enumerate(as_completed(futures), 1):
                                     idx_result, data = future.result()
@@ -1018,7 +1022,7 @@ def show_business_info_crawling():
                                         )
 
                             # NPS 캐시 업데이트 (brn이 있는 경우만)
-                            for idx, brn, name in query_items:
+                            for idx, brn, name, addr in query_items:
                                 if brn and idx in nps_results and "_error" not in nps_results[idx]:
                                     cached_nps[brn] = nps_results[idx]
                             st.session_state["biz_nps_cache"] = cached_nps
@@ -1042,8 +1046,8 @@ def show_business_info_crawling():
                             status_area.caption("🏛️ 금융위원회 기업정보 조회 중... (병렬 처리)")
                             with ThreadPoolExecutor(max_workers=3) as executor:
                                 futures = {
-                                    executor.submit(_query_fss, idx, brn, name): idx
-                                    for idx, brn, name in query_items
+                                    executor.submit(_query_fss, idx, brn, name, addr): idx
+                                    for idx, brn, name, addr in query_items
                                 }
                                 for i, future in enumerate(as_completed(futures), 1):
                                     idx_result, data = future.result()
@@ -1166,7 +1170,7 @@ def show_business_info_crawling():
                             scores.append(1.0 if (has_nps or has_nhis or has_fss) else 0.0)
                             weights.append(30)
 
-                            # 2. 회사명 유사도 (추가 70점)
+                            # 2. 회사명 유사도 (40점)
                             if name_col != "(선택 안 함)" and row.get(name_col):
                                 uname = str(row[name_col]).strip()
                                 api_name = ""
@@ -1176,7 +1180,19 @@ def show_business_info_crawling():
                                 if api_name:
                                     from utils.matcher import text_similarity
                                     scores.append(text_similarity(uname, api_name))
-                                    weights.append(70)
+                                    weights.append(40)
+
+                            # 3. 주소 유사도 (30점)
+                            if addr_col != "(선택 안 함)" and row.get(addr_col):
+                                uaddr = str(row[addr_col]).strip()
+                                api_addr = ""
+                                if has_nps: api_addr = nps_data.get("wkplRoadNmAddr", "") or nps_data.get("ldongAddrMgpDgCd", "")
+                                elif has_fss: api_addr = fss_results[idx]["corp"].get("enpAddr", "")
+                                
+                                if api_addr:
+                                    from utils.matcher import text_similarity
+                                    scores.append(text_similarity(uaddr, api_addr))
+                                    weights.append(30)
 
                             sim = round(sum(s*w for s, w in zip(scores, weights)) / sum(weights) * 100, 1) if weights else 0.0
                             similarities.append(sim)
