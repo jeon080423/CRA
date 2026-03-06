@@ -567,12 +567,12 @@ def show_business_info_crawling():
     from api.nps_api import search_and_match_nps, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP, estimate_avg_salary
     from api.nhis_api import download_nhis_dataset, NHIS_SELECTABLE_FIELDS, NHIS_FIELD_LABELS, NHIS_FIELD_MAP
     from api.fss_api import (
-        search_corp_and_financial,
+        search_corp_by_name, search_financial_by_crno,
         FSS_CORP_SELECTABLE_FIELDS, FSS_CORP_FIELD_LABELS,
         FSS_FINA_SELECTABLE_FIELDS, FSS_FINA_FIELD_LABELS,
     )
     from utils.excel_handler import load_excel, export_result_excel
-    from utils.matcher import normalize_brn, match_with_datasets, clean_company_names_bulk
+    from utils.matcher import normalize_brn, clean_company_names_bulk
 
     # 상단 헤더
     st.markdown("""
@@ -1327,26 +1327,6 @@ def show_business_info_crawling():
             st.rerun()
 
 
-def _extract_nps_field(nps_results: dict, brn: str, field: str) -> str:
-    """NPS 결과 dict에서 특정 필드값 추출"""
-    data = nps_results.get(brn, {})
-    if not data or "_error" in data:
-        return "조회불가"
-    val = data.get(field)
-    if val is None:
-        return "해당없음"
-    return str(val)
-
-
-def _extract_nhis_field(nhis_lookup: dict, brn: str, field: str) -> str:
-    """NHIS lookup dict에서 특정 필드값 추출"""
-    data = nhis_lookup.get(brn)
-    if data is None:
-        return "조회불가"
-    val = data.get(field)
-    if val is None or (hasattr(val, '__class__') and str(val) == 'nan'):
-        return "해당없음"
-    return str(val)
 
 
 def _auto_detect_col(col_options: list, keywords: list) -> int:
