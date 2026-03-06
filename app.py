@@ -321,13 +321,13 @@ def do_logout():
 
 
 def show_data_roadmap(current_step=1):
-    """데이터 처리 프로세스 로드맵 (시각적 도식)"""
+    """RFP 분석 프로세스 도식 (시각적 도식)"""
     steps = [
-        {"id": 1, "icon": "📝", "label": "RFP 분석/설계"},
-        {"id": 2, "icon": "📥", "label": "데이터/코드북 업로드"},
-        {"id": 3, "icon": "🔍", "label": "이상치/결측치 보정"},
-        {"id": 4, "icon": "⚖️", "label": "단위무응답/가중치"},
-        {"id": 5, "icon": "📊", "label": "최종 리포트 추출"}
+        {"id": 1, "icon": "📄", "label": "RFP 업로드"},
+        {"id": 2, "icon": "🔎", "label": "과업 요약 분석"},
+        {"id": 3, "icon": "⚖️", "label": "참가자격 검토"},
+        {"id": 4, "icon": "🎯", "label": "핵심요구 추출"},
+        {"id": 5, "icon": "📋", "label": "전략 리포트"}
     ]
     
     html = '<div style="display:flex; align-items:center; justify-content:space-between; margin: 1.5rem 0; padding:1rem; background:white; border-radius:12px; border:1px solid #E5E9F0;">'
@@ -413,7 +413,7 @@ def show_win_strategy_section():
 
     # [v4.8] 도식 및 상세 안내
     with st.expander("📘 RFP 심층 분석 - 이용 방법 및 데이터 프로세스 가이드", expanded=False):
-        st.markdown("### 🗺️ 데이터 처리 로드맵")
+        st.markdown("### 🗺️ RFP 분석 프로세스")
         show_data_roadmap(1)
         st.markdown("""
         ### 🛠️ 이용 단계 및 상세 가이드
@@ -560,6 +560,357 @@ def perform_rfp_analysis():
 
 
 
+# ── 사업체 정보 크롤링(행정정보) UI ──
+def show_business_info_crawling():
+    """공공데이터포털 API를 활용한 사업체 정보 크롤링 시스템 UI"""
+    import time
+    from api.nps_api import fetch_nps_info, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP
+    from api.nhis_api import fetch_nhis_info, NHIS_SELECTABLE_FIELDS, NHIS_FIELD_LABELS, NHIS_FIELD_MAP
+    from utils.excel_handler import load_excel, export_result_excel
+    from utils.matcher import normalize_brn, match_api_data
+
+    # 상단 헤더
+    st.markdown("""
+    <div class="qx-topbar">
+        <span class="qx-topbar-logo">사업체 정보 크롤링</span>
+        <span class="qx-topbar-sep"></span>
+        <span class="qx-topbar-title">행정정보 (국민연금·건강보험)</span>
+        <span class="qx-topbar-badge">공공데이터 API 연동</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── 사용방법 안내
+    with st.expander("📘 사용 방법 안내", expanded=False):
+        st.markdown("""
+        ### 🛠️ 이용 방법
+        1. **API 키 설정:** 좌측 사이드바 또는 아래 입력란에 공공데이터포털 API 서비스 키를 입력합니다.
+        2. **엑셀 파일 업로드:** 조회할 사업체 목록이 담긴 엑셀 파일(.xlsx, .xls)을 업로드합니다.
+        3. **컬럼 매핑:** 업로드된 파일의 컬럼 중 사업자등록번호, 회사명, 대표자명, 주소에 해당하는 컬럼을 지정합니다.
+        4. **조회 항목 선택:** 국민연금공단 / 건강보험공단에서 조회할 항목을 선택합니다.
+        5. **조회 실행:** '조회 시작' 버튼을 클릭하여 API 조회를 수행합니다.
+        6. **결과 다운로드:** 조회 결과를 엑셀 파일로 다운로드합니다.
+
+        ### 🔑 API 키 발급 방법
+        1. [공공데이터포털(data.go.kr)](https://data.go.kr) 회원가입
+        2. "국민연금 가입 사업장 내역" 및 "건강보험공단 사업장관리 현황" API 활용 신청
+        3. 발급받은 **Decoding Key**를 아래 입력란에 붙여넣기
+
+        ### ⚠️ 주의사항
+        - 국민연금 API는 **가입자 3인 이상 법인사업장**, **10인 이상 개인사업장**만 조회 가능합니다.
+        - 개발 계정 기준 **일 10,000건** 조회 제한이 있습니다.
+        - 건강보험공단 데이터는 **정기 갱신** 기반이며, 실시간 데이터가 아닙니다.
+        - 대표자명은 개인정보보호를 위해 API 조회 키로 사용하지 않습니다.
+        """)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Step 1: API 키 설정
+    st.markdown('<div class="qx-section-label">STEP 1 · API 키 설정</div>', unsafe_allow_html=True)
+    with st.container():
+        # secrets.toml에서 우선 로드
+        default_key = ""
+        try:
+            default_key = st.secrets.get("api_keys", {}).get("DATA_GO_KR_KEY", "")
+        except Exception:
+            pass
+
+        if default_key:
+            st.success("✅ API 키가 secrets.toml에서 자동 로드되었습니다.", icon="🔑")
+            api_service_key = default_key
+        else:
+            api_service_key = st.text_input(
+                "공공데이터포털 API 서비스 키 (Decoding Key)",
+                type="password",
+                placeholder="공공데이터포털에서 발급받은 서비스 키를 입력하세요",
+                key="biz_api_key_input",
+            )
+            if not api_service_key:
+                st.warning("API 키를 입력하세요. 공공데이터포털(data.go.kr)에서 발급받을 수 있습니다.", icon="⚠️")
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+
+    # ── Step 2: 엑셀 파일 업로드
+    st.markdown('<div class="qx-section-label">STEP 2 · 엑셀 파일 업로드</div>', unsafe_allow_html=True)
+    st.markdown("""
+<div class="qx-upload-zone">
+    <div class="qx-upload-icon">&#128203;</div>
+    <div class="qx-upload-text">사업체 목록 엑셀 파일을 업로드하세요</div>
+    <div class="qx-upload-hint">xlsx · xls 형식 지원</div>
+</div>
+""", unsafe_allow_html=True)
+
+    uploaded_excel = st.file_uploader(
+        "엑셀 파일 선택",
+        type=["xlsx", "xls"],
+        label_visibility="collapsed",
+        key="biz_excel_uploader",
+    )
+
+    df = None
+    if uploaded_excel is not None:
+        try:
+            df = load_excel(uploaded_excel)
+            st.success(f"✅ 파일 로드 완료: **{uploaded_excel.name}** ({len(df):,}건)", icon="📊")
+
+            # 미리보기
+            st.markdown("**📋 데이터 미리보기 (상위 5행)**")
+            st.dataframe(df.head(5), use_container_width=True, hide_index=True)
+        except Exception as e:
+            st.error(f"엑셀 파일 읽기 실패: {e}")
+            df = None
+
+    if df is not None:
+        st.markdown("<hr>", unsafe_allow_html=True)
+
+        # ── 컬럼 매핑
+        st.markdown('<div class="qx-section-label">컬럼 매핑</div>', unsafe_allow_html=True)
+        st.caption("업로드된 엑셀 파일의 컬럼을 아래 항목에 매핑하세요.")
+
+        col_options = ["(선택 안 함)"] + list(df.columns)
+
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            brn_col = st.selectbox(
+                "사업자등록번호 *",
+                col_options,
+                index=_auto_detect_col(col_options, ["사업자", "등록번호", "사업자번호"]),
+                key="biz_col_brn",
+            )
+        with col_m2:
+            name_col = st.selectbox(
+                "회사명",
+                col_options,
+                index=_auto_detect_col(col_options, ["회사명", "사업장명", "업체명", "상호"]),
+                key="biz_col_name",
+            )
+        col_m3, col_m4 = st.columns(2)
+        with col_m3:
+            ceo_col = st.selectbox(
+                "대표자명",
+                col_options,
+                index=_auto_detect_col(col_options, ["대표자", "대표"]),
+                key="biz_col_ceo",
+            )
+        with col_m4:
+            addr_col = st.selectbox(
+                "주소",
+                col_options,
+                index=_auto_detect_col(col_options, ["주소", "소재지"]),
+                key="biz_col_addr",
+            )
+
+        if brn_col == "(선택 안 함)":
+            st.warning("⚠️ **사업자등록번호** 컬럼은 필수입니다. 매핑해주세요.")
+        else:
+            st.markdown("<hr>", unsafe_allow_html=True)
+
+            # ── Step 3: 조회 항목 선택
+            st.markdown('<div class="qx-section-label">STEP 3 · 조회 항목 선택</div>', unsafe_allow_html=True)
+
+            col_nps, col_nhis = st.columns(2)
+
+            with col_nps:
+                st.markdown("""
+<div class="qx-card">
+    <div class="qx-card-title">🏢 국민연금공단</div>
+    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">국민연금 가입 사업장 내역</div>
+</div>
+""", unsafe_allow_html=True)
+                selected_nps = []
+                for field in NPS_SELECTABLE_FIELDS:
+                    label = NPS_FIELD_LABELS.get(field, field)
+                    if st.checkbox(label, value=True, key=f"nps_{field}"):
+                        selected_nps.append(field)
+
+            with col_nhis:
+                st.markdown("""
+<div class="qx-card">
+    <div class="qx-card-title">🏥 건강보험공단</div>
+    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">사업장관리 현황 (정기 갱신 데이터)</div>
+</div>
+""", unsafe_allow_html=True)
+                selected_nhis = []
+                for field in NHIS_SELECTABLE_FIELDS:
+                    label = NHIS_FIELD_LABELS.get(field, field)
+                    if st.checkbox(label, value=True, key=f"nhis_{field}"):
+                        selected_nhis.append(field)
+
+            if not selected_nps and not selected_nhis:
+                st.info("조회할 항목을 하나 이상 선택하세요.")
+            else:
+                st.markdown("<hr>", unsafe_allow_html=True)
+
+                # ── Step 4: 조회 실행
+                st.markdown('<div class="qx-section-label">STEP 4 · 데이터 매칭 실행</div>', unsafe_allow_html=True)
+
+                if not api_service_key:
+                    st.error("API 키가 설정되지 않았습니다. STEP 1에서 API 키를 입력하세요.")
+                else:
+                    total_rows = len(df)
+                    st.caption(f"총 {total_rows:,}건의 사업체를 조회합니다. (건당 약 0.2초 소요)")
+
+                    if st.button("🔍 조회 시작", use_container_width=True, type="primary", key="btn_biz_start"):
+                        nps_results = {}
+                        nhis_results = {}
+
+                        progress = st.progress(0, text="조회 준비 중...")
+                        status_area = st.empty()
+                        stats = {"success_nps": 0, "success_nhis": 0, "fail_nps": 0, "fail_nhis": 0}
+
+                        for idx, row in df.iterrows():
+                            brn = normalize_brn(row[brn_col])
+                            row_num = idx + 1
+                            progress_pct = min(row_num / total_rows, 0.99)
+                            progress.progress(progress_pct, text=f"조회 중... ({row_num}/{total_rows})")
+
+                            company_name = row.get(name_col, "") if name_col != "(선택 안 함)" else ""
+                            status_area.caption(f"🔍 [{row_num}/{total_rows}] {company_name} (사업자번호: {brn})")
+
+                            if not brn or len(brn) != 10:
+                                if selected_nps:
+                                    nps_results[brn] = {"_error": "사업자번호 형식 오류"}
+                                    stats["fail_nps"] += 1
+                                if selected_nhis:
+                                    nhis_results[brn] = {"_error": "사업자번호 형식 오류"}
+                                    stats["fail_nhis"] += 1
+                                continue
+
+                            # 국민연금 API 호출
+                            if selected_nps and brn not in nps_results:
+                                result = fetch_nps_info(brn, api_service_key)
+                                nps_results[brn] = result
+                                if result and "_error" not in result:
+                                    stats["success_nps"] += 1
+                                else:
+                                    stats["fail_nps"] += 1
+
+                            # 건강보험 API 호출
+                            if selected_nhis and brn not in nhis_results:
+                                result = fetch_nhis_info(brn, api_service_key)
+                                nhis_results[brn] = result
+                                if result and "_error" not in result:
+                                    stats["success_nhis"] += 1
+                                else:
+                                    stats["fail_nhis"] += 1
+
+                            # Rate limit 방지
+                            time.sleep(0.2)
+
+                        progress.progress(1.0, text="✅ 조회 완료!")
+                        status_area.empty()
+
+                        # 매칭 결과 생성
+                        result_df = match_api_data(
+                            df, brn_col,
+                            nps_results, nhis_results,
+                            selected_nps, selected_nhis,
+                        )
+
+                        # 세션에 결과 저장
+                        st.session_state["biz_crawl_result"] = result_df
+                        st.session_state["biz_crawl_stats"] = stats
+                        st.session_state["biz_crawl_selected_nps"] = selected_nps
+                        st.session_state["biz_crawl_selected_nhis"] = selected_nhis
+                        st.rerun()
+
+                    # ── Step 5: 결과 표시
+                    if "biz_crawl_result" in st.session_state and st.session_state["biz_crawl_result"] is not None:
+                        result_df = st.session_state["biz_crawl_result"]
+                        stats = st.session_state.get("biz_crawl_stats", {})
+                        s_nps = st.session_state.get("biz_crawl_selected_nps", [])
+                        s_nhis = st.session_state.get("biz_crawl_selected_nhis", [])
+
+                        st.markdown("<hr>", unsafe_allow_html=True)
+                        st.markdown('<div class="qx-section-label">STEP 5 · 조회 결과</div>', unsafe_allow_html=True)
+
+                        # 요약 통계 카드
+                        total = len(result_df)
+                        success_total = stats.get("success_nps", 0) + stats.get("success_nhis", 0)
+                        fail_total = stats.get("fail_nps", 0) + stats.get("fail_nhis", 0)
+                        api_calls = success_total + fail_total
+                        success_rate = (success_total / api_calls * 100) if api_calls > 0 else 0
+
+                        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+                        with col_s1:
+                            st.markdown(f"""
+<div class="qx-card" style="text-align:center;">
+    <div style="font-size:2rem; font-weight:700; color:#0F6CBD;">{total:,}</div>
+    <div style="font-size:0.8rem; color:#8B96A9;">전체 건수</div>
+</div>""", unsafe_allow_html=True)
+                        with col_s2:
+                            st.markdown(f"""
+<div class="qx-card" style="text-align:center;">
+    <div style="font-size:2rem; font-weight:700; color:#059669;">{success_total:,}</div>
+    <div style="font-size:0.8rem; color:#8B96A9;">매칭 성공</div>
+</div>""", unsafe_allow_html=True)
+                        with col_s3:
+                            st.markdown(f"""
+<div class="qx-card" style="text-align:center;">
+    <div style="font-size:2rem; font-weight:700; color:#DC2626;">{fail_total:,}</div>
+    <div style="font-size:0.8rem; color:#8B96A9;">매칭 실패</div>
+</div>""", unsafe_allow_html=True)
+                        with col_s4:
+                            st.markdown(f"""
+<div class="qx-card" style="text-align:center;">
+    <div style="font-size:2rem; font-weight:700; color:#7C3AED;">{success_rate:.1f}%</div>
+    <div style="font-size:0.8rem; color:#8B96A9;">성공률</div>
+</div>""", unsafe_allow_html=True)
+
+                        st.markdown("<br>", unsafe_allow_html=True)
+
+                        # 결과 DataFrame 표시 (컬럼별 색상 하이라이트)
+                        column_config = {}
+                        for col in result_df.columns:
+                            if col.startswith("[국민연금]"):
+                                column_config[col] = st.column_config.TextColumn(
+                                    col, help="국민연금공단 데이터"
+                                )
+                            elif col.startswith("[건강보험]"):
+                                column_config[col] = st.column_config.TextColumn(
+                                    col, help="건강보험공단 데이터"
+                                )
+
+                        st.dataframe(
+                            result_df,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config=column_config,
+                        )
+
+                        # 다운로드
+                        st.markdown("<hr>", unsafe_allow_html=True)
+                        st.markdown('<div class="qx-section-label">DOWNLOAD RESULTS</div>', unsafe_allow_html=True)
+
+                        col_dl, _ = st.columns([2, 2])
+                        with col_dl:
+                            try:
+                                excel_bytes = export_result_excel(result_df)
+                                dl_filename = uploaded_excel.name.rsplit(".", 1)[0] if uploaded_excel else "조회결과"
+                                st.download_button(
+                                    label="📥 조회 결과 엑셀 다운로드 (.xlsx)",
+                                    data=excel_bytes,
+                                    file_name=f"{dl_filename}_행정정보조회결과.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    use_container_width=True,
+                                )
+                            except Exception as e:
+                                st.error(f"엑셀 변환 중 오류: {e}")
+
+                        # 결과 초기화 버튼
+                        if st.button("🔄 결과 초기화", key="btn_biz_reset"):
+                            for k in ["biz_crawl_result", "biz_crawl_stats", "biz_crawl_selected_nps", "biz_crawl_selected_nhis"]:
+                                if k in st.session_state:
+                                    del st.session_state[k]
+                            st.rerun()
+
+
+def _auto_detect_col(col_options: list, keywords: list) -> int:
+    """컬럼 목록에서 키워드와 매칭되는 컬럼의 인덱스를 반환 (자동 감지)"""
+    for i, col in enumerate(col_options):
+        for kw in keywords:
+            if kw in str(col):
+                return i
+    return 0  # (선택 안 함)
 
 
 def show_unit_nonresponse_system():
@@ -2175,12 +2526,13 @@ with st.sidebar:
     # 내비게이션
     st.markdown('<div class="qx-section-label">NAVIGATION</div>', unsafe_allow_html=True)
     menu_options = [
-        "과업 내용 체크 리스트", 
+        "과업내용 체크 (RFP 분석)", 
         "AI 설문지 최적화",
         "AI 표본설계",
         "AI 이상치 검토 (Call Back, Data Adjustment)", 
         "AI 결측치 검토 (Call Back, Imputation)",
         "AI 단위 무응답 검토",
+        "사업체 정보 크롤링(행정정보)",
         "보고서 검수 AI Tools"
     ]
     
@@ -2192,6 +2544,8 @@ with st.sidebar:
     if current_user not in allowed_for_nonresponse:
         if "AI 단위 무응답 검토" in menu_options:
             menu_options.remove("AI 단위 무응답 검토")
+        if "사업체 정보 크롤링(행정정보)" in menu_options:
+            menu_options.remove("사업체 정보 크롤링(행정정보)")
     
     # [v4.12] 관리자(shjeon) 전용 메뉴 추가
     if st.session_state.get("logged_in_user") == "shjeon":
@@ -2384,6 +2738,10 @@ with st.sidebar:
         st.session_state["step_results"] = {1: "", 2: "", 3: ""}
         st.session_state["rfp_results"] = {}
         st.session_state["file_pages"] = 0
+        # 사업체 정보 크롤링 세션 초기화
+        for k in ["biz_crawl_result", "biz_crawl_stats", "biz_crawl_selected_nps", "biz_crawl_selected_nhis"]:
+            if k in st.session_state:
+                del st.session_state[k]
         st.rerun()
 
     st.markdown("<hr>", unsafe_allow_html=True)
@@ -2577,9 +2935,12 @@ else:
         <span class="qx-topbar-badge">AI-Powered Quality Check</span>
     </div>
     """, unsafe_allow_html=True)
-    elif st.session_state["menu_selection"] == "과업 내용 체크 리스트":
+    elif st.session_state["menu_selection"] == "과업내용 체크 (RFP 분석)":
         show_win_strategy_section()
         # End Win Strategy here (early return or just wrap)
+        st.stop()
+    elif st.session_state["menu_selection"] == "사업체 정보 크롤링(행정정보)":
+        show_business_info_crawling()
         st.stop()
     elif st.session_state["menu_selection"] == "AI 설문지 최적화":
         show_questionnaire_optimization_system()
