@@ -567,7 +567,7 @@ def show_business_info_crawling():
     from api.nps_api import fetch_nps_info, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP
     from api.nhis_api import fetch_nhis_info, NHIS_SELECTABLE_FIELDS, NHIS_FIELD_LABELS, NHIS_FIELD_MAP
     from utils.excel_handler import load_excel, export_result_excel
-    from utils.matcher import normalize_brn, match_api_data
+    from utils.matcher import normalize_brn, match_api_data, clean_company_names_bulk
 
     # 상단 헤더
     st.markdown("""
@@ -718,6 +718,46 @@ def show_business_info_crawling():
         if brn_col == "(선택 안 함)":
             st.warning("⚠️ **사업자등록번호** 컬럼은 필수입니다. 매핑해주세요.")
         else:
+            # ── 회사명 정제
+            cleaned_name_col = None
+            if name_col != "(선택 안 함)" and name_col in df.columns:
+                st.markdown("<hr>", unsafe_allow_html=True)
+                st.markdown('<div class="qx-section-label">회사명 자동 정제</div>', unsafe_allow_html=True)
+
+                if "회사명_정제" not in df.columns:
+                    df, clean_stats = clean_company_names_bulk(df, name_col)
+                    st.session_state["biz_cleaned_df"] = df
+                    st.session_state["biz_clean_stats"] = clean_stats
+                else:
+                    clean_stats = st.session_state.get("biz_clean_stats", {})
+
+                if clean_stats:
+                    col_c1, col_c2, col_c3 = st.columns(3)
+                    with col_c1:
+                        st.metric("전체 건수", f"{clean_stats['total']:,}")
+                    with col_c2:
+                        st.metric("정제 변경", f"{clean_stats['changed']:,}건")
+                    with col_c3:
+                        st.metric("변경 없음", f"{clean_stats['unchanged']:,}건")
+
+                    # 유형별 카운트
+                    if clean_stats.get('type_counts'):
+                        type_str = " · ".join(f"{k}: {v:,}건" for k, v in clean_stats['type_counts'].items())
+                        st.caption(f"제거된 유형별 건수: {type_str}")
+
+                    # 변경 샘플
+                    if clean_stats.get('samples'):
+                        with st.expander(f"정제 전·후 비교 샘플 ({len(clean_stats['samples'])}건)", expanded=False):
+                            import pandas as _pd
+                            sample_df = _pd.DataFrame(
+                                clean_stats['samples'],
+                                columns=["원본 회사명", "정제된 회사명"]
+                            )
+                            st.dataframe(sample_df, use_container_width=True, hide_index=True)
+
+                cleaned_name_col = "회사명_정제"
+                st.success(f"✅ '{name_col}' → '회사명_정제' 컬럼이 자동 생성되었습니다. 정제된 이름으로 매칭합니다.")
+
             st.markdown("<hr>", unsafe_allow_html=True)
 
             # ── Step 3: 조회 항목 선택
@@ -858,12 +898,13 @@ def show_business_info_crawling():
                         progress.progress(1.0, text="✅ 조회 완료!")
                         status_area.empty()
 
-                        # 매칭 결과 생성 (유사도 포함)
+                        # 매칭 결과 생성 (유사도 포함, 정제된 회사명 사용)
+                        _match_name = cleaned_name_col if cleaned_name_col and cleaned_name_col in df.columns else (name_col if name_col != "(선택 안 함)" else "")
                         result_df = match_api_data(
                             df, brn_col,
                             nps_results, nhis_results,
                             selected_nps, selected_nhis,
-                            name_col=name_col if name_col != "(선택 안 함)" else "",
+                            name_col=_match_name,
                             addr_col=addr_col if addr_col != "(선택 안 함)" else "",
                             similarity_threshold=similarity_threshold,
                         )
@@ -2808,7 +2849,7 @@ with st.sidebar:
         st.session_state["rfp_results"] = {}
         st.session_state["file_pages"] = 0
         # 사업체 정보 크롤링 세션 초기화
-        for k in ["biz_crawl_result", "biz_crawl_stats", "biz_crawl_selected_nps", "biz_crawl_selected_nhis"]:
+        for k in ["biz_crawl_result", "biz_crawl_stats", "biz_crawl_selected_nps", "biz_crawl_selected_nhis", "biz_cleaned_df", "biz_clean_stats"]:
             if k in st.session_state:
                 del st.session_state[k]
         st.rerun()

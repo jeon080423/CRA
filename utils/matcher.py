@@ -24,6 +24,104 @@ def normalize_brn(brn) -> str:
     return brn_str.zfill(10)
 
 
+def clean_company_name(name) -> str:
+    """
+    회사명에서 법인 유형 표기를 제거하고 순수 회사명만 반환
+
+    제거 대상: (주), (유), (사), 주식회사, 유한회사, 사단법인, 합자회사
+    유지 대상: 영문 괄호(SB, ITS 등), 지점/공장 괄호, 구 상호 표기, 신협
+    """
+    import re
+
+    if pd.isna(name) or name is None:
+        return ""
+
+    s = str(name).strip()
+    if not s:
+        return ""
+
+    # 1) (주), (유), (사) 만 정확히 매칭하여 제거 (영문·기타 괄호는 유지)
+    #    (?<!\() 로 이중 괄호(구.(주)) 패턴 보호
+    s = re.sub(r'(?<![가-힣a-zA-Z.\,])\(주\)(?![)])', '', s)
+    s = re.sub(r'\(주\)$', '', s)  # 끝에 있는 (주)도 제거
+    s = re.sub(r'(?<![가-힣a-zA-Z.\,])\(유\)(?![)])', '', s)
+    s = re.sub(r'\(유\)$', '', s)
+    s = re.sub(r'(?<![가-힣a-zA-Z.\,])\(사\)(?![)])', '', s)
+    s = re.sub(r'\(사\)$', '', s)
+
+    # 2) 전체 명칭 제거
+    s = re.sub(r'주식회사\s*', '', s)
+    s = re.sub(r'\s*주식회사', '', s)
+    s = re.sub(r'유한회사\s*', '', s)
+    s = re.sub(r'\s*유한회사', '', s)
+    s = re.sub(r'사단법인\s*', '', s)
+    s = re.sub(r'합자회사\s*', '', s)
+
+    # 3) 공백 정리 (연속 공백 → 단일 공백, 앞뒤 공백 제거)
+    s = re.sub(r'\s+', ' ', s).strip()
+
+    return s
+
+
+def clean_company_names_bulk(df: pd.DataFrame, name_col: str):
+    """
+    DataFrame의 회사명 컬럼을 정제하여 '회사명_정제' 컬럼을 추가
+
+    Returns:
+        tuple: (수정된 df, stats_dict)
+            stats_dict: {
+                'total': 전체건수, 'changed': 변경건수, 'unchanged': 미변경건수,
+                'type_counts': { 제거 유형별 건수 },
+                'samples': [(원본, 정제)] 변경 샘플 최대 10건
+            }
+    """
+    import re
+
+    result_df = df.copy()
+    originals = result_df[name_col].astype(str).fillna("")
+    cleaned = originals.apply(clean_company_name)
+
+    # 컬럼 삽입 (원본 바로 뒤)
+    name_idx = result_df.columns.get_loc(name_col)
+    result_df.insert(name_idx + 1, "회사명_정제", cleaned)
+
+    # 통계 계산
+    changed_mask = originals != cleaned
+    total = len(result_df)
+    changed = int(changed_mask.sum())
+    unchanged = total - changed
+
+    # 유형별 카운트
+    type_counts = {}
+    type_patterns = {
+        "(주)": r'\(주\)',
+        "(유)": r'\(유\)',
+        "(사)": r'\(사\)',
+        "주식회사": r'주식회사',
+        "유한회사": r'유한회사',
+        "사단법인": r'사단법인',
+        "합자회사": r'합자회사',
+    }
+    for label, pattern in type_patterns.items():
+        count = int(originals.str.contains(pattern, regex=True, na=False).sum())
+        if count > 0:
+            type_counts[label] = count
+
+    # 변경 샘플
+    changed_indices = changed_mask[changed_mask].index[:10]
+    samples = [(originals.iloc[i], cleaned.iloc[i]) for i in changed_indices]
+
+    stats = {
+        'total': total,
+        'changed': changed,
+        'unchanged': unchanged,
+        'type_counts': type_counts,
+        'samples': samples,
+    }
+
+    return result_df, stats
+
+
 def _normalize_text(text) -> str:
     """비교를 위한 텍스트 정규화 (공백·특수문자 제거, 소문자)"""
     if pd.isna(text) or text is None:
