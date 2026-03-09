@@ -59,10 +59,10 @@ def search_nps_by_name(company_name: str, service_key: str) -> list:
     """
     params = {
         "serviceKey": service_key,
-        "wkpl_nm": company_name,
+        "wkplNm": company_name,
         "pageNo": 1,
         "numOfRows": 100,
-        "type": "json",
+        "dataType": "json",
     }
     try:
         resp = requests.get(SEARCH_URL, params=params, timeout=15)

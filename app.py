@@ -27,6 +27,7 @@ from data_cleaner import DataImputer, WeightCalculator, DataAugmentor
 from codebook_utils import CodebookParser
 import plotly.express as px
 import api_utils
+from api.nhis_api import NHIS_ENDPOINTS
 from usage_tracker import UsageTracker
 
 # ── 이용 통계 트래커 초기화
@@ -685,12 +686,16 @@ def show_business_info_crawling():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── API 키 로드 (Streamlit Cloud secrets 전용)
+    # ── API 키 로드 (Streamlit Cloud secrets 우선, api_utils.SERVICE_KEY 차선)
     api_service_key = ""
     try:
         api_service_key = st.secrets.get("api_keys", {}).get("DATA_GO_KR_KEY", "")
     except Exception:
         pass
+    
+    if not api_service_key:
+        from api_utils import SERVICE_KEY
+        api_service_key = SERVICE_KEY
 
     if api_service_key:
         st.success("✅ 공공데이터포털 API 키가 연결되어 있습니다.", icon="🔑")
@@ -859,9 +864,21 @@ def show_business_info_crawling():
                 st.markdown("""
 <div class="qx-card">
     <div class="qx-card-title">🏥 건강보험공단</div>
-    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">사업장관리 현황 (정기 갱신 데이터)</div>
+    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.1rem;">사업장관리 현황</div>
 </div>
 """, unsafe_allow_html=True)
+                if brn_col == "(선택 안 함)":
+                    st.info("💡 **사업자번호가 없다면**, '회사명'과 '주소' 컬럼을 모두 매핑해 주세요. (주소 정보가 있을 때 매칭 정확도가 가장 높습니다.)")
+                
+                # [v6.35] 가이드 링크 등 필요 시 추가
+                nhis_year = st.selectbox(
+                    "데이터 시점 선택", 
+                    options=list(NHIS_ENDPOINTS.keys()),
+                    index=0,
+                    key="nhis_year_selector"
+                )
+                selected_nhis_uddi = NHIS_ENDPOINTS[nhis_year]
+                
                 selected_nhis = []
                 for field in NHIS_SELECTABLE_FIELDS:
                     label = NHIS_FIELD_LABELS.get(field, field)
@@ -957,27 +974,33 @@ def show_business_info_crawling():
                         def _resolve_identity_task(idx, row_brn, row_name, row_addr):
                             """단건에 대해 BRN 및 CRNO를 확정하는 로직"""
                             res_id = {
-                                "brn": row_brn, "crno": "", "api_name": "", 
+                                "brn": "", # API에서 확인된 BRN만 담음
+                                "input_brn": row_brn, # 사용자 입력 BRN (Fallback용)
+                                "crno": "", "api_name": "", 
                                 "api_addr": "", "match_score": 0.0
                             }
                             # 1) FSS API 우선 시도 (CRNO와 공식 BRN 획득 가능)
-                            fss_id_res = search_corp_by_name(row_name, api_service_key, brn=row_brn, address=row_addr)
-                            if fss_id_res and "_error" not in fss_id_res:
-                                res_id["brn"] = normalize_brn(fss_id_res.get("bzno", "")) or res_id["brn"]
-                                res_id["crno"] = str(fss_id_res.get("crno", "")).strip()
-                                res_id["api_name"] = str(fss_id_res.get("corpNm", "")).strip()
-                                res_id["api_addr"] = str(fss_id_res.get("enpAddr", "")).strip()
-                                res_id["match_score"] = 100.0 if row_brn and res_id["brn"] == row_brn else 80.0
-                                return idx, res_id
+                            try:
+                                fss_id_res = search_corp_by_name(row_name, api_service_key, brn=row_brn, address=row_addr)
+                                if fss_id_res and "_error" not in fss_id_res:
+                                    res_id["brn"] = normalize_brn(fss_id_res.get("bzno", "")) or row_brn
+                                    res_id["crno"] = str(fss_id_res.get("crno", "")).strip()
+                                    res_id["api_name"] = str(fss_id_res.get("corpNm", "")).strip()
+                                    res_id["api_addr"] = str(fss_id_res.get("enpAddr", "")).strip()
+                                    res_id["match_score"] = 100.0 if row_brn and res_id["brn"] == row_brn else 80.0
+                                    return idx, res_id
+                            except: pass
 
                             # 2) FSS 실패 시 NPS API 시도 (BRN 확정)
-                            nps_id_res = search_and_match_nps(row_name, row_brn, api_service_key, address=row_addr)
-                            if nps_id_res and "_error" not in nps_id_res:
-                                res_id["brn"] = normalize_brn(nps_id_res.get("bzowrRgstNo", "")) or res_id["brn"]
-                                res_id["api_name"] = str(nps_id_res.get("wkplNm", "")).strip()
-                                res_id["api_addr"] = str(nps_id_res.get("wkplRoadNmAddr", "")).strip()
-                                res_id["match_score"] = 100.0 if row_brn and res_id["brn"] == row_brn else 70.0
-                                return idx, res_id
+                            try:
+                                nps_id_res = search_and_match_nps(row_name, row_brn, api_service_key, address=row_addr)
+                                if nps_id_res and "_error" not in nps_id_res:
+                                    res_id["brn"] = normalize_brn(nps_id_res.get("bzowrRgstNo", "")) or row_brn
+                                    res_id["api_name"] = str(nps_id_res.get("wkplNm", "")).strip()
+                                    res_id["api_addr"] = str(nps_id_res.get("wkplRoadNmAddr", "")).strip()
+                                    res_id["match_score"] = 100.0 if row_brn and res_id["brn"] == row_brn else 70.0
+                                    return idx, res_id
+                            except: pass
                             
                             return idx, res_id
 
@@ -995,15 +1018,18 @@ def show_business_info_crawling():
                         # ── 중간 단계: 전역 데이터 준비 (NHIS 등)
                         nhis_df = pd.DataFrame()
                         if selected_nhis:
-                            if "biz_nhis_dataset" in st.session_state and st.session_state["biz_nhis_dataset"] is not None:
+                            # 캐시가 있고, 선택된 UDDI와 동일한 경우만 재사용
+                            if "biz_nhis_dataset" in st.session_state and st.session_state.get("biz_nhis_uddi_cache") == selected_nhis_uddi:
                                 nhis_df = st.session_state["biz_nhis_dataset"]
                                 status_area.caption(f"✅ 건강보험 데이터셋 캐시 사용 ({len(nhis_df):,}건)")
                             else:
                                 def nhis_progress(page, total, msg):
                                     progress.progress(min(0.2 + page/total * 0.1, 0.29), text=msg)
                                     status_area.caption(msg)
-                                nhis_df = download_nhis_dataset(api_service_key, progress_callback=nhis_progress)
+                                    status_area.caption(msg)
+                                nhis_df = download_nhis_dataset(api_service_key, uddi=selected_nhis_uddi, progress_callback=nhis_progress)
                                 st.session_state["biz_nhis_dataset"] = nhis_df
+                                st.session_state["biz_nhis_uddi_cache"] = selected_nhis_uddi
                         
                         # ── 2단계: 상세 데이터 수집 (Data Collection)
                         status_area.caption("📊 확정된 ID로 행정 데이터 수집 중 (2/2단계)...")
@@ -1012,9 +1038,9 @@ def show_business_info_crawling():
                         cached_nps = st.session_state.get("biz_nps_cache", {})
 
                         def _fetch_details_task(idx, resolved_id):
-                            res_brn = resolved_id["brn"]
-                            res_crno = resolved_id["crno"]
-                            res_name = resolved_id["api_name"] or query_items[idx][2]
+                            res_brn = resolved_id.get("brn") or resolved_id.get("input_brn")
+                            res_crno = resolved_id.get("crno")
+                            res_name = resolved_id.get("api_name") or query_items[idx][2]
                             
                             details = {"nps": {}, "fss": {"corp": {}, "fina": {}}}
                             
@@ -1062,12 +1088,37 @@ def show_business_info_crawling():
                                 except: pass
                             return str(val) if val else "해당없음"
 
-                        def _extract_nhis_field(nhis_lookup, brn, field):
-                            if not brn: return "조회불가"
-                            nrow = nhis_lookup.get(brn)
-                            if nrow is None: return "미조회"
-                            val = nrow.get(field, "")
-                            return str(val) if val else "해당없음"
+                        def _extract_nhis_field(idx, field):
+                            res_id = resolved_identities.get(idx, {})
+                            brn = res_id.get("brn")
+                            
+                            # 1) BRN으로 우선 검색
+                            if brn:
+                                nrow = nhis_lookup.get(brn)
+                                if nrow:
+                                    val = nrow.get(field, "")
+                                    return str(val) if val else "해당없음"
+                            
+                            # 2) 상호명+주소로 대체 검색 (BRN 없거나 매칭 안된 경우)
+                            row_name = query_items[idx][2] # 정제된 이름
+                            row_addr = query_items[idx][3]
+                            
+                            matches = nhis_name_lookup.get(row_name, [])
+                            if matches:
+                                best_match = None
+                                max_sim = 0
+                                for m in matches:
+                                    sim = text_similarity(row_addr, m.get("주소", ""))
+                                    if sim > max_sim:
+                                        max_sim = sim
+                                        best_match = m
+                                
+                                # 주소가 어느 정도 유사하거나, 주소 정보가 둘 다 없는 경우 매칭
+                                if best_match and (max_sim > 0.4 or (not row_addr and not best_match.get("주소"))):
+                                    val = best_match.get(field, "")
+                                    return str(val) if val else "해당없음"
+                                    
+                            return "조회불가" if not brn else "미조회"
 
                         # 4) 결과 병합 및 유사도 계산
                         progress.progress(0.8, text="결과 병합 중...")
@@ -1075,8 +1126,19 @@ def show_business_info_crawling():
                         
                         # NHIS 룩업 사전 구축 (속도 최적화)
                         nhis_lookup = {}
-                        if not nhis_df.empty and "_brn" in nhis_df.columns:
-                            nhis_lookup = nhis_df.set_index("_brn").to_dict('index')
+                        nhis_name_lookup = {} # 상호명 기반 루치업용
+                        if not nhis_df.empty:
+                            if "_brn" in nhis_df.columns:
+                                nhis_lookup = nhis_df.set_index("_brn").to_dict('index')
+                            
+                            # 상호명 기반 룩업 사전 (정제된 상호명 사용)
+                            if "사업장명" in nhis_df.columns:
+                                for _, n_row in nhis_df.iterrows():
+                                    nm = clean_company_name(n_row["사업장명"])
+                                    if nm:
+                                        if nm not in nhis_name_lookup:
+                                            nhis_name_lookup[nm] = []
+                                        nhis_name_lookup[nm].append(n_row.to_dict())
 
                         # 식별된 마스터 ID를 기반으로 신뢰도 및 기본 정보 세팅
                         result_df["[공공데이터] 사업자등록번호"] = ""
@@ -1110,19 +1172,12 @@ def show_business_info_crawling():
                                 if "avgBasSalary" in selected_nps:
                                     result_df.at[idx, "[국민연금] 추정 평균 기준소득월액"] = estimate_avg_salary(nps_row)
 
-                            # NHIS 결과 추출 (확정된 master_brn 기준)
-                            if selected_nhis and master_brn:
-                                nhis_row = nhis_lookup.get(master_brn)
-                                if nhis_row:
-                                    # NHIS 데이터가 있고, 선택한 필드 중 하나라도 값이 있는 경우만 성공으로 인정
-                                    if any(nhis_row.get(f) for f in selected_nhis):
+                            if selected_nhis:
+                                for field in selected_nhis:
+                                    val = _extract_nhis_field(idx, field)
+                                    result_df.at[idx, f"[건강보험] {NHIS_FIELD_LABELS.get(field, field)}"] = val
+                                    if val not in ["조회불가", "미조회", "해당없음"]:
                                         has_any_data = True
-                                    
-                                    for field in selected_nhis:
-                                        label = NHIS_FIELD_LABELS.get(field, field)
-                                        col_name = f"[건강보험] {label}"
-                                        val = nhis_row.get(field, "")
-                                        result_df.at[idx, col_name] = str(val) if val else "해당없음"
 
                             # FSS 결과 추출
                             fss_data = fss_results.get(idx, {})
@@ -1158,8 +1213,8 @@ def show_business_info_crawling():
 
                             # ── 유사도 계산 (Identity Resolution 결과 활용)
                             scores, weights = [], []
-                            # 1. 식별 성공 여부 (30%)
-                            scores.append(1.0 if master_brn else 0.0)
+                            # 1. 식별 성공 여부 (30%) - API에서 확인된 경우만 만점
+                            scores.append(1.0 if res_id.get("brn") else 0.0)
                             weights.append(30)
 
                             # 2. 회사명 유사도 (40%)
@@ -1272,10 +1327,12 @@ def show_business_info_crawling():
 
         if matched == 0 and total > 0:
             st.warning(
-                "⚠️ **데이터가 전혀 조회되지 않았습니다.**\n\n"
-                "- **API 키 승인 직후:** 승인 후 실제 데이터 연동까지 **1~2시간(최대 24시간)**이 소요될 수 있습니다.\n"
-                "- **인증 오류:** 공공데이터포털 서비스키가 정확한지, 'Decoding' 버전의 키를 사용했는지 확인해 주세요.\n"
-                "- **권한 부족:** 선택한 공공데이터가 '개발계정' 신청 및 승인이 완료된 상태인지 확인이 필요합니다."
+                "⚠️ **데이터가 전혀 조회되지 않았습니다. 원인을 확인해 주세요.**\n\n"
+                "- **조회 실패 유형:**\n"
+                "  1. **API 매칭 실패:** 입력하신 '사업자번호'나 '회사명'이 공공데이터 DB와 일치하지 않을 수 있습니다.\n"
+                "  2. **API 엔진 오류:** 최근 NPS API V2 전환 등에 따라 파라미터 규격이 변경된 경우 조회가 불가할 수 있습니다. (현재 최신 규격 반영 완료)\n"
+                "  3. **인증 오류:** 서비스키가 만료되었거나 'Encoding' 키를 사용한 경우 발생합니다. 'Decoding' 키를 권장합니다.\n"
+                "  4. **승인 대기:** API 신청 직후라면 실제 사용까지 **1~2시간(최대 24시간)**이 소요될 수 있습니다."
             )
 
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)

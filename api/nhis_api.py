@@ -8,7 +8,17 @@ import requests
 import pandas as pd
 
 
-API_URL = "https://api.odcloud.kr/api/3049051/v1/uddi:3049051"
+# [v6.25] 연도별 사업장관리 현황 UDDI 매핑
+NHIS_ENDPOINTS = {
+    "2024년 말": "71a6826c-7c86-4b4c-8e90-b61607d40214",
+    "2023년 말": "8862b7ea-44cd-4611-a74a-db752586aa9a",
+    "2022년 말": "818e5c2a-6f7f-47c1-88cf-e2dff4000a29",
+    "2021년 말": "c79672d1-cc13-489b-9466-9f0304aedcee",
+    "2019년 말": "fb303ab1-798d-4748-9128-ff11074892b9",
+    "2016년 말": "57f5f42d-09fc-4310-bc6c-ea993b7da317",
+}
+
+BASE_API_URL = "https://api.odcloud.kr/api/3049051/v1/uddi:"
 
 # 사용자 선택 가능 항목 목록 (체크박스용)
 NHIS_SELECTABLE_FIELDS = [
@@ -30,8 +40,9 @@ NHIS_FIELD_MAP = {
 }
 
 
-def fetch_nhis_total_count(service_key: str) -> int:
+def fetch_nhis_total_count(service_key: str, uddi: str = "71a6826c-7c86-4b4c-8e90-b61607d40214") -> int:
     """전체 데이터 건수 조회"""
+    url = f"{BASE_API_URL}{uddi}"
     params = {
         "page": 1,
         "perPage": 1,
@@ -39,7 +50,7 @@ def fetch_nhis_total_count(service_key: str) -> int:
         "serviceKey": service_key,
     }
     try:
-        resp = requests.get(API_URL, params=params, timeout=15)
+        resp = requests.get(url, params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
         return data.get("totalCount", 0)
@@ -47,7 +58,7 @@ def fetch_nhis_total_count(service_key: str) -> int:
         return 0
 
 
-def download_nhis_dataset(service_key: str, progress_callback=None) -> pd.DataFrame:
+def download_nhis_dataset(service_key: str, uddi: str = "71a6826c-7c86-4b4c-8e90-b61607d40214", progress_callback=None) -> pd.DataFrame:
     """
     건강보험 사업장관리 현황 전체 데이터를 페이지네이션으로 다운로드
 
@@ -61,7 +72,8 @@ def download_nhis_dataset(service_key: str, progress_callback=None) -> pd.DataFr
     PER_PAGE = 1000
     all_records = []
 
-    total_count = fetch_nhis_total_count(service_key)
+    url = f"{BASE_API_URL}{uddi}"
+    total_count = fetch_nhis_total_count(service_key, uddi=uddi)
     if total_count == 0:
         return pd.DataFrame()
 
@@ -75,7 +87,7 @@ def download_nhis_dataset(service_key: str, progress_callback=None) -> pd.DataFr
             "serviceKey": service_key,
         }
         try:
-            resp = requests.get(API_URL, params=params, timeout=30)
+            resp = requests.get(url, params=params, timeout=30)
             resp.raise_for_status()
             data = resp.json()
 

@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     # 1. NPS (국민연금) - Already proven working
     test_api("국민연금 (NPS) V2", "http://apis.data.go.kr/B552015/NpsBplcInfoInqireServiceV2/getBassInfoSearchV2", 
-             {"serviceKey": service_key, "wkpl_nm": "삼성전자", "pageNo": 1, "numOfRows": 1})
+             {"serviceKey": service_key, "wkplNm": "삼성전자", "pageNo": 1, "numOfRows": 1, "dataType": "json"})
     
     # 2. FSS (금융위) variations
     # V2 HTTP
