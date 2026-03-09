@@ -1028,23 +1028,31 @@ def show_business_info_crawling():
                             except Exception as e:
                                 res_id["fss_error"] = str(e)
 
-                            # 2) FSS 실패 시 NPS API 시도
+                            # 2) FSS 실패 시 NPS API 시도 (NPS는 거의 필수로 마스킹됨)
                             try:
                                 nps_id_res = search_and_match_nps(row_name, row_brn, api_service_key, address=row_addr)
                                 if nps_id_res and "_error" not in nps_id_res:
                                     api_brn = normalize_brn(nps_id_res.get("bzowrRgstNo", ""))
-                                    res_id["brn"] = _update_brn(row_brn, api_brn)
+                                    res_id["brn"] = _update_brn(res_id["brn"] or row_brn, api_brn) # 기존 결과(FSS 등)가 있으면 유지 시도
                                     res_id["api_name"] = str(nps_id_res.get("wkplNm", "")).strip()
                                     res_id["api_addr"] = str(nps_id_res.get("wkplRoadNmAddr", "") or nps_id_res.get("wkplRoadNmDtlAddr", "")).strip()
                                     res_id["match_score"] = 100.0 if row_brn and not _is_masked(res_id["brn"]) and res_id["brn"] == normalize_brn(row_brn) else 70.0
+                                    # NPS 매칭 성공했으므로 리턴 (상세 정보는 2단계에서 가져옴)
+                                    # 단, BRN이 여전히 마스킹되어 있고 사용자가 준 번호가 있다면 복구
+                                    if _is_masked(res_id["brn"]) and row_brn and not _is_masked(row_brn) and len(normalize_brn(row_brn))==10:
+                                        res_id["brn"] = normalize_brn(row_brn)
                                     return idx, res_id
                                 else:
                                     res_id["nps_error"] = nps_id_res.get("_error") if nps_id_res else "결과없음"
                             except Exception as e:
                                 res_id["nps_error"] = str(e)
                             
+                            # 최종 보정: 매칭은 성공했는데 번호가 마스킹된 경우 사용자가 준 10자리 번호가 있다면 복구
+                            if _is_masked(res_id["brn"]) and row_brn and not _is_masked(row_brn) and len(normalize_brn(row_brn))==10:
+                                res_id["brn"] = normalize_brn(row_brn)
+
                             # 최후의 수단: 검색은 실패했지만 사용자가 입력한 번호라도 유지
-                            if row_brn and not res_id["brn"]:
+                            if not res_id["brn"] and row_brn and not _is_masked(row_brn):
                                 res_id["brn"] = normalize_brn(row_brn)
 
                             return idx, res_id

@@ -108,42 +108,42 @@ def search_corp_by_name(company_name: str, service_key: str, brn: str = "", addr
         if not item_list:
             return {"_error": "검색결과 없음"}
 
-        # 사업자등록번호로 매칭 시도
-        if brn:
-            brn_clean = _normalize_brn(brn)
+        # 2) 사업자등록번호로 매칭 시도 (마스킹되지 않은 10자리인 경우만)
+        brn_clean = _normalize_brn(brn) if brn else ""
+        if brn_clean and "*" not in brn_clean and len(brn_clean) == 10:
             for item in item_list:
                 item_brn = _normalize_brn(item.get("bzno", ""))
                 if item_brn == brn_clean:
                     return item
 
-        # 3) 주소 유사도 매칭 시도
-        if address and address.strip():
-            best_item = None
-            max_sim = 0
-            from difflib import SequenceMatcher
-            
-            def _get_sim(a, b):
-                if not a or not b: return 0.0
-                a_norm = str(a).replace(" ", "").replace("-", "")
-                b_norm = str(b).replace(" ", "").replace("-", "")
-                return SequenceMatcher(None, a_norm, b_norm).ratio()
+        # 3) 상호명 및 주소 유사도 기반 정밀 매칭 (BRN 매칭 실패 혹은 마스킹된 경우)
+        from difflib import SequenceMatcher
+        def _get_sim(a, b):
+            if not a or not b: return 0.0
+            a_norm = str(a).replace(" ", "").lower()
+            b_norm = str(b).replace(" ", "").lower()
+            return SequenceMatcher(None, a_norm, b_norm).ratio()
 
-            for item in item_list:
-                api_addr = item.get("enpAddr", "")
-                sim = _get_sim(address, api_addr)
-                if sim > max_sim:
-                    max_sim = sim
-                    best_item = item
-            
-            if best_item and max_sim > 0.4:
-                return best_item
+        search_name_norm = company_name.strip().replace(" ", "").lower()
+        best_item = None
+        max_addr_sim = 0.0
 
-        # 4) 회사명 정확 매칭 시도
-        search_norm = company_name.strip().replace(" ", "").lower()
         for item in item_list:
-            item_name = str(item.get("corpNm", "")).strip().replace(" ", "").lower()
-            if item_name == search_norm:
-                return item
+            api_name = str(item.get("corpNm", "")).strip().replace(" ", "").lower()
+            api_addr = item.get("enpAddr", "")
+            
+            # 상호명이 포함되거나 일치하는 경우
+            if search_name_norm in api_name or api_name in search_name_norm:
+                sim = _get_sim(address, api_addr) if address else 0.5
+                if sim > max_addr_sim:
+                    max_addr_sim = sim
+                    best_item = item
+        
+        # 신뢰도 조건 체크 (유사도 0.6 이상)
+        if best_item and (max_addr_sim >= 0.6 or (not address and len(item_list) == 1)):
+            return best_item
+
+        return {"_error": "신뢰할 수 있는 매칭 기업 없음 (상호/주소 불일치)"}
 
         # 첫 번째 결과 반환 (단일 결과인 경우)
         if len(item_list) == 1:

@@ -148,59 +148,47 @@ def search_and_match_nps(
     if not results:
         return {"_error": "검색결과 없음"}
 
-    # 2) 사업자등록번호로 매칭 시도 (마스킹되지 않은 경우만)
+    # 2) 사업자등록번호로 매칭 시도 (마스킹되지 않은 10자리인 경우만)
     brn_clean = str(brn).replace("-", "").replace(" ", "").zfill(10) if brn else ""
-    if brn_clean and "*" not in brn_clean:
+    if brn_clean and "*" not in brn_clean and len(brn_clean) == 10:
         for item in results:
             item_brn = str(item.get("bzowrRgstNo", "")).replace("-", "").replace(" ", "").zfill(10)
             if item_brn == brn_clean:
+                # 상세 정보 조회 후 병합하여 반환
+                detail = get_nps_detail(item.get("seq"), service_key)
+                if detail: item.update(detail)
                 return item
 
-    # 3) 주소 유사도로 매칭 시도 (BRN 매칭 실패 혹은 BRN이 없을 때)
-    if address and address.strip():
-        best_item = None
-        max_sim = 0
-        from difflib import SequenceMatcher
-        
-        def _get_sim(a, b):
-            if not a or not b: return 0.0
-            # 정규화: 공백 제거, 특수문자 제거 등은 간단히
-            a_norm = str(a).replace(" ", "").replace("-", "")
-            b_norm = str(b).replace(" ", "").replace("-", "")
-            return SequenceMatcher(None, a_norm, b_norm).ratio()
+    # 3) 상호명 및 주소 유사도 기반 정밀 매칭 (BRN 매칭 실패 혹은 마스킹된 경우)
+    from difflib import SequenceMatcher
+    def _get_sim(a, b):
+        if not a or not b: return 0.0
+        a_norm = str(a).replace(" ", "").lower()
+        b_norm = str(b).replace(" ", "").lower()
+        return SequenceMatcher(None, a_norm, b_norm).ratio()
 
-        for item in results:
-            api_addr = item.get("wkplRoadNmDtlAddr", "") or item.get("wkplNmAdrs", "") or item.get("ldongAddrMgplDgCd", "")
-            sim = _get_sim(address, api_addr)
-            if sim > max_sim:
-                max_sim = sim
-                best_item = item
-        
-        # 주소 유사도가 일정 수준 이상인 경우만 반환 (예: 40%)
-        if best_item and max_sim > 0.4:
-            # 상세 정보 조회 후 병합하여 반환
-            detail = get_nps_detail(best_item.get("seq"), service_key)
-            if detail: best_item.update(detail)
-            return best_item
+    search_name_norm = company_name.strip().replace(" ", "").lower()
+    best_item = None
+    max_addr_sim = 0.0
 
-    # 4) 정확한 주소 매칭이 안 되면, 회사명 정확 일치 항목 찾기
-    search_norm = company_name.strip().replace(" ", "").lower()
     for item in results:
         api_name = str(item.get("wkplNm", "")).strip().replace(" ", "").lower()
-        if api_name == search_norm:
-            detail = get_nps_detail(item.get("seq"), service_key)
-            if detail: item.update(detail)
-            return item
+        api_addr = item.get("wkplRoadNmDtlAddr", "") or item.get("wkplNmAdrs", "") or item.get("ldongAddrMgplDgCd", "")
+        
+        # 상호명이 포함되거나 일치하는 경우 (정밀도 향상)
+        if search_name_norm in api_name or api_name in search_name_norm:
+            sim = _get_sim(address, api_addr) if address else 0.5
+            if sim > max_addr_sim:
+                max_addr_sim = sim
+                best_item = item
 
-    # 5) 단일 결과인 경우 주소 무관하게 반환
-    if len(results) == 1:
-        res = results[0]
-        detail = get_nps_detail(res.get("seq"), service_key)
-        if detail: res.update(detail)
-        return res
+    # 임계치(0.6) 이상이거나, 단일 결과이면서 검색명이 포함된 경우
+    if best_item and (max_addr_sim >= 0.6 or (not address and len(results) == 1)):
+        detail = get_nps_detail(best_item.get("seq"), service_key)
+        if detail: best_item.update(detail)
+        return best_item
 
-    # 여러 결과 중 매칭 실패
-    return {"_error": f"검색결과 {len(results)}건 중 매칭 실패 (주소 불일치)", "_candidates": len(results)}
+    return {"_error": f"검색결과 {len(results)}건 중 신뢰할 수 있는 매칭 실패 (상호/주소 불일치)", "_candidates": len(results)}
 
 
 def estimate_avg_salary(nps_data: dict) -> str:
