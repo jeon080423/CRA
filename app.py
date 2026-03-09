@@ -1195,13 +1195,16 @@ def show_business_info_crawling():
 
                         # 식별된 마스터 ID를 기반으로 신뢰도 및 기본 정보 세팅
                         result_df["[공공데이터] 사업자등록번호"] = ""
+                        result_df["[공공데이터] 법인등록번호"] = ""
                         result_df["유사도(%)"] = 0.0
 
                         rows_with_data = 0
                         for idx, row in result_df.iterrows():
                             res_id = resolved_identities.get(idx, {})
                             master_brn = res_id.get("brn", "")
+                            master_crno = res_id.get("crno", "")
                             result_df.at[idx, "[공공데이터] 사업자등록번호"] = master_brn
+                            result_df.at[idx, "[공공데이터] 법인등록번호"] = master_crno
                             
                             has_any_data = False
 
