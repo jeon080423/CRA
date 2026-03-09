@@ -145,7 +145,8 @@ def search_and_match_nps(
             return SequenceMatcher(None, a_norm, b_norm).ratio()
 
         for item in results:
-            api_addr = item.get("wkplRoadNmAddr", "") or item.get("ldongAddrMgpDgCd", "") # 우선순위: 도로명주소 > 법정동지역코드
+            # V2 API 실제 필드명: wkplRoadNmDtlAddr, ldongAddrMgplDgCd
+            api_addr = item.get("wkplRoadNmDtlAddr", "") or item.get("wkplNmAdrs", "") or item.get("ldongAddrMgplDgCd", "")
             sim = _get_sim(address, api_addr)
             if sim > max_sim:
                 max_sim = sim
@@ -155,7 +156,14 @@ def search_and_match_nps(
         if best_item and max_sim > 0.4:
             return best_item
 
-    # 4) 정확한 매칭이 안 되면 첫 번째 결과라도 반환 (단일 결과인 경우)
+    # 4) 정확한 주소 매칭이 안 되면, 회사명 정확 일치 항목 찾기
+    search_norm = company_name.strip().replace(" ", "").lower()
+    for item in results:
+        api_name = str(item.get("wkplNm", "")).strip().replace(" ", "").lower()
+        if api_name == search_norm:
+            return item
+
+    # 5) 단일 결과인 경우 주소 무관하게 반환
     if len(results) == 1:
         return results[0]
 

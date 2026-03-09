@@ -979,19 +979,31 @@ def show_business_info_crawling():
                                 "crno": "", "api_name": "", 
                                 "api_addr": "", "match_score": 0.0
                             }
-                            # 1) FSS API 우선 시도 (CRNO와 공식 BRN 획득 가능)
+                            def _log_debug(msg):
+                                try:
+                                    import os
+                                    log_path = os.path.join(os.getcwd(), "api_debug.log")
+                                    with open(log_path, "a", encoding="utf-8") as f:
+                                        f.write(f"[{datetime.datetime.now()}] {msg}\n")
+                                except: pass
+
+                            # 1) FSS API 우선 시도
                             try:
                                 fss_id_res = search_corp_by_name(row_name, api_service_key, brn=row_brn, address=row_addr)
                                 if fss_id_res and "_error" not in fss_id_res:
+                                    # ... (success)
                                     res_id["brn"] = normalize_brn(fss_id_res.get("bzno", "")) or row_brn
                                     res_id["crno"] = str(fss_id_res.get("crno", "")).strip()
                                     res_id["api_name"] = str(fss_id_res.get("corpNm", "")).strip()
                                     res_id["api_addr"] = str(fss_id_res.get("enpAddr", "")).strip()
                                     res_id["match_score"] = 100.0 if row_brn and res_id["brn"] == row_brn else 80.0
                                     return idx, res_id
-                            except: pass
+                                else:
+                                    res_id["fss_error"] = fss_id_res.get("_error") if fss_id_res else "결과없음"
+                            except Exception as e:
+                                res_id["fss_error"] = str(e)
 
-                            # 2) FSS 실패 시 NPS API 시도 (BRN 확정)
+                            # 2) FSS 실패 시 NPS API 시도
                             try:
                                 nps_id_res = search_and_match_nps(row_name, row_brn, api_service_key, address=row_addr)
                                 if nps_id_res and "_error" not in nps_id_res:
@@ -1000,7 +1012,10 @@ def show_business_info_crawling():
                                     res_id["api_addr"] = str(nps_id_res.get("wkplRoadNmAddr", "")).strip()
                                     res_id["match_score"] = 100.0 if row_brn and res_id["brn"] == row_brn else 70.0
                                     return idx, res_id
-                            except: pass
+                                else:
+                                    res_id["nps_error"] = nps_id_res.get("_error") if nps_id_res else "결과없음"
+                            except Exception as e:
+                                res_id["nps_error"] = str(e)
                             
                             return idx, res_id
 
@@ -1242,12 +1257,18 @@ def show_business_info_crawling():
                         
                         # 통계 계산 (실제로 데이터를 가져온 행 기준)
                         # 통계 계산 (실제로 유의미한 데이터를 가져온 행 기준)
+                        # 통계 계산
                         total_matched = rows_with_data
-                        nps_matched = sum(1 for v in nps_results.values() if v and "_error" not in v and any(v.get(f) for f in ["jnngpCnt", "crrmmNtcAmt", "bzowrRgstNo"]))
-                        nhis_matched = sum(1 for idx, res_id in resolved_identities.items() if res_id.get("brn") and nhis_lookup.get(res_id["brn"]) and any(nhis_lookup[res_id["brn"]].get(f) for f in selected_nhis))
+                        nps_matched = sum(1 for v in nps_results.values() if v and "_error" not in v)
                         
-                        fss_corp_matched = sum(1 for v in fss_results.values() if "_error" not in v.get("corp", {}) and any(v.get("corp", {}).get(f) for f in FSS_CORP_SELECTABLE_FIELDS))
-                        fss_fina_matched = sum(1 for v in fss_results.values() if "_error" not in v.get("fina", {}) and any(v.get("fina", {}).get(f) for f in FSS_FINA_SELECTABLE_FIELDS))
+                        nhis_matched = 0
+                        for idx in resolved_identities:
+                            val = _extract_nhis_field(idx, selected_nhis[0]) if selected_nhis else "미조회"
+                            if val not in ["조회불가", "미조회", "해당없음"]:
+                                nhis_matched += 1
+                        
+                        fss_corp_matched = sum(1 for v in fss_results.values() if "_error" not in v.get("corp", {}))
+                        fss_fina_matched = sum(1 for v in fss_results.values() if "_error" not in v.get("fina", {}))
                         
                         # 최종 성공 건수는 이 중 하나라도 데이터를 가진 행의 수
                         total_matched = rows_with_data
