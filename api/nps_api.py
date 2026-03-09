@@ -43,6 +43,7 @@ NPS_FIELD_LABELS = {
 NPS_FIELD_MAP = {
     "wkplNm": "사업장명",
     "bzowrRgstNo": "사업자등록번호",
+    "seq": "순번",
 }
 
 
@@ -95,6 +96,29 @@ def search_nps_by_name(company_name: str, service_key: str) -> list:
         return []
 
 
+def get_nps_detail(seq: str, service_key: str) -> dict:
+    """
+    순번(seq)을 기반으로 상세 정보를 조회 (V2)
+    """
+    if not seq:
+        return {}
+    params = {
+        "serviceKey": service_key,
+        "seq": seq,
+        "dataType": "json",
+    }
+    try:
+        resp = requests.get(DETAIL_URL, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        item = data.get("response", {}).get("body", {}).get("items", {}).get("item")
+        if isinstance(item, list) and item:
+            return item[0]
+        return item if isinstance(item, dict) else {}
+    except Exception:
+        return {}
+
+
 def search_and_match_nps(
     company_name: str,
     brn: str,
@@ -108,6 +132,7 @@ def search_and_match_nps(
         company_name: 검색할 사업장명 (정제된 이름 권장)
         brn: 사업자등록번호 (정규화된 10자리)
         service_key: API 서비스 키
+        address: 사업장 주소 (Fallback 매칭용)
 
     Returns:
         dict: 매칭된 사업장 정보, 없으면 {"_error": "..."} 반환
@@ -123,9 +148,9 @@ def search_and_match_nps(
     if not results:
         return {"_error": "검색결과 없음"}
 
-    # 2) 사업자등록번호로 매칭 시도
-    brn_clean = brn.replace("-", "").replace(" ", "").zfill(10) if brn else ""
-    if brn_clean:
+    # 2) 사업자등록번호로 매칭 시도 (마스킹되지 않은 경우만)
+    brn_clean = str(brn).replace("-", "").replace(" ", "").zfill(10) if brn else ""
+    if brn_clean and "*" not in brn_clean:
         for item in results:
             item_brn = str(item.get("bzowrRgstNo", "")).replace("-", "").replace(" ", "").zfill(10)
             if item_brn == brn_clean:
@@ -145,7 +170,6 @@ def search_and_match_nps(
             return SequenceMatcher(None, a_norm, b_norm).ratio()
 
         for item in results:
-            # V2 API 실제 필드명: wkplRoadNmDtlAddr, ldongAddrMgplDgCd
             api_addr = item.get("wkplRoadNmDtlAddr", "") or item.get("wkplNmAdrs", "") or item.get("ldongAddrMgplDgCd", "")
             sim = _get_sim(address, api_addr)
             if sim > max_sim:
@@ -154,6 +178,9 @@ def search_and_match_nps(
         
         # 주소 유사도가 일정 수준 이상인 경우만 반환 (예: 40%)
         if best_item and max_sim > 0.4:
+            # 상세 정보 조회 후 병합하여 반환
+            detail = get_nps_detail(best_item.get("seq"), service_key)
+            if detail: best_item.update(detail)
             return best_item
 
     # 4) 정확한 주소 매칭이 안 되면, 회사명 정확 일치 항목 찾기
@@ -161,11 +188,16 @@ def search_and_match_nps(
     for item in results:
         api_name = str(item.get("wkplNm", "")).strip().replace(" ", "").lower()
         if api_name == search_norm:
+            detail = get_nps_detail(item.get("seq"), service_key)
+            if detail: item.update(detail)
             return item
 
     # 5) 단일 결과인 경우 주소 무관하게 반환
     if len(results) == 1:
-        return results[0]
+        res = results[0]
+        detail = get_nps_detail(res.get("seq"), service_key)
+        if detail: res.update(detail)
+        return res
 
     # 여러 결과 중 매칭 실패
     return {"_error": f"검색결과 {len(results)}건 중 매칭 실패 (주소 불일치)", "_candidates": len(results)}

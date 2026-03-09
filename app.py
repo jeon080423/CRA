@@ -987,16 +987,41 @@ def show_business_info_crawling():
                                         f.write(f"[{datetime.datetime.now()}] {msg}\n")
                                 except: pass
 
+                            def _is_masked(b):
+                                return "*" in str(b)
+
+                            def _update_brn(current, new_candidate):
+                                """마스킹되지 않은 10자리 번호를 우선시하여 업데이트"""
+                                c_clean = str(current).replace("-", "").replace(" ", "")
+                                n_clean = str(new_candidate).replace("-", "").replace(" ", "")
+                                
+                                if not n_clean or n_clean == "None":
+                                    return c_clean
+                                
+                                # 현재가 마스킹되어 있고 신규가 마스킹 안 되어 있으면 교체
+                                if _is_masked(c_clean) and not _is_masked(n_clean) and len(n_clean) >= 10:
+                                    return n_clean
+                                    
+                                # 현재가 비어 있으면 신규로 채움 (마스킹 여부 상관없이 일단 최선)
+                                if not c_clean:
+                                    return n_clean
+                                
+                                # 현재가 이미 마스킹 안 된 10자리라면 유지
+                                if not _is_masked(c_clean) and len(c_clean) >= 10:
+                                    return c_clean
+                                    
+                                return n_clean
+
                             # 1) FSS API 우선 시도
                             try:
                                 fss_id_res = search_corp_by_name(row_name, api_service_key, brn=row_brn, address=row_addr)
                                 if fss_id_res and "_error" not in fss_id_res:
-                                    # ... (success)
-                                    res_id["brn"] = normalize_brn(fss_id_res.get("bzno", "")) or row_brn
+                                    api_brn = normalize_brn(fss_id_res.get("bzno", ""))
+                                    res_id["brn"] = _update_brn(row_brn, api_brn)
                                     res_id["crno"] = str(fss_id_res.get("crno", "")).strip()
                                     res_id["api_name"] = str(fss_id_res.get("corpNm", "")).strip()
                                     res_id["api_addr"] = str(fss_id_res.get("enpAddr", "")).strip()
-                                    res_id["match_score"] = 100.0 if row_brn and res_id["brn"] == row_brn else 80.0
+                                    res_id["match_score"] = 100.0 if row_brn and not _is_masked(res_id["brn"]) and res_id["brn"] == normalize_brn(row_brn) else 80.0
                                     return idx, res_id
                                 else:
                                     res_id["fss_error"] = fss_id_res.get("_error") if fss_id_res else "결과없음"
@@ -1007,16 +1032,21 @@ def show_business_info_crawling():
                             try:
                                 nps_id_res = search_and_match_nps(row_name, row_brn, api_service_key, address=row_addr)
                                 if nps_id_res and "_error" not in nps_id_res:
-                                    res_id["brn"] = normalize_brn(nps_id_res.get("bzowrRgstNo", "")) or row_brn
+                                    api_brn = normalize_brn(nps_id_res.get("bzowrRgstNo", ""))
+                                    res_id["brn"] = _update_brn(row_brn, api_brn)
                                     res_id["api_name"] = str(nps_id_res.get("wkplNm", "")).strip()
-                                    res_id["api_addr"] = str(nps_id_res.get("wkplRoadNmAddr", "")).strip()
-                                    res_id["match_score"] = 100.0 if row_brn and res_id["brn"] == row_brn else 70.0
+                                    res_id["api_addr"] = str(nps_id_res.get("wkplRoadNmAddr", "") or nps_id_res.get("wkplRoadNmDtlAddr", "")).strip()
+                                    res_id["match_score"] = 100.0 if row_brn and not _is_masked(res_id["brn"]) and res_id["brn"] == normalize_brn(row_brn) else 70.0
                                     return idx, res_id
                                 else:
                                     res_id["nps_error"] = nps_id_res.get("_error") if nps_id_res else "결과없음"
                             except Exception as e:
                                 res_id["nps_error"] = str(e)
                             
+                            # 최후의 수단: 검색은 실패했지만 사용자가 입력한 번호라도 유지
+                            if row_brn and not res_id["brn"]:
+                                res_id["brn"] = normalize_brn(row_brn)
+
                             return idx, res_id
 
                         # 식별자 해결 실행
