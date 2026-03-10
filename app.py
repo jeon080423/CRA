@@ -1021,7 +1021,7 @@ def show_business_info_crawling():
                                     
                                 return n_clean
 
-                            # 1) FSS API 우선 시도
+                            # 1) FSS API 우선 시도 (가장 신뢰도 높은 기본정보 출처)
                             try:
                                 fss_id_res = search_corp_by_name(row_name, api_service_key, brn=row_brn, address=row_addr)
                                 if fss_id_res and "_error" not in fss_id_res:
@@ -1030,8 +1030,9 @@ def show_business_info_crawling():
                                     res_id["crno"] = str(fss_id_res.get("crno", "")).strip()
                                     res_id["api_name"] = str(fss_id_res.get("corpNm", "")).strip()
                                     res_id["api_addr"] = str(fss_id_res.get("enpAddr", "")).strip()
+                                    res_id["api_ceo"] = str(fss_id_res.get("ceoNm", "")).strip() # FSS 대표자명
                                     res_id["match_score"] = 100.0 if row_brn and not _is_masked(res_id["brn"]) and res_id["brn"] == normalize_brn(row_brn) else 80.0
-                                    return idx, res_id
+                                    # FSS 성공 시에도 DART/G2B로 추가 보정 수행 (아래 공통 로직)
                                 else:
                                     res_id["fss_error"] = fss_id_res.get("_error") if fss_id_res else "결과없음"
                             except Exception as e:
@@ -1056,43 +1057,32 @@ def show_business_info_crawling():
                             except Exception as e:
                                 res_id["nps_error"] = str(e)
                             
-                            # 최종 보정: 매칭은 성공했는데 번호가 마스킹된 경우
-                            if _is_masked(res_id["brn"]):
-                                # 1) 사용자가 준 10자리 번호가 있다면 복구
-                                if row_brn and not _is_masked(row_brn) and len(normalize_brn(row_brn))==10:
-                                    res_id["brn"] = normalize_brn(row_brn)
-                                
-                                # 2) 여전히 마스킹 상태라면 DART API를 통해 언마스킹 시도 (법인/외감 대상 한정)
-                                if _is_masked(res_id["brn"]) and DART_API_KEY:
-                                    dart_info = get_dart_corp_info(res_id["api_name"] or row_name, DART_API_KEY)
-                                    if dart_info.get("brn") and not _is_masked(dart_info["brn"]):
-                                        res_id["brn"] = normalize_brn(dart_info["brn"])
-                                        res_id["crno"] = dart_info.get("crno", res_id["crno"])
-                                        res_id["api_ceo"] = dart_info.get("ceo_nm", "")
-                                        res_id["api_addr_detail"] = dart_info.get("addr", "")
-                                        _log_debug(f"DART Unmasked: {res_id['api_name']} -> {res_id['brn']}")
+                            # [v7.1] 추가 고도화: 모든 식별 성공 건에 대해 DART/G2B 2차 Enrichment 수행
+                            # 1) DART API를 통한 언마스킹 및 상세 정보 (대표자, 법인번호 등) 보완
+                            final_target_name = res_id["api_name"] or row_name
+                            if DART_API_KEY and final_target_name:
+                                dart_info = get_dart_corp_info(final_target_name, DART_API_KEY)
+                                if dart_info:
+                                    # 번호가 마스킹되어 있다면 DART 번호로 교체
+                                    if _is_masked(res_id["brn"]):
+                                        res_id["brn"] = normalize_brn(dart_info.get("brn", res_id["brn"]))
+                                    
+                                    # 누락된 정보 채우기
+                                    res_id["crno"] = res_id["crno"] or dart_info.get("crno", "")
+                                    res_id["api_ceo"] = res_id["api_ceo"] or dart_info.get("ceo_nm", "")
+                                    res_id["api_addr"] = res_id["api_addr"] or dart_info.get("addr", "")
+                                    _log_debug(f"DART Enriched: {final_target_name}")
 
-                                # 3) 여전히 마스킹 상태라면 G2B(나라장터) API를 통해 언마스킹 시도 (조달업체 한정)
-                                # 상호명 기반 검색 기능이 G2B에 없으므로, 마스킹된 번호의 앞자리와 상호명 매칭이 필요할 수 있으나
-                                # G2B는 주로 BRN을 알아야 조회가 가능함. 다만 G2B 기본 정보에 다른 데이터가 풍부하므로 
-                                # 마이그레이션된 전체 번호가 확인되는 경우 업데이트.
-                                if _is_masked(res_id["brn"]) and api_service_key:
-                                    # (참고) G2B는 현재 BRN 기반 조회가 주력이므로, 완전한 번호를 모를 경우 fallback이 제한적임.
-                                    # 하지만 unmasked_brn이 중간에 확보되면 G2B로 추가 정보를 채울 수 있음.
-                                    pass
-
-                            # 최후의 수단: 검색은 실패했지만 사용자가 입력한 번호라도 유지
-                            if not res_id["brn"] and row_brn and not _is_masked(row_brn):
-                                res_id["brn"] = normalize_brn(row_brn)
-                            
-                            # 추가 정보 채우기 (G2B 등)
-                            if res_id["brn"] and not _is_masked(res_id["brn"]):
-                                g2b_info = get_g2b_corp_info(res_id["brn"], api_service_key)
+                            # 2) G2B(나라장터) API를 통한 업종/연락처 등 보완 (이미 번호가 확보된 경우)
+                            final_brn = normalize_brn(res_id["brn"] or row_brn)
+                            if api_service_key and final_brn and not _is_masked(final_brn):
+                                g2b_info = get_g2b_corp_info(final_brn, api_service_key)
                                 if g2b_info:
-                                    res_id["api_ceo"] = g2b_info.get("ceo_nm") or res_id.get("api_ceo")
+                                    res_id["api_ceo"] = res_id["api_ceo"] or g2b_info.get("ceo_nm", "")
                                     res_id["api_tel"] = g2b_info.get("telno")
                                     res_id["api_biz_type"] = g2b_info.get("bizType")
-                                    res_id["api_addr"] = g2b_info.get("addr") or res_id.get("api_addr")
+                                    res_id["api_addr"] = res_id["api_addr"] or g2b_info.get("addr", "")
+                                    _log_debug(f"G2B Enriched: {final_brn}")
 
                             return idx, res_id
 

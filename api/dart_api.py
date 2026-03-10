@@ -50,13 +50,30 @@ def get_dart_corp_info(company_name: str, api_key: str) -> dict:
     # 1) 정확히 일치하는 상호명 찾기
     corp_code = _CORP_CODE_CACHE.get(company_name)
     
-    # 2) 만약 없다면 (주) 제거 후 재검색 등 유연한 매칭
+    # 2) 정규화 후 재검색 (공백, (주), 주식회사 등 제거)
     if not corp_code:
-        clean_name = company_name.replace("(주)", "").replace("주식회사", "").strip()
+        def _normalize(n):
+            return str(n).replace("(주)", "").replace("주식회사", "").replace(" ", "").upper()
+        
+        target_norm = _normalize(company_name)
+        
+        # 정확히 일치하는 정규화된 이름 찾기
         for name, code in _CORP_CODE_CACHE.items():
-            if clean_name in name:
+            if _normalize(name) == target_norm:
                 corp_code = code
                 break
+        
+        # 3) '엘아이지' <-> 'LIG' 등 특수 별칭 처리 및 포함 관계 매칭 (정밀도 하락 주의)
+        if not corp_code:
+            # LIG -> 엘아이지 변환 (자주 발생하는 사례)
+            alias_norm = target_norm.replace("LIG", "엘아이지")
+            for name, code in _CORP_CODE_CACHE.items():
+                n_norm = _normalize(name)
+                if n_norm == alias_norm or target_norm in n_norm or n_norm in target_norm:
+                    # 상호명이 너무 짧으면 오매칭 위험 (3자 이상만 허용)
+                    if len(target_norm) >= 3:
+                        corp_code = code
+                        break
 
     if not corp_code:
         return {}
