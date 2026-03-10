@@ -45,6 +45,7 @@ from api.fss_api import (
 )
 from api.dart_api import get_dart_corp_info
 from api.g2b_api import get_g2b_corp_info
+from api.nts_api import get_nts_business_status
 from utils.excel_handler import load_excel, export_result_excel
 from utils.matcher import normalize_brn, clean_company_names_bulk
 from usage_tracker import UsageTracker
@@ -612,6 +613,7 @@ def show_business_info_crawling():
         | **건강보험 (NHIS)** | 가입자수, 당월고지금액 | 사업자등록번호 (10자리) |
         | **금융위 기업기본** | 법인번호, 1인평균급여, 종업원수, 업종명, 설립일 | 회사명 + 사업자번호/주소 |
         | **금융위 기업재무** | 매출액, 영업이익, 당기순이익, 총자산, 총부채, 자본금 | 법인등록번호 (연계) |
+        | **국세청 (NTS)** | 사업자 상태(계속/휴업/폐업), 과세유형, 폐업일자 | 사업자등록번호 (10자리) |
 
         ### 🛡️ 데이터 매치 및 유사도 산정 방식
         본 시스템은 사업자등록번호가 없거나 불완전한 자료의 정확한 매칭을 위해 다음과 같은 지능형 매칭 엔진을 사용합니다.
@@ -637,12 +639,14 @@ def show_business_info_crawling():
            - 건강보험공단 사업장관리 현황
            - **금융위원회 기업기본정보** (`GetCorpBasicInfoService_V2`)
            - **금융위원회 기업재무정보** (`GetFinaStatInfoService_V2`)
+           - **국세청 사업자등록정보 진위확인 및 상태조회** (`v1/status`)
         3. 발급받은 **Decoding Key**를 Streamlit Secrets에 등록
 
         ### ⚠️ 주의사항
         - 국민연금 API는 **가입자 3인 이상 법인사업장**, **10인 이상 개인사업장**만 조회 가능합니다.
         - 개발 계정 기준 **일 10,000건** 조회 제한이 있습니다.
         - 건강보험공단 데이터는 **정기 갱신** 기반이며, 실시간 데이터가 아닙니다.
+        - **국세청 데이터**는 실시간 휴/폐업 상태 및 과세유형을 제공합니다.
         - 금융위원회 기업정보는 **공시 대상 법인(상장사·외감법인 등)** 위주로 조회되며, 소규모 개인사업장은 결과가 없을 수 있습니다.
         - 재무정보는 **직전 사업연도** 기준이며, 미공시 시 2년 전 데이터를 자동 조회합니다.
         - 대표자명은 개인정보보호를 위해 API 조회 키로 사용하지 않습니다.
@@ -894,6 +898,26 @@ def show_business_info_crawling():
                     if st.checkbox(label, value=True, key=f"nhis_{field}"):
                         selected_nhis.append(field)
 
+            # ── [NEW] 국세청 (NTS) 사업자 상태 정보
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_nts = st.columns(1)[0]
+            with col_nts:
+                st.markdown("""
+<div class="qx-card">
+    <div class="qx-card-title">⚖️ 국세청 (NTS)</div>
+    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">사업자등록정보 진위확인 및 상태조회</div>
+</div>
+""", unsafe_allow_html=True)
+                selected_nts = []
+                nts_fields = [
+                    ("status", "사업자상태 (계속/휴업/폐업)"),
+                    ("tax_type", "과세유형 (일반/간이 등)"),
+                    ("end_dt", "폐업일자"),
+                ]
+                for field_id, label in nts_fields:
+                    if st.checkbox(label, value=True, key=f"nts_{field_id}"):
+                        selected_nts.append(field_id)
+
             # ── 금융위원회 기업정보 (3번째 컬럼)
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown('<div class="qx-section-label">금융위원회 기업정보 (자동 조회)</div>', unsafe_allow_html=True)
@@ -932,7 +956,7 @@ def show_business_info_crawling():
                     if checked and fss_available:
                         selected_fss_fina.append(field)
 
-            has_any_selection = selected_nps or selected_nhis or selected_fss_corp or selected_fss_fina
+            has_any_selection = selected_nps or selected_nhis or selected_fss_corp or selected_fss_fina or selected_nts
             if not has_any_selection:
                 st.info("조회할 항목을 하나 이상 선택하세요.")
             else:
@@ -1099,7 +1123,23 @@ def show_business_info_crawling():
                                 resolved_identities[idx_res] = data
                                 progress.progress(min(i / total_rows * 0.2, 0.19), text=f"기업 식별 중... ({i}/{total_rows})")
 
-                        # ── 중간 단계: 전역 데이터 준비 (NHIS 등)
+                        # ── 3단계: 국세청 (NTS) 상태 조회
+                        if selected_nts:
+                            status_area.caption("⚖️ 국세청 사업자 상태 조회 중...")
+                            # 유효한(마스킹되지 않은) BRN 목록 추출
+                            nts_query_brns = [ident.get("brn") for ident in resolved_identities.values() if ident.get("brn") and not "*" in ident.get("brn")]
+                            if nts_query_brns:
+                                nts_results = get_nts_business_status(nts_query_brns, api_service_key)
+                                # 결과 매핑
+                                for idx, ident in resolved_identities.items():
+                                    b_no = ident.get("brn")
+                                    if b_no in nts_results:
+                                        resolved_identities[idx].update({
+                                            f"nts_{k}": v for k, v in nts_results[b_no].items()
+                                        })
+                            progress.progress(0.4, text="국세청 상태 조회 완료")
+
+                        # ── 4단계: 개별 API 데이터 수집 (NHIS, NPS, FSS)
                         nhis_df = pd.DataFrame()
                         if selected_nhis:
                             # 캐시가 있고, 선택된 UDDI와 동일한 경우만 재사용
@@ -1270,6 +1310,17 @@ def show_business_info_crawling():
                                     val = _extract_nhis_field(idx, field)
                                     result_df.at[idx, f"[건강보험] {NHIS_FIELD_LABELS.get(field, field)}"] = val
                                     if val not in ["조회불가", "미조회", "해당없음"]:
+                                        has_any_data = True
+
+                            # NTS 결과 추출
+                            if selected_nts:
+                                nts_labels = {"status": "사업자상태", "tax_type": "과세유형", "end_dt": "폐업일자"}
+                                for field in selected_nts:
+                                    label = nts_labels.get(field, field)
+                                    col_name = f"[국세청] {label}"
+                                    val = res_id.get(f"nts_{field}", "")
+                                    result_df.at[idx, col_name] = val
+                                    if val and val not in ["", "조회실패"]:
                                         has_any_data = True
 
                             # FSS 결과 추출
