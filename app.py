@@ -26,7 +26,13 @@ import numpy as np
 from data_cleaner import DataImputer, WeightCalculator, DataAugmentor
 from codebook_utils import CodebookParser
 import plotly.express as px
-import api_utils
+
+from api.constants import DATA_GO_KR_SERVICE_KEY as SERVICE_KEY, OPEN_DART_API_KEY as DART_API_KEY
+from api_utils import (
+    detect_and_load_mois_excel, get_mois_region_levels,
+    parse_mois_excel_with_gender, format_sample_pivot_table,
+    SIDO_LIST
+)
 from api.nhis_api import (
     download_nhis_dataset, NHIS_SELECTABLE_FIELDS, NHIS_FIELD_LABELS, NHIS_FIELD_MAP,
     NHIS_ENDPOINTS
@@ -39,7 +45,6 @@ from api.fss_api import (
 )
 from api.dart_api import get_dart_corp_info
 from api.g2b_api import get_g2b_corp_info
-from api_utils import SERVICE_KEY, DART_API_KEY
 from utils.excel_handler import load_excel, export_result_excel
 from utils.matcher import normalize_brn, clean_company_names_bulk
 from usage_tracker import UsageTracker
@@ -699,7 +704,6 @@ def show_business_info_crawling():
         pass
     
     if not api_service_key:
-        from api_utils import SERVICE_KEY
         api_service_key = SERVICE_KEY
 
     if api_service_key:
@@ -2120,8 +2124,8 @@ def show_sample_design_system():
             st.markdown("<div style='margin-bottom: 5rem;'></div>", unsafe_allow_html=True)
 
         if pop_file:
-            from api_utils import (detect_and_load_mois_excel, get_mois_region_levels,
-                                   parse_mois_excel_with_gender, SIDO_LIST)
+            # MOIS 엑셀 자동 감지 (skiprows=3)
+            df_mois, is_mois = detect_and_load_mois_excel(pop_file)
             is_mois = False
             uploaded_pop = None
             pop_long_df = None
@@ -2494,7 +2498,6 @@ def show_sample_design_system():
         sc1.metric("최종 인원 (Total)", f"{current_total:,}명")
 
         # ── [v6.14] 피벗 테이블 (지역×성별×연령대) ─────────────────
-        from api_utils import format_sample_pivot_table
         pivot_df = format_sample_pivot_table(res_df)
 
         if pivot_df is not None:

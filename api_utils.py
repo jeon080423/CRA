@@ -6,9 +6,11 @@ import streamlit as st
 # [v6.0] 행정안전부 주민등록 인구현황 API 연동 유틸리티
 # [v6.15] stdgSexdAgePpltn (법정동별 통반단위 성/연령별) 엔드포인트 추가
 
+from api.constants import DATA_GO_KR_SERVICE_KEY, OPEN_DART_API_KEY
+
 # 사용자 발급 인증키 (공공데이터포털 stdgSexdAgePpltn 승인)
-SERVICE_KEY = "6be75af37c6693a24417c2ed2930e4bd4dd01dddf289552260ce8ce1daf43414"
-DART_API_KEY = "7482f082735913da589f86b94d2a0639a6673fcd"
+SERVICE_KEY = DATA_GO_KR_SERVICE_KEY
+DART_API_KEY = OPEN_DART_API_KEY
 
 # ① 법정동별(통반단위) 성/연령별 → 승인된 API
 STDG_BASE_URL = "https://apis.data.go.kr/1741000/stdgSexdAgePpltn"
