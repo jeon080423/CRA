@@ -657,54 +657,52 @@ def show_business_info_crawling():
     # ── 데이터 수집 흐름도
     st.markdown("""
 <div class="qx-card" style="padding: 1.5rem 2rem;">
-    <div class="qx-card-title" style="margin-bottom: 1.2rem; font-size: 1.1rem;">📊 기업체 행정정보 수집 및 매칭 프로세스</div>
-    <div style="display:flex; flex-direction:column; gap:1rem;">
-        <!-- 상단: 입력 및 엔진 -->
-        <div style="display:flex; align-items:center; justify-content:center; gap:1rem; margin-bottom:0.5rem;">
-            <div style="background:#0F6CBD; color:white; padding:0.8rem 1.4rem; border-radius:10px; font-weight:600; font-size:0.9rem; min-width:160px; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                📋 엑셀 업로드<br><span style="font-size:0.75rem; font-weight:400; opacity:0.9;">사업자번호 · 회사명 · 주소</span>
-            </div>
-            <div style="color:#8B96A9; font-size:1.5rem; font-weight:bold;">→</div>
-            <div style="background:#F4F6F9; border:2px solid #0F6CBD; padding:0.8rem 1.4rem; border-radius:10px; font-size:0.9rem; color:#0F6CBD; font-weight:700; text-align:center; min-width:160px;">
-                ⚙️ AI 지능형 매칭 엔진<br><span style="font-size:0.75rem; font-weight:400; color:#3D4F6B;">데이터 정제 및 식별자 해결</span>
-            </div>
-            <div style="color:#8B96A9; font-size:1.5rem; font-weight:bold;">→</div>
-            <div style="background:#059669; color:white; padding:0.8rem 1.4rem; border-radius:10px; font-weight:600; font-size:0.9rem; min-width:160px; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                📥 결과 엑셀 다운로드<br><span style="font-size:0.75rem; font-weight:400; opacity:0.9;">행정통합 리포트 생성</span>
-            </div>
-        </div>
-        
-        <!-- 중앙: 연결선 (화살표) -->
-        <div style="display:flex; justify-content:center; font-size:1.2rem; color:#8B96A9; margin:-0.5rem 0;">
-            <div style="width:160px;"></div>
-            <div style="text-align:center; padding-left:20px;">⇅</div>
-            <div style="width:160px;"></div>
-        </div>
-
-        <!-- 하단: 4개 채널 (6개 기관 연동) -->
-        <div style="display:flex; gap:0.7rem; flex-wrap:wrap;">
-            <div style="flex:1; min-width:140px; background:#EEF4FD; border:1px solid #BDD7F5; border-radius:12px; padding:0.8rem; text-align:center; transition: transform 0.2s;">
-                <div style="font-size:1.3rem; margin-bottom:0.3rem;">🏢</div>
-                <div style="font-size:0.8rem; font-weight:700; color:#0F6CBD; margin-bottom:0.3rem;">NPS / NHIS</div>
-                <div style="font-size:0.7rem; color:#475569; line-height:1.5;"><b>복지·고용</b><br>인원수 · 고지금액<br>업종 · 가입상태</div>
-            </div>
-            <div style="flex:1; min-width:140px; background:#FEF3E2; border:1px solid #FCD34D; border-radius:12px; padding:0.8rem; text-align:center; border-left: 4px solid #F59E0B;">
-                <div style="font-size:1.3rem; margin-bottom:0.3rem;">⚖️</div>
-                <div style="font-size:0.8rem; font-weight:700; color:#B45309; margin-bottom:0.3rem;">NTS (국세청)</div>
-                <div style="font-size:0.7rem; color:#475569; line-height:1.5;"><b>실시간 휴/폐업</b><br>계속/휴업/폐업<br>과세유형 · 폐업일</div>
-            </div>
-            <div style="flex:1; min-width:140px; background:#F0FDF4; border:1px solid #86EFAC; border-radius:12px; padding:0.8rem; text-align:center;">
-                <div style="font-size:1.3rem; margin-bottom:0.3rem;">🏛️</div>
-                <div style="font-size:0.8rem; font-weight:700; color:#059669; margin-bottom:0.3rem;">FSS (금융위)</div>
-                <div style="font-size:0.7rem; color:#475569; line-height:1.5;"><b>재무·경영</b><br>재무제표 · 매출액<br>평균연봉 · 종업원</div>
-            </div>
-            <div style="flex:1; min-width:140px; background:#F5F3FF; border:1px solid #C4B5FD; border-radius:12px; padding:0.8rem; text-align:center; border-left: 4px solid #8B5CF6;">
-                <div style="font-size:1.3rem; margin-bottom:0.3rem;">🔍</div>
-                <div style="font-size:0.8rem; font-weight:700; color:#7C3AED; margin-bottom:0.3rem;">DART / G2B</div>
-                <div style="font-size:0.7rem; color:#475569; line-height:1.5;"><b>기업 식별·공공</b><br>BRN 복원(DART)<br>산업군·연락처(G2B)</div>
-            </div>
-        </div>
-    </div>
+<div class="qx-card-title" style="margin-bottom: 1.2rem; font-size: 1.1rem;">📊 기업체 행정정보 수집 및 매칭 프로세스</div>
+<div style="display:flex; flex-direction:column; gap:1rem;">
+<!-- 상단: 입력 및 엔진 -->
+<div style="display:flex; align-items:center; justify-content:center; gap:1rem; margin-bottom:0.5rem;">
+<div style="background:#0F6CBD; color:white; padding:0.8rem 1.4rem; border-radius:10px; font-weight:600; font-size:0.9rem; min-width:160px; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+📋 엑셀 업로드<br><span style="font-size:0.75rem; font-weight:400; opacity:0.9;">사업자번호 · 회사명 · 주소</span>
+</div>
+<div style="color:#8B96A9; font-size:1.5rem; font-weight:bold;">→</div>
+<div style="background:#F4F6F9; border:2px solid #0F6CBD; padding:0.8rem 1.4rem; border-radius:10px; font-size:0.9rem; color:#0F6CBD; font-weight:700; text-align:center; min-width:160px;">
+⚙️ AI 지능형 매칭 엔진<br><span style="font-size:0.75rem; font-weight:400; color:#3D4F6B;">데이터 정제 및 식별자 해결</span>
+</div>
+<div style="color:#8B96A9; font-size:1.5rem; font-weight:bold;">→</div>
+<div style="background:#059669; color:white; padding:0.8rem 1.4rem; border-radius:10px; font-weight:600; font-size:0.9rem; min-width:160px; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+📥 결과 엑셀 다운로드<br><span style="font-size:0.75rem; font-weight:400; opacity:0.9;">행정통합 리포트 생성</span>
+</div>
+</div>
+<!-- 중앙: 연결선 (화살표) -->
+<div style="display:flex; justify-content:center; font-size:1.2rem; color:#8B96A9; margin:-0.5rem 0;">
+<div style="width:160px;"></div>
+<div style="text-align:center; padding-left:20px;">⇅</div>
+<div style="width:160px;"></div>
+</div>
+<!-- 하단: 4개 채널 (6개 기관 연동) -->
+<div style="display:flex; gap:0.7rem; flex-wrap:wrap;">
+<div style="flex:1; min-width:140px; background:#EEF4FD; border:1px solid #BDD7F5; border-radius:12px; padding:0.8rem; text-align:center; transition: transform 0.2s;">
+<div style="font-size:1.3rem; margin-bottom:0.3rem;">🏢</div>
+<div style="font-size:0.8rem; font-weight:700; color:#0F6CBD; margin-bottom:0.3rem;">NPS / NHIS</div>
+<div style="font-size:0.7rem; color:#475569; line-height:1.5;"><b>복지·고용</b><br>인원수 · 고지금액<br>업종 · 가입상태</div>
+</div>
+<div style="flex:1; min-width:140px; background:#FEF3E2; border:1px solid #FCD34D; border-radius:12px; padding:0.8rem; text-align:center; border-left: 4px solid #F59E0B;">
+<div style="font-size:1.3rem; margin-bottom:0.3rem;">⚖️</div>
+<div style="font-size:0.8rem; font-weight:700; color:#B45309; margin-bottom:0.3rem;">NTS (국세청)</div>
+<div style="font-size:0.7rem; color:#475569; line-height:1.5;"><b>실시간 휴/폐업</b><br>계속/휴업/폐업<br>과세유형 · 폐업일</div>
+</div>
+<div style="flex:1; min-width:140px; background:#F0FDF4; border:1px solid #86EFAC; border-radius:12px; padding:0.8rem; text-align:center;">
+<div style="font-size:1.3rem; margin-bottom:0.3rem;">🏛️</div>
+<div style="font-size:0.8rem; font-weight:700; color:#059669; margin-bottom:0.3rem;">FSS (금융위)</div>
+<div style="font-size:0.7rem; color:#475569; line-height:1.5;"><b>재무·경영</b><br>재무제표 · 매출액<br>평균연봉 · 종업원</div>
+</div>
+<div style="flex:1; min-width:140px; background:#F5F3FF; border:1px solid #C4B5FD; border-radius:12px; padding:0.8rem; text-align:center; border-left: 4px solid #8B5CF6;">
+<div style="font-size:1.3rem; margin-bottom:0.3rem;">🔍</div>
+<div style="font-size:0.8rem; font-weight:700; color:#7C3AED; margin-bottom:0.3rem;">DART / G2B</div>
+<div style="font-size:0.7rem; color:#475569; line-height:1.5;"><b>기업 식별·공공</b><br>BRN 복원(DART)<br>산업군·연락처(G2B)</div>
+</div>
+</div>
+</div>
 </div>
     """, unsafe_allow_html=True)
 
