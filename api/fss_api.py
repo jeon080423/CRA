@@ -227,5 +227,3 @@ def validate_crno(crno: str) -> bool:
         return check_digit == int(clean_crno[12])
     except:
         return False
-
-

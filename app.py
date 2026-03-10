@@ -2901,15 +2901,15 @@ def show_outlier_inspection_system(mode="outlier"):
             결측값을 해당 변수의 **전체 평균(수치형)**, **중앙값**, 또는 **최빈값(범주형)**으로 대체하는 가장 기본적인 단일 대체법
             """)
             st.latex(r"\hat{x}_{missing} = \bar{x}_{observed} = \frac{1}{n_{obs}} \sum_{i=1}^{n_{obs}} x_i")
-            st.markdown("""
+            st.markdown(r"""
             - **적용 조건:** MCAR 상황, 결측률 5~10% 이내, 정규분포에 가까운 데이터
-            - **한계:** 분산이 과소 추정되며$(\\hat{\sigma}^2 \downarrow)$, 변수 간 상관관계가 왜곡될 수 있음
+            - **한계:** 분산이 과소 추정되며$(\hat{\sigma}^2 \downarrow)$, 변수 간 상관관계가 왜곡될 수 있음
 
             #### **2. 랜덤 대체 (Random Imputation)**
             결측값을 해당 변수의 **관측값 분포에서 무작위 복원 추출(Random Sampling with Replacement)**하여 대체하는 방식. 단순 평균 대체의 **분산 축소(Variance Underestimation)** 문제를 해결함
             """)
             st.latex(r"\hat{x}_{missing} \sim F_{observed}(x) \quad \text{(관측값의 경험적 분포에서 추출)}")
-            st.markdown("""
+            st.markdown(r"""
             - **장점:** 원래 데이터의 분포 형태(분산, 왜도)를 보존하여 통계적 추론의 편향을 줄임
             - **적용 조건:** MCAR 상황에서 분포 보존이 중요할 때 권장
             - **한계:** 변수 간 공분산(Covariance) 구조를 반영하지 못하므로, 다변량 분석 시 주의 필요
