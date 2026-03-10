@@ -986,7 +986,9 @@ def show_business_info_crawling():
                                 "brn": "", # API에서 확인된 BRN만 담음
                                 "input_brn": row_brn, # 사용자 입력 BRN (Fallback용)
                                 "crno": "", "api_name": "", 
-                                "api_addr": "", "match_score": 0.0
+                                "api_addr": "", "api_ceo": "",
+                                "api_tel": "", "api_biz_type": "",
+                                "match_score": 0.0
                             }
                             def _log_debug(msg):
                                 try:
@@ -1051,7 +1053,7 @@ def show_business_info_crawling():
                                     # 단, BRN이 여전히 마스킹되어 있고 사용자가 준 번호가 있다면 복구
                                     if _is_masked(res_id["brn"]) and row_brn and not _is_masked(row_brn) and len(normalize_brn(row_brn))==10:
                                         res_id["brn"] = normalize_brn(row_brn)
-                                    return idx, res_id
+                                    # [v7.1] NPS 성공 시에도 아래의 DART/G2B Enrichment 로직이 실행되도록 return 제거
                                 else:
                                     res_id["nps_error"] = nps_id_res.get("_error") if nps_id_res else "결과없음"
                             except Exception as e:
