@@ -47,7 +47,7 @@ from api.dart_api import get_dart_corp_info
 from api.g2b_api import get_g2b_corp_info
 from api.nts_api import get_nts_business_status
 from utils.excel_handler import load_excel, export_result_excel
-from utils.matcher import normalize_brn, clean_company_names_bulk, clean_addresses_bulk, split_address
+from utils.matcher import normalize_brn, clean_company_names_bulk, clean_addresses_bulk, clean_address, split_address
 from usage_tracker import UsageTracker
 
 # ── 이용 통계 트래커 초기화
@@ -911,7 +911,7 @@ def show_business_info_crawling():
                 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            col_nps, col_nhis = st.columns(2)
+            col_nps, col_nhis, col_nts = st.columns(3)
 
             with col_nps:
                 st.markdown("""
@@ -938,29 +938,23 @@ def show_business_info_crawling():
                 if brn_col == "(선택 안 함)":
                     st.info("💡 **사업자번호가 없다면**, '회사명'과 '주소' 컬럼을 모두 매핑해 주세요. (주소 정보가 있을 때 매칭 정확도가 가장 높습니다.)")
                 
-                # [v6.35] 가이드 링크 등 필요 시 추가
                 nhis_year = st.selectbox(
                     "데이터 시점 선택", 
                     options=list(NHIS_ENDPOINTS.keys()),
                     index=0,
                     key="nhis_year_selector"
                 )
-                selected_nhis_uddi = NHIS_ENDPOINTS[nhis_year]
-                
                 selected_nhis = []
                 for field in NHIS_SELECTABLE_FIELDS:
                     label = NHIS_FIELD_LABELS.get(field, field)
                     if st.checkbox(label, value=True, key=f"nhis_{field}"):
                         selected_nhis.append(field)
 
-            # ── [NEW] 국세청 (NTS) 사업자 상태 정보
-            st.markdown("<br>", unsafe_allow_html=True)
-            col_nts = st.columns(1)[0]
             with col_nts:
                 st.markdown("""
 <div class="qx-card">
     <div class="qx-card-title">⚖️ 국세청 (NTS)</div>
-    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">사업자등록정보 진위확인 및 상태조회</div>
+    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.1rem;">진위확인 및 상태조회</div>
 </div>
 """, unsafe_allow_html=True)
                 selected_nts = []

@@ -135,12 +135,37 @@ def clean_address(addr) -> str:
     return s
 
 
+def _normalize_sido(sido: str) -> str:
+    """시도 명칭을 표준 단축형으로 변환"""
+    if not sido: return ""
+    s = sido.strip()
+    mapping = {
+        "서울특별시": "서울", "서울시": "서울",
+        "부산광역시": "부산", "부산시": "부산",
+        "대구광역시": "대구", "대구시": "대구",
+        "인천광역시": "인천", "인천시": "인천",
+        "광주광역시": "광주", "광주시": "광주",
+        "대전광역시": "대전", "대전시": "대전",
+        "울산광역시": "울산", "울산시": "울산",
+        "세종특별자치시": "세종", "세종시": "세종",
+        "경기도": "경기",
+        "강원특별자치도": "강원", "강원도": "강원",
+        "충청북도": "충북",
+        "충청남도": "충남",
+        "전라북도": "전북", "전북특별자치도": "전북",
+        "전라남도": "전남",
+        "경상북도": "경북",
+        "경상남도": "경남",
+        "제주특별자치도": "제주", "제주시": "제주", "제주도": "제주"
+    }
+    return mapping.get(s, s)
+
+
 def split_address(addr):
     """
-    주소를 시도, 시군구, 이후 주소로 분리
+    주소를 시도, 시군구, 이후 주소로 분리 및 정규화
     Returns: (sido, sigungu, rest)
     """
-    # [v8.2] 정제된 주소 기준
     s = clean_address(addr)
     if not s:
         return "", "", ""
@@ -149,7 +174,10 @@ def split_address(addr):
     if len(parts) == 0:
         return "", "", ""
     
-    sido = parts[0]
+    # 1. 시도 처리 및 정규화
+    raw_sido = parts[0]
+    sido = _normalize_sido(raw_sido)
+    
     sigungu = ""
     rest = ""
     
@@ -160,12 +188,37 @@ def split_address(addr):
         return sido, sigungu, rest
 
     if len(parts) > 1:
-        # 시군구 처리 (구가 있는 시의 경우 2단어일 수 있음: 예: 수원시 팔달구)
-        if len(parts) > 2 and parts[1].endswith(('시', '군')) and parts[2].endswith('구'):
-            sigungu = f"{parts[1]} {parts[2]}"
-            rest = " ".join(parts[3:])
+        # 2. 시군구 처리
+        # [v9.0] 접미사(시, 군, 구) 보완 매커니즘
+        def _ensure_suffix(word, suffixes):
+            if not word: return ""
+            if word.endswith(suffixes): return word
+            # 특정 예외나 빈번한 누락 케이스 대응 (필요 시 확장)
+            if word in ["수원", "성남", "안양", "용인", "고양", "안산", "창원", "천안", "청주", "포항"]:
+                return word + "시"
+            if word in ["팔달", "영통", "권선", "장안", "수정", "중원", "분당", "만안", "동안", "처인", "기흥", "수지"]:
+                return word + "구"
+            # 기본적으로 뒤에 오는 단어가 있으면 '시' 또는 '구'일 가능성이 높음
+            # 여기서는 보수적으로 시/군/구 중 하나가 아예 없는 경우에만 추측 (사용자 요청 반영)
+            return word
+
+        # 구가 있는 시의 경우 (예: 수원시 팔달구)
+        if len(parts) > 2:
+            p1, p2 = parts[1], parts[2]
+            # p1이 시/군으로 끝나거나 p2가 구로 끝나는 경우 조합
+            if (p1.endswith(('시', '군')) and p2.endswith('구')) or \
+               (p1 in ["수원", "성남", "안양", "용인", "고양", "안산", "창원", "천안", "청주", "포항"] and p2.endswith('구')) or \
+               (p1.endswith(('시', '군')) and p2 in ["팔달", "영통", "권선", "장구", "수정", "중원", "분당", "만안", "동안", "처인", "기흥", "수지"]):
+                
+                sgg1 = _ensure_suffix(p1, ('시', '군'))
+                sgg2 = _ensure_suffix(p2, ('구'))
+                sigungu = f"{sgg1} {sgg2}"
+                rest = " ".join(parts[3:])
+            else:
+                sigungu = _ensure_suffix(p1, ('시', '군', '구'))
+                rest = " ".join(parts[2:])
         else:
-            sigungu = parts[1]
+            sigungu = _ensure_suffix(parts[1], ('시', '군', '구'))
             rest = " ".join(parts[2:])
     
     return sido, sigungu, rest
