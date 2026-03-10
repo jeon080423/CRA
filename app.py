@@ -27,7 +27,21 @@ from data_cleaner import DataImputer, WeightCalculator, DataAugmentor
 from codebook_utils import CodebookParser
 import plotly.express as px
 import api_utils
-from api.nhis_api import NHIS_ENDPOINTS
+from api.nhis_api import (
+    download_nhis_dataset, NHIS_SELECTABLE_FIELDS, NHIS_FIELD_LABELS, NHIS_FIELD_MAP,
+    NHIS_ENDPOINTS
+)
+from api.nps_api import search_and_match_nps, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP, estimate_avg_salary
+from api.fss_api import (
+    search_corp_by_name, search_financial_by_crno,
+    FSS_CORP_SELECTABLE_FIELDS, FSS_CORP_FIELD_LABELS,
+    FSS_FINA_SELECTABLE_FIELDS, FSS_FINA_FIELD_LABELS,
+)
+from api.dart_api import get_dart_corp_info
+from api.g2b_api import get_g2b_corp_info
+from api_utils import SERVICE_KEY, DART_API_KEY
+from utils.excel_handler import load_excel, export_result_excel
+from utils.matcher import normalize_brn, clean_company_names_bulk
 from usage_tracker import UsageTracker
 
 # ── 이용 통계 트래커 초기화
@@ -565,18 +579,6 @@ def perform_rfp_analysis():
 def show_business_info_crawling():
     """공공데이터포털 API를 활용한 기업체 일반 현황 행정자료 비교 시스템 UI"""
     import time
-    from api.nps_api import search_and_match_nps, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP, estimate_avg_salary
-    from api.nhis_api import download_nhis_dataset, NHIS_SELECTABLE_FIELDS, NHIS_FIELD_LABELS, NHIS_FIELD_MAP
-    from api.fss_api import (
-        search_corp_by_name, search_financial_by_crno,
-        FSS_CORP_SELECTABLE_FIELDS, FSS_CORP_FIELD_LABELS,
-        FSS_FINA_SELECTABLE_FIELDS, FSS_FINA_FIELD_LABELS,
-    )
-    from api.dart_api import get_dart_corp_info
-    from api.g2b_api import get_g2b_corp_info
-    from api_utils import SERVICE_KEY, DART_API_KEY
-    from utils.excel_handler import load_excel, export_result_excel
-    from utils.matcher import normalize_brn, clean_company_names_bulk
 
     # 상단 헤더
     st.markdown("""
