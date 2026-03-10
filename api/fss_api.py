@@ -85,8 +85,11 @@ def search_corp_by_name(company_name: str, service_key: str, brn: str = "", addr
         "resultType": "json",
     }
     
-    # 법인등록번호가 있으면 이를 우선적으로 검색 파라미터로 시도
-    if clean_crno and len(clean_crno) == 13:
+    # 검색 파라미터 구성 (BRN > CRNO > CorpName 순으로 우선순위 부여)
+    brn_clean = _normalize_brn(brn)
+    if brn_clean and "*" not in brn_clean and len(brn_clean) == 10:
+        params["bzno"] = brn_clean
+    elif clean_crno and len(clean_crno) == 13:
         params["crno"] = clean_crno
     else:
         params["corpNm"] = search_name_clean or company_name.strip()
@@ -122,12 +125,28 @@ def search_corp_by_name(company_name: str, service_key: str, brn: str = "", addr
                     if str(item.get("crno", "")).replace("-", "") == clean_crno:
                         return item
 
-            # 2) BRN 매칭
+            # 2) BRN 매칭 (Exact or Fit Match for Masking)
             brn_clean = _normalize_brn(brn)
-            if brn_clean and "*" not in brn_clean and len(brn_clean) == 10:
+            if brn_clean:
+                is_input_masked = "*" in brn_clean
                 for item in item_list:
-                    if _normalize_brn(item.get("bzno", "")) == brn_clean:
+                    api_brn = _normalize_brn(item.get("bzno", ""))
+                    if not api_brn: continue
+                    
+                    # Exact Match
+                    if api_brn == brn_clean:
                         return item
+                    
+                    # Fit Match: 입력값이 마스킹되어 있고, API값이 마스킹을 충족하는 경우
+                    if is_input_masked and len(api_brn) == 10 and "*" not in api_brn:
+                        # * 자리를 제외한 나머지 숫자 일치 확인
+                        match = True
+                        for i in range(10):
+                            if brn_clean[i] != "*" and brn_clean[i] != api_brn[i]:
+                                match = False
+                                break
+                        if match:
+                            return item
 
             # 3) 이름 및 주소 유사도 매칭 (CRNO가 없을 때만 수행하거나 fallback)
             from difflib import SequenceMatcher

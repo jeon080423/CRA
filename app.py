@@ -1108,81 +1108,66 @@ def show_business_info_crawling():
                                     
                                 return n_clean
 
-                            # 1) FSS API 우선 시도 (가장 신뢰도 높은 기본정보 출처)
-                            # [v9.6] 법인등록번호(CRNO) 우선순위 로직 적용
-                            try:
-                                # CRNO가 유효하면 CRNO로 우선 검색하여 정확한 BRN/법인정보 획득 시도
-                                fss_id_res = None
-                                if row_crno and validate_crno(row_crno):
-                                    fss_id_res = search_corp_by_name(row_name, api_service_key, brn=row_brn, address=row_addr, crno=row_crno)
-                                
-                                # CRNO 검색 결과가 없거나 CRNO가 없는 경우 기존 방식(이름/사업자번호)으로 시도
-                                if not fss_id_res or "_error" in fss_id_res:
-                                    fss_id_res = search_corp_by_name(row_name, api_service_key, brn=row_brn, address=row_addr)
+                            # [v10.0] BRN-First Discovery Strategy 적용
+                            # 모든 정보의 결합 목적은 "정확한(마스킹 없는) BRN 확보"
 
-                                if fss_id_res and "_error" not in fss_id_res:
-                                    api_brn = normalize_brn(fss_id_res.get("bzno", ""))
-                                    res_id["brn"] = _update_brn(row_brn, api_brn) # 유효한 BRN으로 업데이트 (언마스킹)
-                                    res_id["crno"] = str(fss_id_res.get("crno", "")).strip()
-                                    res_id["api_name"] = str(fss_id_res.get("corpNm", "")).strip()
-                                    res_id["api_addr"] = str(fss_id_res.get("enpAddr", "")).strip()
-                                    res_id["api_ceo"] = str(fss_id_res.get("ceoNm", "")).strip() # FSS 대표자명
-                                    
-                                    # 매칭 점수 산정: 입력값과 API 결과가 일치하면 고득점
-                                    is_brn_match = row_brn and not _is_masked(res_id["brn"]) and res_id["brn"] == normalize_brn(row_brn)
-                                    is_crno_match = row_crno and res_id["crno"] == str(row_crno).strip()
-                                    res_id["match_score"] = 100.0 if (is_brn_match or is_crno_match) else 80.0
-                                    # FSS 성공 시에도 DART/G2B로 추가 보정 수행 (아래 공통 로직)
-                                else:
-                                    res_id["fss_error"] = fss_id_res.get("_error") if fss_id_res else "결과없음"
-                            except Exception as e:
-                                res_id["fss_error"] = str(e)
-
-                            # 2) FSS 실패 시 NPS API 시도 (NPS는 거의 필수로 마스킹됨)
-                            try:
-                                nps_id_res = search_and_match_nps(row_name, row_brn, api_service_key, address=row_addr)
-                                if nps_id_res and "_error" not in nps_id_res:
-                                    api_brn = normalize_brn(nps_id_res.get("bzowrRgstNo", ""))
-                                    res_id["brn"] = _update_brn(res_id["brn"] or row_brn, api_brn) # 기존 결과(FSS 등)가 있으면 유지 시도
-                                    res_id["api_name"] = str(nps_id_res.get("wkplNm", "")).strip()
-                                    res_id["api_addr"] = str(nps_id_res.get("wkplRoadNmAddr", "") or nps_id_res.get("wkplRoadNmDtlAddr", "")).strip()
-                                    res_id["match_score"] = 100.0 if row_brn and not _is_masked(res_id["brn"]) and res_id["brn"] == normalize_brn(row_brn) else 70.0
-                                    # NPS 매칭 성공했으므로 리턴 (상세 정보는 2단계에서 가져옴)
-                                    # 단, BRN이 여전히 마스킹되어 있고 사용자가 준 번호가 있다면 복구
-                                    if _is_masked(res_id["brn"]) and row_brn and not _is_masked(row_brn) and len(normalize_brn(row_brn))==10:
-                                        res_id["brn"] = normalize_brn(row_brn)
-                                    # [v7.1] NPS 성공 시에도 아래의 DART/G2B Enrichment 로직이 실행되도록 return 제거
-                                else:
-                                    res_id["nps_error"] = nps_id_res.get("_error") if nps_id_res else "결과없음"
-                            except Exception as e:
-                                res_id["nps_error"] = str(e)
-                            
-                            # [v7.1] 추가 고도화: 모든 식별 성공 건에 대해 DART/G2B 2차 Enrichment 수행
-                            # 1) DART API를 통한 언마스킹 및 상세 정보 (대표자, 법인번호 등) 보완
-                            final_target_name = res_id["api_name"] or row_name
-                            if DART_API_KEY and final_target_name:
-                                dart_info = get_dart_corp_info(final_target_name, DART_API_KEY)
+                            # 1) DART API를 통한 언마스킹 시도 (가장 강력한 언마스킹 수단)
+                            dart_info = {}
+                            if DART_API_KEY and row_name:
+                                dart_info = get_dart_corp_info(row_name, DART_API_KEY)
                                 if dart_info:
-                                    # 번호가 마스킹되어 있다면 DART 번호로 교체
-                                    if _is_masked(res_id["brn"]):
-                                        res_id["brn"] = normalize_brn(dart_info.get("brn", res_id["brn"]))
-                                    
-                                    # 누락된 정보 채우기
+                                    api_brn = normalize_brn(dart_info.get("brn", ""))
+                                    res_id["brn"] = _update_brn(row_brn, api_brn)
                                     res_id["crno"] = res_id["crno"] or dart_info.get("crno", "")
-                                    res_id["api_ceo"] = res_id["api_ceo"] or dart_info.get("ceo_nm", "")
-                                    res_id["api_addr"] = res_id["api_addr"] or dart_info.get("addr", "")
-                                    _log_debug(f"DART Enriched: {final_target_name}")
+                                    res_id["api_name"] = dart_info.get("corp_name", "")
+                                    res_id["api_addr"] = dart_info.get("addr", "")
+                                    _log_debug(f"DART Unmasked/Enriched: {res_id['brn']}")
 
-                            # 2) G2B(나라장터) API를 통한 업종/연락처 등 보완 (이미 번호가 확보된 경우)
-                            final_brn = normalize_brn(res_id["brn"] or row_brn)
-                            if api_service_key and final_brn and not _is_masked(final_brn):
-                                g2b_info = get_g2b_corp_info(final_brn, api_service_key)
+                            # 2) G2B(나라장터)를 통한 보완 (BRN 기반 직접 조회)
+                            current_brn = normalize_brn(res_id["brn"] or row_brn)
+                            if api_service_key and current_brn and not _is_masked(current_brn):
+                                g2b_info = get_g2b_corp_info(current_brn, api_service_key)
                                 if g2b_info:
                                     res_id["api_ceo"] = res_id["api_ceo"] or g2b_info.get("ceo_nm", "")
                                     res_id["api_tel"] = g2b_info.get("telno")
                                     res_id["api_biz_type"] = g2b_info.get("bizType")
                                     res_id["api_addr"] = res_id["api_addr"] or g2b_info.get("addr", "")
-                                    _log_debug(f"G2B Enriched: {final_brn}")
+                                    _log_debug(f"G2B Enriched: {current_brn}")
+
+                            # 3) FSS API 최종 확인 및 상세정보 확보
+                            # 확보된 (언마스킹된) BRN이 있으면 이를 검색어로 사용하여 FSS에서 최종 데이터 결합
+                            try:
+                                target_brn_for_fss = res_id["brn"] if not _is_masked(res_id["brn"]) else row_brn
+                                fss_id_res = search_corp_by_name(row_name, api_service_key, brn=target_brn_for_fss, address=row_addr, crno=row_crno or res_id["crno"])
+                                
+                                if fss_id_res and "_error" not in fss_id_res:
+                                    api_brn = normalize_brn(fss_id_res.get("bzno", ""))
+                                    res_id["brn"] = _update_brn(res_id["brn"], api_brn)
+                                    res_id["crno"] = res_id["crno"] or str(fss_id_res.get("crno", "")).strip()
+                                    res_id["api_name"] = res_id["api_name"] or str(fss_id_res.get("corpNm", "")).strip()
+                                    res_id["api_addr"] = res_id["api_addr"] or str(fss_id_res.get("enpAddr", "")).strip()
+                                    res_id["api_ceo"] = res_id["api_ceo"] or str(fss_id_res.get("ceoNm", "")).strip()
+                                    
+                                    is_brn_match = not _is_masked(res_id["brn"]) and (res_id["brn"] == normalize_brn(row_brn) or len(res_id["brn"]) == 10)
+                                    res_id["match_score"] = 100.0 if (is_brn_match) else 80.0
+                                else:
+                                    res_id["fss_error"] = fss_id_res.get("_error") if fss_id_res else "결과없음"
+                            except Exception as e:
+                                res_id["fss_error"] = str(e)
+
+                            # 4) NPS API 시도 (마지막 수단 또는 추가 확인)
+                            try:
+                                current_brn = normalize_brn(res_id["brn"] or row_brn)
+                                nps_id_res = search_and_match_nps(row_name, current_brn, api_service_key, address=row_addr)
+                                if nps_id_res and "_error" not in nps_id_res:
+                                    api_brn = normalize_brn(nps_id_res.get("bzowrRgstNo", ""))
+                                    res_id["brn"] = _update_brn(res_id["brn"], api_brn)
+                                    res_id["api_name"] = res_id["api_name"] or str(nps_id_res.get("wkplNm", "")).strip()
+                                    res_id["api_addr"] = res_id["api_addr"] or str(nps_id_res.get("wkplRoadNmAddr", "") or nps_id_res.get("wkplRoadNmDtlAddr", "")).strip()
+                                    if res_id["match_score"] < 70:
+                                        res_id["match_score"] = 70.0
+                            except Exception as e:
+                                res_id["nps_error"] = str(e)
 
                             return idx, res_id
 
