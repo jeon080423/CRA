@@ -8,6 +8,7 @@ import streamlit as st
 
 # 사용자 발급 인증키 (공공데이터포털 stdgSexdAgePpltn 승인)
 SERVICE_KEY = "6be75af37c6693a24417c2ed2930e4bd4dd01dddf289552260ce8ce1daf43414"
+DART_API_KEY = "7482f082735913da589f86b94d2a0639a6673fcd"
 
 # ① 법정동별(통반단위) 성/연령별 → 승인된 API
 STDG_BASE_URL = "https://apis.data.go.kr/1741000/stdgSexdAgePpltn"

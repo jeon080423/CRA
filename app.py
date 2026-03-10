@@ -572,6 +572,9 @@ def show_business_info_crawling():
         FSS_CORP_SELECTABLE_FIELDS, FSS_CORP_FIELD_LABELS,
         FSS_FINA_SELECTABLE_FIELDS, FSS_FINA_FIELD_LABELS,
     )
+    from api.dart_api import get_dart_corp_info
+    from api.g2b_api import get_g2b_corp_info
+    from api_utils import SERVICE_KEY, DART_API_KEY
     from utils.excel_handler import load_excel, export_result_excel
     from utils.matcher import normalize_brn, clean_company_names_bulk
 
@@ -1047,13 +1050,43 @@ def show_business_info_crawling():
                             except Exception as e:
                                 res_id["nps_error"] = str(e)
                             
-                            # 최종 보정: 매칭은 성공했는데 번호가 마스킹된 경우 사용자가 준 10자리 번호가 있다면 복구
-                            if _is_masked(res_id["brn"]) and row_brn and not _is_masked(row_brn) and len(normalize_brn(row_brn))==10:
-                                res_id["brn"] = normalize_brn(row_brn)
+                            # 최종 보정: 매칭은 성공했는데 번호가 마스킹된 경우
+                            if _is_masked(res_id["brn"]):
+                                # 1) 사용자가 준 10자리 번호가 있다면 복구
+                                if row_brn and not _is_masked(row_brn) and len(normalize_brn(row_brn))==10:
+                                    res_id["brn"] = normalize_brn(row_brn)
+                                
+                                # 2) 여전히 마스킹 상태라면 DART API를 통해 언마스킹 시도 (법인/외감 대상 한정)
+                                if _is_masked(res_id["brn"]) and DART_API_KEY:
+                                    dart_info = get_dart_corp_info(res_id["api_name"] or row_name, DART_API_KEY)
+                                    if dart_info.get("brn") and not _is_masked(dart_info["brn"]):
+                                        res_id["brn"] = normalize_brn(dart_info["brn"])
+                                        res_id["crno"] = dart_info.get("crno", res_id["crno"])
+                                        res_id["api_ceo"] = dart_info.get("ceo_nm", "")
+                                        res_id["api_addr_detail"] = dart_info.get("addr", "")
+                                        _log_debug(f"DART Unmasked: {res_id['api_name']} -> {res_id['brn']}")
+
+                                # 3) 여전히 마스킹 상태라면 G2B(나라장터) API를 통해 언마스킹 시도 (조달업체 한정)
+                                # 상호명 기반 검색 기능이 G2B에 없으므로, 마스킹된 번호의 앞자리와 상호명 매칭이 필요할 수 있으나
+                                # G2B는 주로 BRN을 알아야 조회가 가능함. 다만 G2B 기본 정보에 다른 데이터가 풍부하므로 
+                                # 마이그레이션된 전체 번호가 확인되는 경우 업데이트.
+                                if _is_masked(res_id["brn"]) and api_service_key:
+                                    # (참고) G2B는 현재 BRN 기반 조회가 주력이므로, 완전한 번호를 모를 경우 fallback이 제한적임.
+                                    # 하지만 unmasked_brn이 중간에 확보되면 G2B로 추가 정보를 채울 수 있음.
+                                    pass
 
                             # 최후의 수단: 검색은 실패했지만 사용자가 입력한 번호라도 유지
                             if not res_id["brn"] and row_brn and not _is_masked(row_brn):
                                 res_id["brn"] = normalize_brn(row_brn)
+                            
+                            # 추가 정보 채우기 (G2B 등)
+                            if res_id["brn"] and not _is_masked(res_id["brn"]):
+                                g2b_info = get_g2b_corp_info(res_id["brn"], api_service_key)
+                                if g2b_info:
+                                    res_id["api_ceo"] = g2b_info.get("ceo_nm") or res_id.get("api_ceo")
+                                    res_id["api_tel"] = g2b_info.get("telno")
+                                    res_id["api_biz_type"] = g2b_info.get("bizType")
+                                    res_id["api_addr"] = g2b_info.get("addr") or res_id.get("api_addr")
 
                             return idx, res_id
 
@@ -1196,6 +1229,9 @@ def show_business_info_crawling():
                         # 식별된 마스터 ID를 기반으로 신뢰도 및 기본 정보 세팅
                         result_df["[공공데이터] 사업자등록번호"] = ""
                         result_df["[공공데이터] 법인등록번호"] = ""
+                        result_df["[공공데이터] 대표자명"] = ""
+                        result_df["[조달청] 등록업종"] = ""
+                        result_df["[조달청] 전화번호"] = ""
                         result_df["유사도(%)"] = 0.0
 
                         rows_with_data = 0
@@ -1205,6 +1241,9 @@ def show_business_info_crawling():
                             master_crno = res_id.get("crno", "")
                             result_df.at[idx, "[공공데이터] 사업자등록번호"] = master_brn
                             result_df.at[idx, "[공공데이터] 법인등록번호"] = master_crno
+                            result_df.at[idx, "[공공데이터] 대표자명"] = res_id.get("api_ceo", "")
+                            result_df.at[idx, "[조달청] 등록업종"] = res_id.get("api_biz_type", "")
+                            result_df.at[idx, "[조달청] 전화번호"] = res_id.get("api_tel", "")
                             
                             has_any_data = False
 
