@@ -57,10 +57,14 @@ FSS_FINA_FIELD_LABELS = {
 
 
 def _normalize_brn(brn: str) -> str:
-    """사업자등록번호 정규화 (하이픈 제거, 10자리 zero-fill)"""
+    """사업자등록번호 정규화 (하이픈/공백 제거, 10자리 zero-fill)"""
     if not brn:
         return ""
-    return re.sub(r"[^0-9]", "", str(brn)).zfill(10)
+    # 마스킹(*) 포함 가능하도록 하이픈과 공백만 제거
+    brn_str = str(brn).strip().replace("-", "").replace(" ", "")
+    if "." in brn_str:
+        brn_str = brn_str.split(".")[0]
+    return brn_str.zfill(10)
 
 
 def search_corp_by_name(company_name: str, service_key: str, brn: str = "", address: str = "", crno: str = "") -> dict:
@@ -147,8 +151,14 @@ def search_corp_by_name(company_name: str, service_key: str, brn: str = "", addr
                 
                 if is_name_match:
                     addr_sim = _get_sim(address, api_addr) if address else 0.5
-                    # 가중치 점수
-                    score = name_sim * 0.4 + addr_sim * 0.6
+                    # 가중치 점수 조정: 이름(0.7), 주소(0.3)
+                    # 이름이 완벽히 일치(0.95+)하면 주소가 달라도 가중치 부여
+                    name_weight = 0.7
+                    addr_weight = 0.3
+                    score = name_sim * name_weight + addr_sim * addr_weight
+                    
+                    if name_sim >= 0.95:
+                        score = max(score, 0.85) # 이름이 거의 같으면 주소 달라도 후보 유지
                     if score > max_score:
                         max_score = score
                         best_item = item
