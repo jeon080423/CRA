@@ -108,3 +108,90 @@ def text_similarity(a, b) -> float:
 
 # ── 로컬 매칭 (전체 데이터셋 기반) ──────────────────────────────
 
+
+# ── 주소 정제 및 분리 ────────────────────────────────────
+
+def clean_address(addr) -> str:
+    """
+    주소에서 우편번호를 제거하고 공백을 정규화
+    예: (03171) 서울특별시 종로구 -> 서울특별시 종로구
+    """
+    if pd.isna(addr) or not str(addr).strip():
+        return ""
+    
+    s = str(addr).strip()
+    
+    # 1. 우편번호 관련 텍스트 제거
+    # (우) 12345, [우]12345, 우)12345 등
+    s = re.sub(r'[\(\[\{]?우[\)\]\}]?\s*', '', s)
+    
+    # 2. 우편번호 숫자 제거 (앞/뒤 5~6자리)
+    s = re.sub(r'^\(?\d{5,6}\)?\s*', '', s)
+    s = re.sub(r'\s*\(?\d{5,6}\)?$', '', s)
+    
+    # 3. 기타 불필요한 기호 제거 및 공백 정규화
+    s = re.sub(r'\s+', ' ', s).strip()
+    
+    return s
+
+
+def split_address(addr):
+    """
+    주소를 시도, 시군구, 이후 주소로 분리
+    Returns: (sido, sigungu, rest)
+    """
+    # [v8.2] 정제된 주소 기준
+    s = clean_address(addr)
+    if not s:
+        return "", "", ""
+    
+    parts = s.split(' ')
+    if len(parts) == 0:
+        return "", "", ""
+    
+    sido = parts[0]
+    sigungu = ""
+    rest = ""
+    
+    # 세종특별자치시는 기초지자체가 없음
+    if "세종" in sido:
+        sigungu = ""
+        rest = " ".join(parts[1:])
+        return sido, sigungu, rest
+
+    if len(parts) > 1:
+        # 시군구 처리 (구가 있는 시의 경우 2단어일 수 있음: 예: 수원시 팔달구)
+        if len(parts) > 2 and parts[1].endswith(('시', '군')) and parts[2].endswith('구'):
+            sigungu = f"{parts[1]} {parts[2]}"
+            rest = " ".join(parts[3:])
+        else:
+            sigungu = parts[1]
+            rest = " ".join(parts[2:])
+    
+    return sido, sigungu, rest
+
+
+def clean_addresses_bulk(df: pd.DataFrame, addr_col: str):
+    """
+    DataFrame의 주소 컬럼을 정제/분리하여 새로운 컬럼 추가
+    """
+    result_df = df.copy()
+    raw_addresses = result_df[addr_col].astype(str).fillna("")
+    
+    cleaned = []
+    sidos = []
+    sigungus = []
+    
+    for addr in raw_addresses:
+        c = clean_address(addr)
+        sd, sgg, _ = split_address(c)
+        cleaned.append(c)
+        sidos.append(sd)
+        sigungus.append(sgg)
+        
+    idx = result_df.columns.get_loc(addr_col)
+    result_df.insert(idx + 1, "주소_정제", cleaned)
+    result_df.insert(idx + 2, "시도", sidos)
+    result_df.insert(idx + 3, "시군구", sigungus)
+    
+    return result_df

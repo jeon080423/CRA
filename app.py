@@ -47,7 +47,7 @@ from api.dart_api import get_dart_corp_info
 from api.g2b_api import get_g2b_corp_info
 from api.nts_api import get_nts_business_status
 from utils.excel_handler import load_excel, export_result_excel
-from utils.matcher import normalize_brn, clean_company_names_bulk
+from utils.matcher import normalize_brn, clean_company_names_bulk, clean_addresses_bulk, split_address
 from usage_tracker import UsageTracker
 
 # ── 이용 통계 트래커 초기화
@@ -851,6 +851,29 @@ def show_business_info_crawling():
                 cleaned_name_col = "회사명_정제"
                 st.success(f"✅ '{name_col}' → '회사명_정제' 컬럼이 자동 생성되었습니다. 정제된 이름으로 매칭합니다.")
 
+            # ── 주소 정제 (v8.0)
+            cleaned_addr_col = None
+            if addr_col != "(선택 안 함)" and addr_col in df.columns:
+                st.markdown("<hr>", unsafe_allow_html=True)
+                st.markdown('<div class="qx-section-label">주소 정제 및 지역 분리</div>', unsafe_allow_html=True)
+
+                if "주소_정제" not in df.columns:
+                    df = clean_addresses_bulk(df, addr_col)
+                    st.session_state["biz_cleaned_df"] = df
+                
+                # 정제 결과 샘플 표시
+                c_c1, c_c2, c_c3 = st.columns(3)
+                with c_c1:
+                    st.metric("시도 구분", f"{df['시도'].nunique()}종")
+                with c_c2:
+                    st.metric("시군구 구분", f"{df['시군구'].nunique()}종")
+                
+                with st.expander("주소 정제 및 분리 결과 샘플 (상위 5건)", expanded=False):
+                    st.dataframe(df[[addr_col, "주소_정제", "시도", "시군구"]].head(5), use_container_width=True, hide_index=True)
+
+                cleaned_addr_col = "주소_정제"
+                st.info("💡 우편번호 제거 및 시도/시군구 분리가 완료되었습니다. 행정데이터와 비교 시 활용됩니다.")
+
             st.markdown("<hr>", unsafe_allow_html=True)
 
             # ── Step 3: 조회 항목 선택
@@ -1265,21 +1288,45 @@ def show_business_info_crawling():
                                         nhis_name_lookup[nm].append(n_row.to_dict())
 
                         # 식별된 마스터 ID를 기반으로 신뢰도 및 기본 정보 세팅
+                        result_df["[입력] 주소(정제)"] = ""
+                        result_df["[입력] 시도"] = ""
+                        result_df["[입력] 시군구"] = ""
                         result_df["[공공데이터] 사업자등록번호"] = ""
                         result_df["[공공데이터] 법인등록번호"] = ""
                         result_df["[공공데이터] 대표자명"] = ""
+                        result_df["[공공데이터] 주소(도로명)"] = ""
+                        result_df["[행정] 시도"] = ""
+                        result_df["[행정] 시군구"] = ""
                         result_df["[조달청] 등록업종"] = ""
                         result_df["[조달청] 전화번호"] = ""
                         result_df["유사도(%)"] = 0.0
 
                         rows_with_data = 0
                         for idx, row in result_df.iterrows():
+                            # 원본 주소 처리
+                            uaddr = str(row.get(addr_col, "")).strip() if addr_col != "(선택 안 함)" else ""
+                            if uaddr:
+                                c_uaddr = clean_address(uaddr)
+                                u_sido, u_sgg, _ = split_address(c_uaddr)
+                                result_df.at[idx, "[입력] 주소(정제)"] = c_uaddr
+                                result_df.at[idx, "[입력] 시도"] = u_sido
+                                result_df.at[idx, "[입력] 시군구"] = u_sgg
+
                             res_id = resolved_identities.get(idx, {})
                             master_brn = res_id.get("brn", "")
                             master_crno = res_id.get("crno", "")
                             result_df.at[idx, "[공공데이터] 사업자등록번호"] = master_brn
                             result_df.at[idx, "[공공데이터] 법인등록번호"] = master_crno
                             result_df.at[idx, "[공공데이터] 대표자명"] = res_id.get("api_ceo", "")
+                            
+                            # 행정데이터 주소 및 분리
+                            api_addr = res_id.get("api_addr", "")
+                            result_df.at[idx, "[공공데이터] 주소(도로명)"] = api_addr
+                            if api_addr:
+                                a_sido, a_sgg, _ = split_address(api_addr)
+                                result_df.at[idx, "[행정] 시도"] = a_sido
+                                result_df.at[idx, "[행정] 시군구"] = a_sgg
+
                             result_df.at[idx, "[조달청] 등록업종"] = res_id.get("api_biz_type", "")
                             result_df.at[idx, "[조달청] 전화번호"] = res_id.get("api_tel", "")
                             
