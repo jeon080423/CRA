@@ -11,7 +11,7 @@ import requests
 
 
 # V2 API 엔드포인트
-BASE_URL = "http://apis.data.go.kr/B552015/NpsBplcInfoInqireServiceV2"
+BASE_URL = "https://apis.data.go.kr/B552015/NpsBplcInfoInqireServiceV2"
 SEARCH_URL = f"{BASE_URL}/getBassInfoSearchV2"
 DETAIL_URL = f"{BASE_URL}/getDetailInfoSearchV2"
 
@@ -183,7 +183,14 @@ def search_and_match_nps(
                 best_item = item
 
     # 임계치(0.6) 이상이거나, 단일 결과이면서 검색명이 포함된 경우
-    if best_item and (max_addr_sim >= 0.6 or (not address and len(results) == 1)):
+    # [v8.1] 주소 정보가 없어도 상호명이 정확히 일치하거나 포함되면 매칭 허용 (분소/지점 대응)
+    name_match = False
+    if best_item:
+        api_name = str(best_item.get("wkplNm", "")).strip().replace(" ", "").lower()
+        if api_name == search_name_norm or search_name_norm in api_name:
+            name_match = True
+
+    if best_item and (max_addr_sim >= 0.6 or (not address and name_match) or (not address and len(results) == 1)):
         detail = get_nps_detail(best_item.get("seq"), service_key)
         if detail: best_item.update(detail)
         return best_item

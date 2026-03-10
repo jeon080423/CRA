@@ -11,7 +11,7 @@ import requests
 import re
 
 # ── 기업기본정보 API ──
-CORP_BASIC_URL = "http://apis.data.go.kr/1160100/GetCorpBasicInfoService_V2/getCorpOutline"
+CORP_BASIC_URL = "https://apis.data.go.kr/1160100/GetCorpBasicInfoService_V2/getCorpOutline"
 
 # 기업기본정보에서 선택 가능한 항목
 FSS_CORP_SELECTABLE_FIELDS = [
@@ -34,7 +34,7 @@ FSS_CORP_FIELD_LABELS = {
 
 
 # ── 기업재무정보 API ──
-FINA_STAT_URL = "http://apis.data.go.kr/1160100/GetFinaStatInfoService_V2/getSummFinaStat"
+FINA_STAT_URL = "https://apis.data.go.kr/1160100/GetFinaStatInfoService_V2/getSummFinaStat"
 
 # 기업재무정보에서 선택 가능한 항목
 FSS_FINA_SELECTABLE_FIELDS = [

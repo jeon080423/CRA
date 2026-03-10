@@ -614,6 +614,8 @@ def show_business_info_crawling():
         | **금융위 기업기본** | 법인번호, 1인평균급여, 종업원수, 업종명, 설립일 | 회사명 + 사업자번호/주소 |
         | **금융위 기업재무** | 매출액, 영업이익, 당기순이익, 총자산, 총부채, 자본금 | 법인등록번호 (연계) |
         | **국세청 (NTS)** | 사업자 상태(계속/휴업/폐업), 과세유형, 폐업일자 | 사업자등록번호 (10자리) |
+        | **전자공시 (DART)** | 마스킹된 사업자번호(BRN) 복원, 대표자명, 주소 정합성 | 법인명/법인번호 |
+        | **나라장터 (G2B)** | 업종명, 전화번호, 기업구분(대/중/소) | 사업자등록번호 (10자리) |
 
         ### 🛡️ 데이터 매치 및 유사도 산정 방식
         본 시스템은 사업자등록번호가 없거나 불완전한 자료의 정확한 매칭을 위해 다음과 같은 지능형 매칭 엔진을 사용합니다.
@@ -655,43 +657,51 @@ def show_business_info_crawling():
     # ── 데이터 수집 흐름도
     st.markdown("""
 <div class="qx-card" style="padding: 1.5rem 2rem;">
-    <div class="qx-card-title" style="margin-bottom: 1rem; font-size: 1rem;">📊 기업체 자료 수집 흐름도</div>
-    <div style="display:flex; flex-direction:column; gap:0.8rem;">
-        <!-- 입력 -->
-        <div style="display:flex; align-items:center; gap:0.8rem;">
-            <div style="background:#0F6CBD; color:white; padding:0.6rem 1.2rem; border-radius:8px; font-weight:600; font-size:0.85rem; min-width:140px; text-align:center;">
-                📋 엑셀 업로드<br><span style="font-size:0.72rem; font-weight:400;">회사명 · 사업자번호</span>
+    <div class="qx-card-title" style="margin-bottom: 1.2rem; font-size: 1.1rem;">📊 기업체 행정정보 수집 및 매칭 프로세스</div>
+    <div style="display:flex; flex-direction:column; gap:1rem;">
+        <!-- 상단: 입력 및 엔진 -->
+        <div style="display:flex; align-items:center; justify-content:center; gap:1rem; margin-bottom:0.5rem;">
+            <div style="background:#0F6CBD; color:white; padding:0.8rem 1.4rem; border-radius:10px; font-weight:600; font-size:0.9rem; min-width:160px; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                📋 엑셀 업로드<br><span style="font-size:0.75rem; font-weight:400; opacity:0.9;">사업자번호 · 회사명 · 주소</span>
             </div>
-            <div style="color:#8B96A9; font-size:1.2rem;">→</div>
-            <div style="background:#F4F6F9; border:1px solid #E5E9F0; padding:0.6rem 1rem; border-radius:8px; font-size:0.82rem; color:#3D4F6B; font-weight:500; text-align:center;">
-                ⚙️ API 자동 조회
+            <div style="color:#8B96A9; font-size:1.5rem; font-weight:bold;">→</div>
+            <div style="background:#F4F6F9; border:2px solid #0F6CBD; padding:0.8rem 1.4rem; border-radius:10px; font-size:0.9rem; color:#0F6CBD; font-weight:700; text-align:center; min-width:160px;">
+                ⚙️ AI 지능형 매칭 엔진<br><span style="font-size:0.75rem; font-weight:400; color:#3D4F6B;">데이터 정제 및 식별자 해결</span>
             </div>
-            <div style="color:#8B96A9; font-size:1.2rem;">→</div>
-            <div style="background:#059669; color:white; padding:0.6rem 1.2rem; border-radius:8px; font-weight:600; font-size:0.85rem; min-width:140px; text-align:center;">
-                📥 결과 엑셀 다운로드
+            <div style="color:#8B96A9; font-size:1.5rem; font-weight:bold;">→</div>
+            <div style="background:#059669; color:white; padding:0.8rem 1.4rem; border-radius:10px; font-weight:600; font-size:0.9rem; min-width:160px; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                📥 결과 엑셀 다운로드<br><span style="font-size:0.75rem; font-weight:400; opacity:0.9;">행정통합 리포트 생성</span>
             </div>
         </div>
-        <!-- 4개 기관 -->
-        <div style="display:flex; gap:0.6rem; flex-wrap:wrap; margin-top:0.5rem;">
-            <div style="flex:1; min-width:130px; background:#EEF4FD; border:1px solid #BDD7F5; border-radius:8px; padding:0.7rem; text-align:center;">
-                <div style="font-size:1.2rem;">🏢</div>
-                <div style="font-size:0.78rem; font-weight:700; color:#0F6CBD; margin:0.2rem 0;">국민연금공단</div>
-                <div style="font-size:0.68rem; color:#5A6B82; line-height:1.4;">가입자수 · 고지금액<br>추정 기준소득월액</div>
+        
+        <!-- 중앙: 연결선 (화살표) -->
+        <div style="display:flex; justify-content:center; font-size:1.2rem; color:#8B96A9; margin:-0.5rem 0;">
+            <div style="width:160px;"></div>
+            <div style="text-align:center; padding-left:20px;">⇅</div>
+            <div style="width:160px;"></div>
+        </div>
+
+        <!-- 하단: 4개 채널 (6개 기관 연동) -->
+        <div style="display:flex; gap:0.7rem; flex-wrap:wrap;">
+            <div style="flex:1; min-width:140px; background:#EEF4FD; border:1px solid #BDD7F5; border-radius:12px; padding:0.8rem; text-align:center; transition: transform 0.2s;">
+                <div style="font-size:1.3rem; margin-bottom:0.3rem;">🏢</div>
+                <div style="font-size:0.8rem; font-weight:700; color:#0F6CBD; margin-bottom:0.3rem;">NPS / NHIS</div>
+                <div style="font-size:0.7rem; color:#475569; line-height:1.5;"><b>복지·고용</b><br>인원수 · 고지금액<br>업종 · 가입상태</div>
             </div>
-            <div style="flex:1; min-width:130px; background:#FEF3E2; border:1px solid #FCD34D; border-radius:8px; padding:0.7rem; text-align:center;">
-                <div style="font-size:1.2rem;">🏥</div>
-                <div style="font-size:0.78rem; font-weight:700; color:#B45309; margin:0.2rem 0;">건강보험공단</div>
-                <div style="font-size:0.68rem; color:#5A6B82; line-height:1.4;">직장가입자수<br>사업장상태 · 업종코드</div>
+            <div style="flex:1; min-width:140px; background:#FEF3E2; border:1px solid #FCD34D; border-radius:12px; padding:0.8rem; text-align:center; border-left: 4px solid #F59E0B;">
+                <div style="font-size:1.3rem; margin-bottom:0.3rem;">⚖️</div>
+                <div style="font-size:0.8rem; font-weight:700; color:#B45309; margin-bottom:0.3rem;">NTS (국세청)</div>
+                <div style="font-size:0.7rem; color:#475569; line-height:1.5;"><b>실시간 휴/폐업</b><br>계속/휴업/폐업<br>과세유형 · 폐업일</div>
             </div>
-            <div style="flex:1; min-width:130px; background:#F0FDF4; border:1px solid #86EFAC; border-radius:8px; padding:0.7rem; text-align:center;">
-                <div style="font-size:1.2rem;">🏛️</div>
-                <div style="font-size:0.78rem; font-weight:700; color:#059669; margin:0.2rem 0;">금융위원회 (기본정보)</div>
-                <div style="font-size:0.68rem; color:#5A6B82; line-height:1.4;">1인평균급여 · 종업원수<br>설립일 · 산업분류</div>
+            <div style="flex:1; min-width:140px; background:#F0FDF4; border:1px solid #86EFAC; border-radius:12px; padding:0.8rem; text-align:center;">
+                <div style="font-size:1.3rem; margin-bottom:0.3rem;">🏛️</div>
+                <div style="font-size:0.8rem; font-weight:700; color:#059669; margin-bottom:0.3rem;">FSS (금융위)</div>
+                <div style="font-size:0.7rem; color:#475569; line-height:1.5;"><b>재무·경영</b><br>재무제표 · 매출액<br>평균연봉 · 종업원</div>
             </div>
-            <div style="flex:1; min-width:130px; background:#F5F3FF; border:1px solid #C4B5FD; border-radius:8px; padding:0.7rem; text-align:center;">
-                <div style="font-size:1.2rem;">📊</div>
-                <div style="font-size:0.78rem; font-weight:700; color:#7C3AED; margin:0.2rem 0;">금융위원회 (재무정보)</div>
-                <div style="font-size:0.68rem; color:#5A6B82; line-height:1.4;">매출액 · 영업이익<br>당기순이익 · 자본금</div>
+            <div style="flex:1; min-width:140px; background:#F5F3FF; border:1px solid #C4B5FD; border-radius:12px; padding:0.8rem; text-align:center; border-left: 4px solid #8B5CF6;">
+                <div style="font-size:1.3rem; margin-bottom:0.3rem;">🔍</div>
+                <div style="font-size:0.8rem; font-weight:700; color:#7C3AED; margin-bottom:0.3rem;">DART / G2B</div>
+                <div style="font-size:0.7rem; color:#475569; line-height:1.5;"><b>기업 식별·공공</b><br>BRN 복원(DART)<br>산업군·연락처(G2B)</div>
             </div>
         </div>
     </div>
@@ -876,8 +886,32 @@ def show_business_info_crawling():
 
             st.markdown("<hr>", unsafe_allow_html=True)
 
-            # ── Step 3: 조회 항목 선택
-            st.markdown('<div class="qx-section-label">STEP 3 · 조회 항목 선택</div>', unsafe_allow_html=True)
+            # ── Step 3: 조회 항목 및 기준 선택
+            st.markdown('<div class="qx-section-label">STEP 3 · 조회 항목 및 추출 기준 설정</div>', unsafe_allow_html=True)
+            
+            # [v8.6] 추출 기준 선택 버튼을 더 넓고 명확하게 배치
+            st.markdown("""
+<div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:1rem; margin-bottom:1rem;">
+    <div style="font-size:0.85rem; font-weight:600; color:#475569; margin-bottom:0.5rem;">📊 데이터 집계 및 추출 기준 선택</div>
+</div>
+            """, unsafe_allow_html=True)
+            
+            agg_mode = st.radio(
+                "추출 기준 선택",
+                ["사업체 기준 (Establishment)", "기업체 기준 (Enterprise)"],
+                index=0,
+                horizontal=True,
+                help="사업체 기준은 개별 지점별로 결과를 보여주며, 기업체 기준은 동일 법인번호를 가진 지점들을 하나로 합산하여 요약해 줍니다.",
+                key="extraction_criteria_selector",
+                label_visibility="collapsed"
+            )
+            
+            if agg_mode == "기업체 기준 (Enterprise)":
+                st.info("🏢 **기업체 기준 집계:** 동일한 법인번호를 가진 여러 사업체(지점)의 데이터를 합산하여 하나의 법인 단위로 결과를 제공합니다.")
+            else:
+                st.caption("📑 **사업체 기준 조회:** 각 행별로 독립적인 행정자료 매칭 결과를 제공합니다.")
+                
+            st.markdown("<br>", unsafe_allow_html=True)
 
             col_nps, col_nhis = st.columns(2)
 
@@ -1427,9 +1461,57 @@ def show_business_info_crawling():
                             final_sim = round(sum(s*w for s, w in zip(scores, weights)) / sum(weights) * 100, 1) if weights else 0.0
                             result_df.at[idx, "유사도(%)"] = final_sim
 
-                         # 유사도 필터링 제거 (모든 결과 표시)
-                         # if similarity_threshold > 0:
-                         #     result_df = result_df[result_df["유사도(%)"] >= similarity_threshold].reset_index(drop=True)
+                        # ── [v8.5] 기업체 기준(Enterprise) 집계 로직 적용
+                        if agg_mode == "기업체 기준 (Enterprise)":
+                            status_area.caption("🏢 기업체 단위로 데이터 집계 중...")
+                            # 집계 기준 키 생성: 법인번호(우선) -> 사업자번호 -> 회사명
+                            def _get_agg_key(r):
+                                crno = str(r.get("[공공데이터] 법인등록번호", "")).strip()
+                                if crno and crno != "해당없음": return crno
+                                brn = str(r.get("[공공데이터] 사업자등록번호", "")).strip()
+                                if brn and brn != "해당없음" and "*" not in brn: return brn
+                                return str(r.get(name_col, "")).strip()
+
+                            result_df["_agg_key"] = result_df.apply(_get_agg_key, axis=1)
+                            
+                            # 집계 규칙 정의
+                            agg_rules = {}
+                            num_cols = []
+                            for c in result_df.columns:
+                                if c in [brn_col, name_col, ceo_col, addr_col, "_agg_key", "유사도(%)"]: continue
+                                # 수치형 데이터(가입자수, 금액 등)는 합산
+                                if any(keyword in c for keyword in ["가입자수", "인원", "금액", "매출액", "영업이익", "순이익", "자본금", "자산", "부채", "평균소득"]):
+                                    num_cols.append(c)
+                                    agg_rules[c] = "sum"
+                                else:
+                                    # 텍스트 데이터는 첫 번째 값 유지
+                                    agg_rules[c] = "first"
+                            
+                            # 기본 컬럼 유지 규칙
+                            agg_rules[name_col] = "first"
+                            agg_rules[addr_col] = "first"
+                            agg_rules["유사도(%)"] = "max" # 유사도는 최대값 유지
+
+                            # 집계 실행
+                            # 수치형 컬럼 전처리 (콤마 제거 등)
+                            for c in num_cols:
+                                result_df[c] = result_df[c].apply(lambda x: str(x).replace(",", ""))
+                                result_df[c] = pd.to_numeric(result_df[c], errors='coerce').fillna(0)
+
+                            result_df = result_df.groupby("_agg_key").agg(agg_rules).reset_index(drop=True)
+                            
+                            # 수치형 다시 포맷팅
+                            for c in num_cols:
+                                if "인원" in c or "수" in c:
+                                    result_df[c] = result_df[c].apply(lambda x: f"{int(x):,}")
+                                else:
+                                    result_df[c] = result_df[c].apply(lambda x: f"{int(x):,}" if x > 0 else "0")
+                            
+                            # 집계 후 건수 업데이트
+                            rows_with_data = len(result_df) 
+                            st.info(f"💡 {total_rows}개의 지점 데이터를 법인/기업 단위로 합산하여 {rows_with_data}개의 요약 행으로 정리했습니다.")
+
+                        # 유사도 필터링 제거 (모든 결과 표시)
                         
                         # 통계 계산 (실제로 데이터를 가져온 행 기준)
                         # 통계 계산 (실제로 유의미한 데이터를 가져온 행 기준)
