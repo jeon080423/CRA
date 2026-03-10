@@ -944,6 +944,7 @@ def show_business_info_crawling():
                     index=0,
                     key="nhis_year_selector"
                 )
+                selected_nhis_uddi = NHIS_ENDPOINTS[nhis_year]
                 selected_nhis = []
                 for field in NHIS_SELECTABLE_FIELDS:
                     label = NHIS_FIELD_LABELS.get(field, field)
@@ -975,12 +976,12 @@ def show_business_info_crawling():
             if not fss_available:
                 st.warning("⚠️ 금융위원회 기업정보를 조회하려면 **회사명** 컬럼을 매핑해야 합니다.")
 
-            col_fss_corp, col_fss_fina = st.columns(2)
+            col_fss_corp, col_fss_fina, col_empty = st.columns(3)
 
             with col_fss_corp:
                 st.markdown("""
 <div class="qx-card">
-    <div class="qx-card-title">🏛️ 기업기본정보</div>
+    <div class="qx-card-title">🏛️ 금융위원회 (기업정보)</div>
     <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">회사명 → 종업원수, 평균급여 등 자동 조회</div>
 </div>
 """, unsafe_allow_html=True)
@@ -994,8 +995,8 @@ def show_business_info_crawling():
             with col_fss_fina:
                 st.markdown("""
 <div class="qx-card">
-    <div class="qx-card-title">📊 기업재무정보</div>
-    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">법인등록번호 자동 획득 → 매출액, 영업이익 등</div>
+    <div class="qx-card-title">📊 금융위원회 (재무정보)</div>
+    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">법인번호 연동 → 매출액, 영업이익 등</div>
 </div>
 """, unsafe_allow_html=True)
                 selected_fss_fina = []
