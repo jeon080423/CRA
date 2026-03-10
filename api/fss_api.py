@@ -63,157 +63,169 @@ def _normalize_brn(brn: str) -> str:
     return re.sub(r"[^0-9]", "", str(brn)).zfill(10)
 
 
-def search_corp_by_name(company_name: str, service_key: str, brn: str = "", address: str = "") -> dict:
+def search_corp_by_name(company_name: str, service_key: str, brn: str = "", address: str = "", crno: str = "") -> dict:
     """
-    기업기본정보 API: 회사명으로 기업 개황 조회
-
-    Args:
-        company_name: 검색할 회사명
-        service_key: 공공데이터포털 서비스키
-        brn: 사업자등록번호 (매칭 검증용, 선택)
-
-    Returns:
-        dict: 매칭된 기업 정보. 실패 시 {"_error": "..."} 반환
+    기업기본정보 API: 회사명 또는 법인등록번호로 기업 개황 조회
     """
-    if not company_name or not company_name.strip():
-        return {"_error": "회사명 없음"}
+    if not company_name and not crno:
+        return {"_error": "회사명 또는 법인등록번호 없음"}
 
+    # 정규화된 검색어 준비
+    search_name_clean = company_name.strip().replace("(주)", "").replace("주식회사", "").strip() if company_name else ""
+    clean_crno = str(crno).replace("-", "").strip() if crno else ""
+    
     params = {
         "serviceKey": service_key,
-        "corpNm": company_name.strip(),
-        "numOfRows": 20,
+        "numOfRows": 30,
         "pageNo": 1,
         "resultType": "json",
     }
+    
+    # 법인등록번호가 있으면 이를 우선적으로 검색 파라미터로 시도
+    if clean_crno and len(clean_crno) == 13:
+        params["crno"] = clean_crno
+    else:
+        params["corpNm"] = search_name_clean or company_name.strip()
 
-    try:
-        resp = requests.get(CORP_BASIC_URL, params=params, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
+    urls = [
+        CORP_BASIC_URL,
+        CORP_BASIC_URL.replace("/GetCorp", "/service/GetCorp"),
+        CORP_BASIC_URL.replace("https://", "http://")
+    ]
 
-        # 응답 구조 파싱
-        body = data.get("response", {}).get("body", {})
-        items = body.get("items", {})
-
-        if isinstance(items, dict):
-            item_list = items.get("item", [])
-        elif isinstance(items, list):
-            item_list = items
-        else:
-            return {"_error": "검색결과 없음"}
-
-        if isinstance(item_list, dict):
-            item_list = [item_list]
-
-        if not item_list:
-            return {"_error": "검색결과 없음"}
-
-        # 2) 사업자등록번호로 매칭 시도 (마스킹되지 않은 10자리인 경우만)
-        brn_clean = _normalize_brn(brn) if brn else ""
-        if brn_clean and "*" not in brn_clean and len(brn_clean) == 10:
-            for item in item_list:
-                item_brn = _normalize_brn(item.get("bzno", ""))
-                if item_brn == brn_clean:
-                    return item
-
-        # 3) 상호명 및 주소 유사도 기반 정밀 매칭 (BRN 매칭 실패 혹은 마스킹된 경우)
-        from difflib import SequenceMatcher
-        def _get_sim(a, b):
-            if not a or not b: return 0.0
-            a_norm = str(a).replace(" ", "").lower()
-            b_norm = str(b).replace(" ", "").lower()
-            return SequenceMatcher(None, a_norm, b_norm).ratio()
-
-        search_name_norm = company_name.strip().replace(" ", "").lower()
-        best_item = None
-        max_addr_sim = 0.0
-
-        for item in item_list:
-            api_name = str(item.get("corpNm", "")).strip().replace(" ", "").lower()
-            api_addr = item.get("enpAddr", "")
+    last_error = "검색결과 없음"
+    for url in urls:
+        try:
+            resp = requests.get(url, params=params, timeout=12)
+            if resp.status_code != 200: continue
             
-            # 상호명이 포함되거나 일치하는 경우
-            if search_name_norm in api_name or api_name in search_name_norm:
-                sim = _get_sim(address, api_addr) if address else 0.5
-                if sim > max_addr_sim:
-                    max_addr_sim = sim
-                    best_item = item
-        
-        # 신뢰도 조건 체크 (유사도 0.6 이상)
-        if best_item and (max_addr_sim >= 0.6 or (not address and len(item_list) == 1)):
-            return best_item
+            data = resp.json()
+            body = data.get("response", {}).get("body", {})
+            items = body.get("items", {})
+            
+            item_list = []
+            if isinstance(items, dict):
+                item_list = items.get("item", [])
+            elif isinstance(items, list):
+                item_list = items
+            
+            if not item_list: continue
+            if isinstance(item_list, dict): item_list = [item_list]
 
-        return {"_error": "신뢰할 수 있는 매칭 기업 없음 (상호/주소 불일치)"}
+            # 1) CRNO가 제공된 경우 CRNO 일치 확인 (params에 넣었어도 리스트 중 재검증)
+            if clean_crno:
+                for item in item_list:
+                    if str(item.get("crno", "")).replace("-", "") == clean_crno:
+                        return item
 
-        # 첫 번째 결과 반환 (단일 결과인 경우)
-        if len(item_list) == 1:
-            return item_list[0]
+            # 2) BRN 매칭
+            brn_clean = _normalize_brn(brn)
+            if brn_clean and "*" not in brn_clean and len(brn_clean) == 10:
+                for item in item_list:
+                    if _normalize_brn(item.get("bzno", "")) == brn_clean:
+                        return item
 
-        # 여러 결과 중 매칭 실패
-        return {"_error": f"검색결과 {len(item_list)}건 중 매칭 실패 (주소 불일치)"}
+            # 3) 이름 및 주소 유사도 매칭 (CRNO가 없을 때만 수행하거나 fallback)
+            from difflib import SequenceMatcher
+            def _get_sim(a, b):
+                if not a or not b: return 0.0
+                a1 = str(a).replace(" ", "").lower()
+                b1 = str(b).replace(" ", "").lower()
+                return SequenceMatcher(None, a1, b1).ratio()
 
-    except requests.exceptions.HTTPError as e:
-        status = e.response.status_code if e.response else 0
-        if status in (401, 403):
-            raise PermissionError(f"API 키 인증 실패 (HTTP {status})")
-        return {"_error": f"HTTP 오류 ({status})"}
-    except Exception as e:
-        return {"_error": f"조회 실패: {str(e)[:50]}"}
+            best_item = None
+            max_score = 0.0
+            search_name_norm = company_name.replace(" ", "").lower() if company_name else ""
+
+            for item in item_list:
+                api_name = str(item.get("corpNm", "")).replace(" ", "").lower()
+                api_addr = str(item.get("enpAddr", ""))
+                
+                # 이름 유사도 (0.7 이상 or 포함관계)
+                name_sim = _get_sim(search_name_norm, api_name) if search_name_norm else 0.5
+                is_name_match = (name_sim >= 0.8) or (search_name_clean.replace(" ","") in api_name) or (api_name in search_name_clean.replace(" ",""))
+                
+                if is_name_match:
+                    addr_sim = _get_sim(address, api_addr) if address else 0.5
+                    # 가중치 점수
+                    score = name_sim * 0.4 + addr_sim * 0.6
+                    if score > max_score:
+                        max_score = score
+                        best_item = item
+
+            if best_item and max_score >= 0.5:
+                return best_item
+            
+            last_error = "매칭되는 기업을 찾을 수 없음"
+        except Exception as e:
+            last_error = f"조회 오류: {str(e)}"
+            continue
+            
+    return {"_error": last_error}
 
 
 def search_financial_by_crno(crno: str, biz_year: str, service_key: str) -> dict:
     """
-    기업재무정보 API: 법인등록번호로 요약 재무제표 조회
+    기업재무정보 API: 법인등록번호로 요약 재무제표 조회 (연도 fallback 지원)
+    """
+    if not crno: return {"_error": "법인등록번호 없음"}
 
-    Args:
-        crno: 법인등록번호 (13자리)
-        biz_year: 사업연도 (예: "2024")
-        service_key: 공공데이터포털 서비스키
+    years_to_try = [biz_year, str(int(biz_year)-1), str(int(biz_year)-2)]
+    
+    urls = [
+        FINA_STAT_URL,
+        FINA_STAT_URL.replace("/GetFina", "/service/GetFina"),
+        FINA_STAT_URL.replace("https://", "http://")
+    ]
 
-    Returns:
-        dict: 재무 데이터. 실패 시 {"_error": "..."} 반환
+    for year in years_to_try:
+        for url in urls:
+            params = {
+                "serviceKey": service_key,
+                "crno": crno,
+                "bizYear": year,
+                "numOfRows": 1,
+                "resultType": "json",
+            }
+            try:
+                resp = requests.get(url, params=params, timeout=12)
+                if resp.status_code != 200: continue
+                
+                data = resp.json()
+                items = data.get("response", {}).get("body", {}).get("items", {})
+                if not items: continue
+                
+                item_list = items.get("item", [])
+                if not item_list: continue
+                if isinstance(item_list, dict): return item_list
+                if isinstance(item_list, list) and len(item_list) > 0: return item_list[0]
+            except:
+                continue
+                
+    return {"_error": "최근 3개년 재무정보 없음"}
+
+
+def validate_crno(crno: str) -> bool:
+    """
+    법인등록번호(CRNO) 유효성 검사 (13자리 숫자 + 체크섬)
     """
     if not crno:
-        return {"_error": "법인등록번호 없음"}
-
-    params = {
-        "serviceKey": service_key,
-        "crno": crno,
-        "bizYear": biz_year,
-        "numOfRows": 1,
-        "pageNo": 1,
-        "resultType": "json",
-    }
-
+        return False
+    
+    clean_crno = str(crno).replace("-", "").strip()
+    if not clean_crno.isdigit() or len(clean_crno) != 13:
+        return False
+    
+    # 체크섬 로직 (KOR CRNO)
+    # 1*a + 2*b + 1*c + 2*d + ... + 1*l
+    # 10 - (sum % 10) == last digit
     try:
-        resp = requests.get(FINA_STAT_URL, params=params, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-
-        body = data.get("response", {}).get("body", {})
-        items = body.get("items", {})
-
-        if isinstance(items, dict):
-            item_list = items.get("item", [])
-        elif isinstance(items, list):
-            item_list = items
-        else:
-            return {"_error": "재무정보 없음"}
-
-        if isinstance(item_list, dict):
-            item_list = [item_list]
-
-        if not item_list:
-            return {"_error": "재무정보 없음"}
-
-        return item_list[0]
-
-    except requests.exceptions.HTTPError as e:
-        status = e.response.status_code if e.response else 0
-        if status in (401, 403):
-            raise PermissionError(f"API 키 인증 실패 (HTTP {status})")
-        return {"_error": f"HTTP 오류 ({status})"}
-    except Exception as e:
-        return {"_error": f"재무정보 조회 실패: {str(e)[:50]}"}
+        weight = [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2]
+        s = sum(int(clean_crno[i]) * weight[i] for i in range(12))
+        remainder = s % 10
+        check_digit = (10 - remainder) % 10
+        return check_digit == int(clean_crno[12])
+    except:
+        return False
 
 

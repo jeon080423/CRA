@@ -39,7 +39,7 @@ from api.nhis_api import (
 )
 from api.nps_api import search_and_match_nps, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP, estimate_avg_salary
 from api.fss_api import (
-    search_corp_by_name, search_financial_by_crno,
+    search_corp_by_name, search_financial_by_crno, validate_crno,
     FSS_CORP_SELECTABLE_FIELDS, FSS_CORP_FIELD_LABELS,
     FSS_FINA_SELECTABLE_FIELDS, FSS_FINA_FIELD_LABELS,
 )
@@ -815,6 +815,14 @@ def show_business_info_crawling():
                 index=_auto_detect_col(col_options, ["주소", "소재지"]),
                 key="biz_col_addr",
             )
+        
+        # [v9.5] 법인등록번호(CRNO) 컬럼 매핑 추가 (데이터 추출 확률 향상용)
+        crno_col = st.selectbox(
+            "법인등록번호 (선택 시 추출 확률 향상)",
+            col_options,
+            index=_auto_detect_col(col_options, ["법인번호", "법인등록번호"]),
+            key="biz_col_crno",
+        )
 
         if brn_col == "(선택 안 함)":
             st.warning("⚠️ **사업자등록번호** 컬럼은 필수입니다. 매핑해주세요.")
@@ -1042,7 +1050,10 @@ def show_business_info_crawling():
                             # 주소 데이터 획득
                             search_addr = str(row.get(addr_col, "")).strip() if addr_col != "(선택 안 함)" else ""
                             
-                            query_items.append((idx, brn, search_name, search_addr))
+                            # 법인등록번호 획득
+                            search_crno = str(row.get(crno_col, "")).strip() if crno_col != "(선택 안 함)" else ""
+                            
+                            query_items.append((idx, brn, search_name, search_addr, search_crno))
 
                         # ── NPS 캐시 확인
                         cached_nps = st.session_state.get("biz_nps_cache", {})
@@ -1054,7 +1065,7 @@ def show_business_info_crawling():
                         status_area.caption("🆔 기업 식별자 조회 중 (1/2단계)...")
                         resolved_identities = {} # {idx: {brn, crno, api_name, api_addr, match_score}}
 
-                        def _resolve_identity_task(idx, row_brn, row_name, row_addr):
+                        def _resolve_identity_task(idx, row_brn, row_name, row_addr, row_crno):
                             """단건에 대해 BRN 및 CRNO를 확정하는 로직"""
                             res_id = {
                                 "brn": "", # API에서 확인된 BRN만 담음
@@ -1098,16 +1109,29 @@ def show_business_info_crawling():
                                 return n_clean
 
                             # 1) FSS API 우선 시도 (가장 신뢰도 높은 기본정보 출처)
+                            # [v9.6] 법인등록번호(CRNO) 우선순위 로직 적용
                             try:
-                                fss_id_res = search_corp_by_name(row_name, api_service_key, brn=row_brn, address=row_addr)
+                                # CRNO가 유효하면 CRNO로 우선 검색하여 정확한 BRN/법인정보 획득 시도
+                                fss_id_res = None
+                                if row_crno and validate_crno(row_crno):
+                                    fss_id_res = search_corp_by_name(row_name, api_service_key, brn=row_brn, address=row_addr, crno=row_crno)
+                                
+                                # CRNO 검색 결과가 없거나 CRNO가 없는 경우 기존 방식(이름/사업자번호)으로 시도
+                                if not fss_id_res or "_error" in fss_id_res:
+                                    fss_id_res = search_corp_by_name(row_name, api_service_key, brn=row_brn, address=row_addr)
+
                                 if fss_id_res and "_error" not in fss_id_res:
                                     api_brn = normalize_brn(fss_id_res.get("bzno", ""))
-                                    res_id["brn"] = _update_brn(row_brn, api_brn)
+                                    res_id["brn"] = _update_brn(row_brn, api_brn) # 유효한 BRN으로 업데이트 (언마스킹)
                                     res_id["crno"] = str(fss_id_res.get("crno", "")).strip()
                                     res_id["api_name"] = str(fss_id_res.get("corpNm", "")).strip()
                                     res_id["api_addr"] = str(fss_id_res.get("enpAddr", "")).strip()
                                     res_id["api_ceo"] = str(fss_id_res.get("ceoNm", "")).strip() # FSS 대표자명
-                                    res_id["match_score"] = 100.0 if row_brn and not _is_masked(res_id["brn"]) and res_id["brn"] == normalize_brn(row_brn) else 80.0
+                                    
+                                    # 매칭 점수 산정: 입력값과 API 결과가 일치하면 고득점
+                                    is_brn_match = row_brn and not _is_masked(res_id["brn"]) and res_id["brn"] == normalize_brn(row_brn)
+                                    is_crno_match = row_crno and res_id["crno"] == str(row_crno).strip()
+                                    res_id["match_score"] = 100.0 if (is_brn_match or is_crno_match) else 80.0
                                     # FSS 성공 시에도 DART/G2B로 추가 보정 수행 (아래 공통 로직)
                                 else:
                                     res_id["fss_error"] = fss_id_res.get("_error") if fss_id_res else "결과없음"
@@ -1165,8 +1189,8 @@ def show_business_info_crawling():
                         # 식별자 해결 실행
                         with ThreadPoolExecutor(max_workers=5) as executor:
                             futures = {
-                                executor.submit(_resolve_identity_task, idx, brn, name, addr): idx
-                                for idx, brn, name, addr in query_items
+                                executor.submit(_resolve_identity_task, idx, brn, name, addr, crno): idx
+                                for idx, brn, name, addr, crno in query_items
                             }
                             for i, future in enumerate(as_completed(futures), 1):
                                 idx_res, data = future.result()
@@ -1705,8 +1729,17 @@ def show_business_info_crawling():
             elif col.startswith("[재무정보]"):
                 column_config[col] = st.column_config.TextColumn(col, help="금융위원회 기업재무정보")
 
+        def style_sido_mismatch(row):
+            """시도가 다른 경우 빨간 글씨 + 노란 배경"""
+            u_sido = str(row.get("[입력] 시도", ""))
+            a_sido = str(row.get("[행정] 시도", ""))
+            
+            if u_sido and a_sido and u_sido != a_sido:
+                return ['background-color: #FFFFE0; color: #E03131; font-weight: bold;'] * len(row)
+            return [''] * len(row)
+
         st.dataframe(
-            result_df,
+            result_df.style.apply(style_sido_mismatch, axis=1),
             use_container_width=True,
             hide_index=True,
             column_config=column_config,
@@ -2870,7 +2903,7 @@ def show_outlier_inspection_system(mode="outlier"):
             st.latex(r"\hat{x}_{missing} = \bar{x}_{observed} = \frac{1}{n_{obs}} \sum_{i=1}^{n_{obs}} x_i")
             st.markdown("""
             - **적용 조건:** MCAR 상황, 결측률 5~10% 이내, 정규분포에 가까운 데이터
-            - **한계:** 분산이 과소 추정되며$(\hat{\sigma}^2 \downarrow)$, 변수 간 상관관계가 왜곡될 수 있음
+            - **한계:** 분산이 과소 추정되며$(\\hat{\sigma}^2 \downarrow)$, 변수 간 상관관계가 왜곡될 수 있음
 
             #### **2. 랜덤 대체 (Random Imputation)**
             결측값을 해당 변수의 **관측값 분포에서 무작위 복원 추출(Random Sampling with Replacement)**하여 대체하는 방식. 단순 평균 대체의 **분산 축소(Variance Underestimation)** 문제를 해결함
