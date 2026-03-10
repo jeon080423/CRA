@@ -64,6 +64,10 @@ def _normalize_brn(brn: str) -> str:
     brn_str = str(brn).strip().replace("-", "").replace(" ", "")
     if "." in brn_str:
         brn_str = brn_str.split(".")[0]
+        
+    if not brn_str or not any(c.isdigit() or c == "*" for c in brn_str):
+        return ""
+        
     return brn_str.zfill(10)
 
 

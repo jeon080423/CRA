@@ -11,12 +11,18 @@ from difflib import SequenceMatcher
 def normalize_brn(brn) -> str:
     """
     사업자등록번호를 하이픈 없는 10자리 문자열로 정규화
+    유효하지 않은 입력(공백, None 등)에 대해 빈 문자열 반환
     """
     if pd.isna(brn):
         return ""
     brn_str = str(brn).strip().replace("-", "").replace(" ", "")
     if "." in brn_str:
         brn_str = brn_str.split(".")[0]
+    
+    # 정제 후 내용이 없거나 숫자가 하나도 없으면(마스킹 제외) 빈 값 처리
+    if not brn_str or not any(c.isdigit() or c == "*" for c in brn_str):
+        return ""
+        
     return brn_str.zfill(10)
 
 

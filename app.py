@@ -1084,25 +1084,25 @@ def show_business_info_crawling():
                                 except: pass
 
                             def _is_masked(b):
-                                return "*" in str(b)
+                                b_str = str(b).strip()
+                                if "*" in b_str or not b_str or b_str == "0000000000":
+                                    return True
+                                return False
 
                             def _update_brn(current, new_candidate):
-                                """마스킹되지 않은 10자리 번호를 우선시하여 업데이트"""
-                                c_clean = str(current).replace("-", "").replace(" ", "")
-                                n_clean = str(new_candidate).replace("-", "").replace(" ", "")
+                                """마스킹되지 않은 유효한 10자리 번호를 우선시하여 업데이트"""
+                                c_clean = str(current or "").replace("-", "").replace(" ", "")
+                                n_clean = str(new_candidate or "").replace("-", "").replace(" ", "")
                                 
-                                if not n_clean or n_clean == "None":
+                                if not n_clean or n_clean == "0000000000" or n_clean == "None":
                                     return c_clean
                                 
-                                # 현재가 마스킹되어 있고 신규가 마스킹 안 되어 있으면 교체
                                 if _is_masked(c_clean) and not _is_masked(n_clean) and len(n_clean) >= 10:
                                     return n_clean
                                     
-                                # 현재가 비어 있으면 신규로 채움 (마스킹 여부 상관없이 일단 최선)
-                                if not c_clean:
+                                if not c_clean or c_clean == "0000000000":
                                     return n_clean
                                 
-                                # 현재가 이미 마스킹 안 된 10자리라면 유지
                                 if not _is_masked(c_clean) and len(c_clean) >= 10:
                                     return c_clean
                                     
