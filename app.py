@@ -1073,7 +1073,8 @@ def show_business_info_crawling():
                                 "crno": "", "api_name": "", 
                                 "api_addr": "", "api_ceo": "",
                                 "api_tel": "", "api_biz_type": "",
-                                "match_score": 0.0
+                                "match_score": 0.0,
+                                "brn_mismatch": False
                             }
                             def _log_debug(msg):
                                 try:
@@ -1089,14 +1090,42 @@ def show_business_info_crawling():
                                     return True
                                 return False
 
-                            def _update_brn(current, new_candidate):
-                                """마스킹되지 않은 유효한 10자리 번호를 우선시하여 업데이트"""
+                            def _are_brns_consistent(b1, b2):
+                                """마스킹을 고려하여 두 사업자번호가 일치하는지 확인 (불일치 시 False)"""
+                                b1s = str(b1 or "").replace("-", "").replace(" ", "").zfill(10)
+                                b2s = str(b2 or "").replace("-", "").replace(" ", "").zfill(10)
+                                if not b1s or not b2s or _is_masked(b1s) and _is_masked(b2s):
+                                    return True
+                                if len(b1s) != 10 or len(b2s) != 10: return True
+                                for i in range(10):
+                                    if b1s[i] != "*" and b2s[i] != "*" and b1s[i] != b2s[i]:
+                                        return False
+                                return True
+
+                            def _update_brn(current, new_candidate, initial_input=None):
+                                """마스킹되지 않은 유효한 10자리 번호를 우선시하여 업데이트하며 충돌 시 플래그 설정"""
                                 c_clean = str(current or "").replace("-", "").replace(" ", "")
                                 n_clean = str(new_candidate or "").replace("-", "").replace(" ", "")
+                                i_clean = str(initial_input or "").replace("-", "").replace(" ", "") if initial_input else ""
                                 
                                 if not n_clean or n_clean == "0000000000" or n_clean == "None":
                                     return c_clean
-                                
+
+                                # [v12.0] BRN 불일치 확인 (기존 정보 vs 새 후보)
+                                if c_clean and not _is_masked(c_clean) and not _is_masked(n_clean):
+                                    if not _are_brns_consistent(c_clean, n_clean):
+                                        res_id["brn_mismatch"] = True
+                                        _log_debug(f"BRN Mismatch detected: {c_clean} vs {n_clean}")
+                                        return c_clean
+
+                                # [v12.1] 추가: 입력된 사업자번호(row_brn)와도 대조
+                                if i_clean and not _is_masked(i_clean) and not _is_masked(n_clean):
+                                    if not _are_brns_consistent(i_clean, n_clean):
+                                        res_id["brn_mismatch"] = True
+                                        _log_debug(f"Input BRN Mismatch detected: {i_clean} vs {n_clean}")
+                                        # 입력값이 명확한데 API 결과가 다르면 일단 입력값 우선 (또는 보수적 처리)
+                                        return c_clean
+
                                 if _is_masked(c_clean) and not _is_masked(n_clean) and len(n_clean) >= 10:
                                     return n_clean
                                     
@@ -1142,14 +1171,36 @@ def show_business_info_crawling():
                                 
                                 if fss_id_res and "_error" not in fss_id_res:
                                     api_brn = normalize_brn(fss_id_res.get("bzno", ""))
-                                    res_id["brn"] = _update_brn(res_id["brn"], api_brn)
-                                    res_id["crno"] = res_id["crno"] or str(fss_id_res.get("crno", "")).strip()
-                                    res_id["api_name"] = res_id["api_name"] or str(fss_id_res.get("corpNm", "")).strip()
-                                    res_id["api_addr"] = res_id["api_addr"] or str(fss_id_res.get("enpAddr", "")).strip()
-                                    res_id["api_ceo"] = res_id["api_ceo"] or str(fss_id_res.get("ceoNm", "")).strip()
+                                    api_name = str(fss_id_res.get("corpNm", "")).strip()
+                                    api_addr = str(fss_id_res.get("enpAddr", "")).strip()
                                     
-                                    is_brn_match = not _is_masked(res_id["brn"]) and (res_id["brn"] == normalize_brn(row_brn) or len(res_id["brn"]) == 10)
-                                    res_id["match_score"] = 100.0 if (is_brn_match) else 80.0
+                                    # [v11.0] 상호명 70% 이상 + 시도 일치 조건 (BRN 부재 시)
+                                    is_input_brn_missing = not row_brn or _is_masked(row_brn)
+                                    if is_input_brn_missing:
+                                        name_sim = text_similarity(row_name, api_name)
+                                        u_sido, _, _ = split_address(row_addr)
+                                        a_sido, _, _ = split_address(api_addr)
+                                        
+                                        # 조건을 만족할 때만 BRN으로 채택
+                                        if name_sim >= 0.7 and u_sido == a_sido and u_sido:
+                                            res_id["brn"] = _update_brn(res_id["brn"], api_brn, initial_input=row_brn)
+                                            res_id["match_score"] = name_sim * 100
+                                        else:
+                                            # 조건 미충족 시 FSS 결과 무시 (BRN 확보 실패)
+                                            api_brn = ""
+                                    
+                                    if api_brn:
+                                        if not is_input_brn_missing:
+                                            res_id["brn"] = _update_brn(res_id["brn"], api_brn, initial_input=row_brn)
+                                            
+                                        res_id["crno"] = res_id["crno"] or str(fss_id_res.get("crno", "")).strip()
+                                        res_id["api_name"] = res_id["api_name"] or api_name
+                                        res_id["api_addr"] = res_id["api_addr"] or api_addr
+                                        res_id["api_ceo"] = res_id["api_ceo"] or str(fss_id_res.get("ceoNm", "")).strip()
+                                        
+                                        if not is_input_brn_missing:
+                                            is_brn_match = not _is_masked(res_id["brn"]) and (res_id["brn"] == normalize_brn(row_brn) or len(res_id["brn"]) == 10)
+                                            res_id["match_score"] = 100.0 if (is_brn_match) else 80.0
                                 else:
                                     res_id["fss_error"] = fss_id_res.get("_error") if fss_id_res else "결과없음"
                             except Exception as e:
@@ -1161,7 +1212,7 @@ def show_business_info_crawling():
                                 nps_id_res = search_and_match_nps(row_name, current_brn, api_service_key, address=row_addr)
                                 if nps_id_res and "_error" not in nps_id_res:
                                     api_brn = normalize_brn(nps_id_res.get("bzowrRgstNo", ""))
-                                    res_id["brn"] = _update_brn(res_id["brn"], api_brn)
+                                    res_id["brn"] = _update_brn(res_id["brn"], api_brn, initial_input=row_brn)
                                     res_id["api_name"] = res_id["api_name"] or str(nps_id_res.get("wkplNm", "")).strip()
                                     res_id["api_addr"] = res_id["api_addr"] or str(nps_id_res.get("wkplRoadNmAddr", "") or nps_id_res.get("wkplRoadNmDtlAddr", "")).strip()
                                     if res_id["match_score"] < 70:

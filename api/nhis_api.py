@@ -41,20 +41,34 @@ NHIS_FIELD_MAP = {
 
 
 def fetch_nhis_total_count(service_key: str, uddi: str = "71a6826c-7c86-4b4c-8e90-b61607d40214") -> int:
-    """전체 데이터 건수 조회"""
+    """전체 데이터 건수 조회 (NHIS V1 API 가이드 반영)"""
     url = f"{BASE_API_URL}{uddi}"
     params = {
         "page": 1,
         "perPage": 1,
         "returnType": "JSON",
-        "serviceKey": service_key,
+        # "serviceKey": service_key,  # 쿼리 파라미터 대신 헤더 사용 권장
+    }
+    headers = {
+        "Authorization": f"Infuser {service_key}",
+        "accept": "application/json"
     }
     try:
-        resp = requests.get(url, params=params, timeout=15)
+        resp = requests.get(url, params=params, headers=headers, timeout=15)
+        
+        # 가이드북 기준 오류 처리
+        if resp.status_code == 401:
+            raise PermissionError("인증 정보가 정확하지 않음 (401)")
+        elif resp.status_code == 500:
+            raise Exception("API 서버에 문제가 발생하였음 (500)")
+            
         resp.raise_for_status()
         data = resp.json()
         return data.get("totalCount", 0)
-    except Exception:
+    except PermissionError:
+        raise
+    except Exception as e:
+        print(f"NHIS Total Count Error: {e}")
         return 0
 
 
@@ -84,13 +98,25 @@ def download_nhis_dataset(service_key: str, uddi: str = "71a6826c-7c86-4b4c-8e90
             "page": page,
             "perPage": PER_PAGE,
             "returnType": "JSON",
-            "serviceKey": service_key,
+            # "serviceKey": service_key,
+        }
+        headers = {
+            "Authorization": f"Infuser {service_key}",
+            "accept": "application/json"
         }
         try:
-            resp = requests.get(url, params=params, timeout=30)
+            resp = requests.get(url, params=params, headers=headers, timeout=30)
+            
+            # 가이드북 기준 오류 처리
+            if resp.status_code == 401:
+                raise PermissionError("인증 정보가 정확하지 않음 (401)")
+            elif resp.status_code == 500:
+                raise Exception("API 서버에 문제가 발생하였음 (500)")
+            
             resp.raise_for_status()
             data = resp.json()
 
+            # 응답 구조 내 결과 코드 확인 (있을 경우)
             if isinstance(data, dict) and data.get("result", {}).get("code") in ["INVALID_KEY", "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR"]:
                 error_msg = data.get("result", {}).get("message", "API 인증 오류")
                 raise PermissionError(f"API 인증 실패: {error_msg}")
@@ -105,12 +131,9 @@ def download_nhis_dataset(service_key: str, uddi: str = "71a6826c-7c86-4b4c-8e90
 
         except PermissionError:
             raise
-        except requests.exceptions.HTTPError as e:
-            status = e.response.status_code
-            if status in (401, 403):
-                raise PermissionError(f"API 키 인증 실패 (HTTP {status})")
-            continue
-        except Exception:
+        except (requests.exceptions.HTTPError, Exception) as e:
+            # 개별 페이지 로드 실패 시 로그만 남기고 최대한 진행 (단, 401은 위에서 raise)
+            print(f"NHIS Download Error at page {page}: {e}")
             continue
 
     if not all_records:

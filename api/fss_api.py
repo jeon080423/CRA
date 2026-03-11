@@ -11,9 +11,11 @@ import requests
 import re
 
 # ── 기업기본정보 API ──
-CORP_BASIC_URL = "https://apis.data.go.kr/1160100/GetCorpBasicInfoService_V2/getCorpOutline"
+# 가이드북 기준: GetCorpBasicInfoService_V2 (data.go.kr 서비스명)
+CORP_BASIC_URL = "https://apis.data.go.kr/1160100/service/GetCorpBasicInfoService_V2/getCorpOutline_V2"
+SUBSIDIARY_URL = "https://apis.data.go.kr/1160100/service/GetCorpBasicInfoService_V2/getConsSubsComp_V2"
 
-# 기업기본정보에서 선택 가능한 항목
+# 기업기본정보에서 선택 가능한 항목 (V2 가이드 기준 필드명 업데이트)
 FSS_CORP_SELECTABLE_FIELDS = [
     "enpPn1AvgSlryAmt",   # 1인평균급여금액
     "enpEmpeCnt",         # 종업원수
@@ -34,7 +36,14 @@ FSS_CORP_FIELD_LABELS = {
 
 
 # ── 기업재무정보 API ──
-FINA_STAT_URL = "https://apis.data.go.kr/1160100/GetFinaStatInfoService_V2/getSummFinaStat"
+# ── 기업 재무정보 서비스 (금융위원회) ──
+# 가이드북 기준: GetFinaStatInfoService_V2
+FINA_BASE_URL = "http://apis.data.go.kr/1160100/service/GetFinaStatInfoService_V2"
+FINA_SUMM_URL = f"{FINA_BASE_URL}/getSummFinaStat_V2" # 요약재무제표
+FINA_BS_URL   = f"{FINA_BASE_URL}/getBs_V2"           # 재무상태표
+FINA_IS_URL   = f"{FINA_BASE_URL}/getIncoStat_V2"     # 손익계산서
+# 기존 하위호환용 FINA_STAT_URL (임시 유지)
+FINA_STAT_URL = FINA_SUMM_URL
 
 # 기업재무정보에서 선택 가능한 항목
 FSS_FINA_SELECTABLE_FIELDS = [
@@ -121,9 +130,23 @@ def search_corp_by_name(company_name: str, service_key: str, brn: str = "", addr
                 item_list = items
             
             if not item_list: continue
-            if isinstance(item_list, dict): item_list = [item_list]
+            # [v12.5] V2 필드 매핑 보완 (가이드북 기준)
+            # - enpBsadr(기본주소) + enpDtadr(상세주소) -> enpAddr
+            # - enpRprfNm(대표자명) -> ceoNm
+            for item in item_list:
+                # 주소 병합
+                bs_addr = str(item.get("enpBsadr", "")).strip()
+                dt_addr = str(item.get("enpDtadr", "")).strip()
+                if bs_addr and "enpAddr" not in item:
+                    item["enpAddr"] = f"{bs_addr} {dt_addr}".strip()
+                
+                # 대표자명 매핑
+                if "enpRprfNm" in item and "ceoNm" not in item:
+                    item["ceoNm"] = item.get("enpRprfNm")
+                
+                # 가이드북 예제에 bzno(사업자번호), crno(법인번호) 존재 확인
 
-            # 1) CRNO가 제공된 경우 CRNO 일치 확인 (params에 넣었어도 리스트 중 재검증)
+            # 1) CRNO가 제공된 경우 CRNO 일치 확인
             if clean_crno:
                 for item in item_list:
                     if str(item.get("crno", "")).replace("-", "") == clean_crno:
@@ -137,13 +160,10 @@ def search_corp_by_name(company_name: str, service_key: str, brn: str = "", addr
                     api_brn = _normalize_brn(item.get("bzno", ""))
                     if not api_brn: continue
                     
-                    # Exact Match
                     if api_brn == brn_clean:
                         return item
                     
-                    # Fit Match: 입력값이 마스킹되어 있고, API값이 마스킹을 충족하는 경우
                     if is_input_masked and len(api_brn) == 10 and "*" not in api_brn:
-                        # * 자리를 제외한 나머지 숫자 일치 확인
                         match = True
                         for i in range(10):
                             if brn_clean[i] != "*" and brn_clean[i] != api_brn[i]:
@@ -152,7 +172,7 @@ def search_corp_by_name(company_name: str, service_key: str, brn: str = "", addr
                         if match:
                             return item
 
-            # 3) 이름 및 주소 유사도 매칭 (CRNO가 없을 때만 수행하거나 fallback)
+            # 3) 이름 및 주소 유사도 매칭
             from difflib import SequenceMatcher
             def _get_sim(a, b):
                 if not a or not b: return 0.0
@@ -166,22 +186,19 @@ def search_corp_by_name(company_name: str, service_key: str, brn: str = "", addr
 
             for item in item_list:
                 api_name = str(item.get("corpNm", "")).replace(" ", "").lower()
-                api_addr = str(item.get("enpAddr", ""))
+                api_addr = str(item.get("enpAddr", "")) # 상단에서 병합된 주소 사용
                 
-                # 이름 유사도 (0.7 이상 or 포함관계)
                 name_sim = _get_sim(search_name_norm, api_name) if search_name_norm else 0.5
                 is_name_match = (name_sim >= 0.8) or (search_name_clean.replace(" ","") in api_name) or (api_name in search_name_clean.replace(" ",""))
                 
                 if is_name_match:
                     addr_sim = _get_sim(address, api_addr) if address else 0.5
-                    # 가중치 점수 조정: 이름(0.7), 주소(0.3)
-                    # 이름이 완벽히 일치(0.95+)하면 주소가 달라도 가중치 부여
                     name_weight = 0.7
                     addr_weight = 0.3
                     score = name_sim * name_weight + addr_sim * addr_weight
                     
                     if name_sim >= 0.95:
-                        score = max(score, 0.85) # 이름이 거의 같으면 주소 달라도 후보 유지
+                        score = max(score, 0.85)
                     if score > max_score:
                         max_score = score
                         best_item = item
@@ -197,27 +214,46 @@ def search_corp_by_name(company_name: str, service_key: str, brn: str = "", addr
     return {"_error": last_error}
 
 
+# FSC 재무정보 에러 코드 매핑
+FSC_ERROR_CODES = {
+    "00": "정상",
+    "01": "APPLICATION_ERROR (애플리케이션 에러)",
+    "03": "NO_DATA (데이터 없음)",
+    "10": "INVALID_REQUEST_PARAMETER_ERROR (잘못된 요청 파라미터)",
+    "12": "NO_OPENAPI_SERVICE_ERROR (해당 서비스 없음)",
+    "20": "SERVICE_ACCESS_DENIED_ERROR (서비스 접근 거부)",
+    "22": "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR (요청 제한 횟수 초과)",
+    "30": "SERVICE_KEY_IS_NOT_REGISTERED_ERROR (등록되지 않은 서비스키)",
+    "31": "DEADLINE_HAS_EXPIRED_ERROR (기한 만료된 서비스키)",
+    "32": "UNREGISTERED_IP_ERROR (등록되지 않은 IP)",
+    "99": "UNKNOWN_ERROR (기타 에러)"
+}
+
 def search_financial_by_crno(crno: str, biz_year: str, service_key: str) -> dict:
     """
     기업재무정보 API: 법인등록번호로 요약 재무제표 조회 (연도 fallback 지원)
+    가이드북 기준: GetFinaStatInfoService_V2/getSummFinaStat_V2
     """
     if not crno: return {"_error": "법인등록번호 없음"}
 
+    # 정규화: 13자리 숫자만 사용
+    clean_crno = str(crno).replace("-", "").strip()
+    if len(clean_crno) != 13:
+        return {"_error": f"유효하지 않은 법인등록번호: {crno}"}
+
     years_to_try = [biz_year, str(int(biz_year)-1), str(int(biz_year)-2)]
     
-    urls = [
-        FINA_STAT_URL,
-        FINA_STAT_URL.replace("/GetFina", "/service/GetFina"),
-        FINA_STAT_URL.replace("https://", "http://")
-    ]
+    # 가이드북 권장 URL 우선 사용
+    urls = [FINA_SUMM_URL, FINA_STAT_URL]
 
+    last_fsc_msg = "조회결과 없음"
     for year in years_to_try:
         for url in urls:
             params = {
                 "serviceKey": service_key,
-                "crno": crno,
+                "crno": clean_crno,
                 "bizYear": year,
-                "numOfRows": 1,
+                "numOfRows": 10, # 충분히 가져옴
                 "resultType": "json",
             }
             try:
@@ -225,17 +261,29 @@ def search_financial_by_crno(crno: str, biz_year: str, service_key: str) -> dict
                 if resp.status_code != 200: continue
                 
                 data = resp.json()
-                items = data.get("response", {}).get("body", {}).get("items", {})
+                header = data.get("response", {}).get("header", {})
+                res_code = header.get("resultCode", "00")
+                res_msg = header.get("resultMsg", "")
+
+                if res_code != "00":
+                    last_fsc_msg = FSC_ERROR_CODES.get(res_code, res_msg or f"Error {res_code}")
+                    continue
+
+                body = data.get("response", {}).get("body", {})
+                items = body.get("items", {})
                 if not items: continue
                 
                 item_list = items.get("item", [])
                 if not item_list: continue
+                
+                # 결과 반환 (리스트인 경우 첫 번째 항목 우위)
                 if isinstance(item_list, dict): return item_list
                 if isinstance(item_list, list) and len(item_list) > 0: return item_list[0]
-            except:
+            except Exception as e:
+                last_fsc_msg = f"API 연동 오류: {str(e)}"
                 continue
                 
-    return {"_error": "최근 3개년 재무정보 없음"}
+    return {"_error": last_fsc_msg}
 
 
 def validate_crno(crno: str) -> bool:
