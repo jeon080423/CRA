@@ -37,7 +37,7 @@ from api.nhis_api import (
     download_nhis_dataset, NHIS_SELECTABLE_FIELDS, NHIS_FIELD_LABELS, NHIS_FIELD_MAP,
     NHIS_ENDPOINTS
 )
-from api.nps_api import search_and_match_nps, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, NPS_FIELD_MAP, estimate_avg_salary
+from api.nps_api import search_and_match_nps, NPS_SELECTABLE_FIELDS, NPS_FIELD_LABELS, estimate_avg_salary
 from api.fss_api import (
     search_corp_by_name, search_financial_by_crno, validate_crno,
     FSS_CORP_SELECTABLE_FIELDS, FSS_CORP_FIELD_LABELS,
