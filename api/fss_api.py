@@ -37,13 +37,13 @@ FSS_CORP_FIELD_LABELS = {
 
 # ── 기업재무정보 API ──
 # ── 기업 재무정보 서비스 (금융위원회) ──
-# 가이드북 기준: GetFinaStatInfoService_V2
-FINA_BASE_URL = "http://apis.data.go.kr/1160100/service/GetFinaStatInfoService_V2"
+# 가이드북 및 공공데이터포털 기준: GetFinaStatInfoService_V2 (HTTPS 권장)
+FINA_BASE_URL = "https://apis.data.go.kr/1160100/service/GetFinaStatInfoService_V2"
 FINA_SUMM_URL = f"{FINA_BASE_URL}/getSummFinaStat_V2" # 요약재무제표
 FINA_BS_URL   = f"{FINA_BASE_URL}/getBs_V2"           # 재무상태표
 FINA_IS_URL   = f"{FINA_BASE_URL}/getIncoStat_V2"     # 손익계산서
-# 기존 하위호환용 FINA_STAT_URL (임시 유지)
-FINA_STAT_URL = FINA_SUMM_URL
+# 기존 명칭 fallback용
+FINA_STAT_URL = f"{FINA_BASE_URL}/getSummFinaStat" 
 
 # 기업재무정보에서 선택 가능한 항목
 FSS_FINA_SELECTABLE_FIELDS = [
@@ -243,12 +243,16 @@ def search_financial_by_crno(crno: str, biz_year: str, service_key: str) -> dict
 
     years_to_try = [biz_year, str(int(biz_year)-1), str(int(biz_year)-2)]
     
-    # 가이드북 권장 URL 우선 사용
-    urls = [FINA_SUMM_URL, FINA_STAT_URL]
+    # 가이드북 권장 URL 및 V1/V2 혼용 가능 구조 대비
+    urls_to_try = [
+        FINA_SUMM_URL, 
+        FINA_STAT_URL, # _V2 없는 버전
+        FINA_SUMM_URL.replace("GetFinaStatInfoService_V2", "GetFinaStatInfoService") # V1 서비스 fallback
+    ]
 
     last_fsc_msg = "조회결과 없음"
     for year in years_to_try:
-        for url in urls:
+        for url in urls_to_try:
             params = {
                 "serviceKey": service_key,
                 "crno": clean_crno,

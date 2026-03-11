@@ -1757,13 +1757,21 @@ def show_business_info_crawling():
         }
         for col in result_df.columns:
             if col.startswith("[국민연금]"):
-                column_config[col] = st.column_config.TextColumn(col, help="국민연금공단 데이터")
+                help_text = (
+                    "국민연금 API(V2)는 개인정보보호를 위해 사업자번호 뒷자리를 마스킹(*) 처리하여 제공합니다. "
+                    "첫 6자리와 사업장명/주소를 기반으로 매칭되었습니다."
+                )
+                column_config[col] = st.column_config.TextColumn(col, help=help_text)
             elif col.startswith("[건강보험]"):
                 column_config[col] = st.column_config.TextColumn(col, help="건강보험공단 데이터")
             elif col.startswith("[기업정보]"):
                 column_config[col] = st.column_config.TextColumn(col, help="금융위원회 기업기본정보")
             elif col.startswith("[재무정보]"):
-                column_config[col] = st.column_config.TextColumn(col, help="금융위원회 기업재무정보")
+                help_text = (
+                    "금융감독원(DART) 공시 대상 기업이 아닌 경우 조회가 불가할 수 있습니다. "
+                    "법인등록번호(13자리)를 기반으로 조회됩니다."
+                )
+                column_config[col] = st.column_config.TextColumn(col, help=help_text)
 
         def style_sido_mismatch(row):
             """시도가 다른 경우 빨간 글씨 + 노란 배경"""
