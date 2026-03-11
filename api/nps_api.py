@@ -172,9 +172,10 @@ def search_and_match_nps(
     brn: str,
     service_key: str,
     address: str = "",
+    input_sido: str = "",
 ) -> dict:
     """
-    사업장명 및 사업자번호(앞6자리)로 검색 후 정밀 매칭
+    사업장명 및 사업자번호(앞6자리)로 검색 후 정밀 매칭 (시도 검증 포함)
     """
     if not company_name and not brn:
         return {"_error": "회사명 또는 사업자번호 부족"}
@@ -231,19 +232,35 @@ def search_and_match_nps(
         name_sim = _get_sim(search_name_norm, api_name) if search_name_norm else 0.5
         addr_sim = _get_sim(address, api_addr) if address else 0.5
         
+        # ── [v12.7] 시도(Sido) 검증 로직 추가 ──────────────────────
+        sido_match = True
+        if input_sido and api_addr:
+            # 주소에서 첫 단어(시도) 추출
+            api_sido = api_addr.split()[0][:2] # '서울', '경기' 등 2글자만 비교
+            user_sido = input_sido[:2]
+            if api_sido != user_sido:
+                sido_match = False
+
         # 이름 일치 시 가중치 부여
         score = name_sim * 0.7 + addr_sim * 0.3
+        
+        # 시도가 다른 경우 강력한 페널티 (매칭 제외 수준)
+        if not sido_match:
+            score *= 0.5
         
         if score > max_score:
             max_score = score
             best_item = item
 
+    # 최종 점수 기반 결과 반환
+    # (사업자번호 10자리 완전 일치는 위에서 이미 리턴됨)
     if best_item and max_score >= 0.6:
         detail = get_nps_detail(best_item.get("seq"), service_key)
         if detail: best_item.update(detail)
+        best_item["_match_score"] = round(max_score, 2)
         return best_item
 
-    return {"_error": f"검색결과 {len(results)}건 중 신뢰할 수 있는 매칭 실패", "_candidates": len(results)}
+    return {"_error": f"검색결과 {len(results)}건 중 신뢰할 수 있는 매칭 실패 (최고유사도: {max_score:.2f})", "_candidates": len(results)}
 
 
 def estimate_avg_salary(nps_data: dict) -> str:

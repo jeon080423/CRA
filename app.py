@@ -1284,7 +1284,9 @@ def show_business_info_crawling():
                                 if res_brn and res_brn in cached_nps:
                                     details["nps"] = cached_nps[res_brn]
                                 else:
-                                    details["nps"] = search_and_match_nps(res_name, res_brn, api_service_key)
+                                    # [v12.7] input_sido 추가
+                                    res_sido = resolved_id.get("sido", "")
+                                    details["nps"] = search_and_match_nps(res_name, res_brn, api_service_key, address=resolved_id.get("api_addr", ""), input_sido=res_sido)
                                     if res_brn and "_error" not in details["nps"]:
                                         cached_nps[res_brn] = details["nps"]
                             
@@ -1438,6 +1440,9 @@ def show_business_info_crawling():
                                 
                                 if "avgBasSalary" in selected_nps:
                                     result_df.at[idx, "[국민연금] 추정 평균 기준소득월액"] = estimate_avg_salary(nps_row)
+
+                                # [v12.7] 매칭 신뢰도 필드 추가
+                                result_df.at[idx, "[국민연금] 매칭도"] = nps_row.get("_match_score", 0.0) if has_nps_data else 0.0
 
                             if selected_nhis:
                                 for field in selected_nhis:
@@ -1759,9 +1764,12 @@ def show_business_info_crawling():
             if col.startswith("[국민연금]"):
                 help_text = (
                     "국민연금 API(V2)는 개인정보보호를 위해 사업자번호 뒷자리를 마스킹(*) 처리하여 제공합니다. "
-                    "첫 6자리와 사업장명/주소를 기반으로 매칭되었습니다."
+                    "첫 6자리와 사업장명/주소(시도 검증 포함)를 기반으로 매칭되었습니다."
                 )
-                column_config[col] = st.column_config.TextColumn(col, help=help_text)
+                if "매칭도" in col:
+                    column_config[col] = st.column_config.ProgressColumn(col, help="NPS 매칭 신뢰도 (0.0~1.0)", min_value=0.0, max_value=1.0, format="%.2f")
+                else:
+                    column_config[col] = st.column_config.TextColumn(col, help=help_text)
             elif col.startswith("[건강보험]"):
                 column_config[col] = st.column_config.TextColumn(col, help="건강보험공단 데이터")
             elif col.startswith("[기업정보]"):
@@ -1773,17 +1781,26 @@ def show_business_info_crawling():
                 )
                 column_config[col] = st.column_config.TextColumn(col, help=help_text)
 
-        def style_sido_mismatch(row):
-            """시도가 다른 경우 빨간 글씨 + 노란 배경"""
+        def style_rows(row):
+            """시도가 다른 경우 또는 NPS 매칭도가 낮은 경우 강조"""
             u_sido = str(row.get("[입력] 시도", ""))
             a_sido = str(row.get("[행정] 시도", ""))
+            nps_score = row.get("[국민연금] 매칭도", 0.0)
             
+            styles = [''] * len(row)
+            
+            # 1. 시도 불일치 (빨간 글씨 + 노란 배경)
             if u_sido and a_sido and u_sido != a_sido:
-                return ['background-color: #FFFFE0; color: #E03131; font-weight: bold;'] * len(row)
-            return [''] * len(row)
+                styles = ['background-color: #FFFFE0; color: #E03131; font-weight: bold;'] * len(row)
+            
+            # 2. NPS 매칭도 낮음 (회색 배경 + 이탤릭) - 시도 불일치보다 우선순위 낮음
+            elif 0 < nps_score < 0.7:
+                styles = ['background-color: #F8F9FA; color: #868E96; border-left: 3px solid #FAB005;'] * len(row)
+                
+            return styles
 
         st.dataframe(
-            result_df.style.apply(style_sido_mismatch, axis=1),
+            result_df.style.apply(style_rows, axis=1),
             use_container_width=True,
             hide_index=True,
             column_config=column_config,
