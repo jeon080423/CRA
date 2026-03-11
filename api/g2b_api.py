@@ -41,26 +41,30 @@ def get_g2b_corp_info(brn: str, service_key: str) -> dict:
     res = _request_g2b(G2B_CORP_INFO_URL, service_key, {"bizno": clean_brn, "inqryDiv": "3"})
     
     if res:
+        # 가이드북 규격 표준화
+        parsed = _parse_g2b_item(res)
+        
         # 추가 정보 (업종)
         indst_res = _request_g2b(G2B_CORP_INDST_URL, service_key, {"bizno": clean_brn, "inqryDiv": "3"})
         if indst_res and "indstryNm" in indst_res:
-            res["bizType"] = indst_res.get("indstryNm")
+            parsed["bizType"] = indst_res.get("indstryNm")
             
         # 추가 정보 (물품 - 첫 번째 품명만)
         prdct_res = _request_g2b(G2B_CORP_PRDCT_URL, service_key, {"bizno": clean_brn, "inqryDiv": "3"})
         if prdct_res and "dtlPrdctClsfNoNm" in prdct_res:
-            res["main_product"] = prdct_res.get("dtlPrdctClsfNoNm")
+            parsed["main_product"] = prdct_res.get("dtlPrdctClsfNoNm")
 
         # 추가 정보 (제재정보)
         unpt_res = _request_g2b(G2B_UNPT_INFO_URL, service_key, {"bizno": clean_brn, "inqryDiv": "1"})
         if unpt_res and "rsttBgnDate" in unpt_res:
-            res["restriction"] = f"제재중 ({unpt_res.get('rsttBgnDate')} ~ {unpt_res.get('rsttEndDate')})"
+            parsed["restriction"] = f"제재중 ({unpt_res.get('rsttBgnDate')} ~ {unpt_res.get('rsttEndDate')})"
         
-        return res
+        return parsed
 
     # 2. 수요기관 조회 (조달업체에 없는 경우)
     res = _request_g2b(G2B_INST_INFO_URL, service_key, {"bizno": clean_brn, "inqryDiv": "3"})
-    if res: return res
+    if res: 
+        return _parse_g2b_item(res)
     
     return {}
 
