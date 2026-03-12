@@ -1178,9 +1178,10 @@ def show_business_info_crawling():
                             if api_service_key and current_brn and not _is_masked(current_brn):
                                 g2b_info = get_g2b_corp_info(current_brn, api_service_key)
                                 if g2b_info:
+                                    # G2B info available
                                     res_id["api_ceo"] = res_id["api_ceo"] or g2b_info.get("ceo_nm", "")
-                                    res_id["api_tel"] = g2b_info.get("telno")
-                                    res_id["api_biz_type"] = g2b_info.get("bizType")
+                                    res_id["api_tel"] = res_id["api_tel"] or g2b_info.get("telno", "")
+                                    res_id["api_biz_type"] = res_id["api_biz_type"] or g2b_info.get("bizType", "")
                                     res_id["api_addr"] = res_id["api_addr"] or g2b_info.get("addr", "")
                                     res_id["corpSizeNm"] = g2b_info.get("corpSizeNm", "")
                                     res_id["main_product"] = g2b_info.get("main_product", "")
