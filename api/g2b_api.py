@@ -26,6 +26,23 @@ G2B_ERROR_CODES = {
     "30": "Service Key Not Registered (등록되지 않은 서비스키)"
 }
 
+# 사용자 선택 가능 항목 목록 (체크박스용)
+G2B_SELECTABLE_FIELDS = [
+    "bizType",          # 업종 (indstryNm)
+    "telno",            # 전화번호 (telNo)
+    "corpSizeNm",       # 기업구분 (대/중/소)
+    "main_product",     # 주요공취물품 (dtlPrdctClsfNoNm)
+    "restriction",      # 부정당업자 제재정보
+]
+
+G2B_FIELD_LABELS = {
+    "bizType":      "나라장터 등록업종",
+    "telno":        "전화번호 📞",
+    "corpSizeNm":   "기업구분 (대/중/소/기타)",
+    "main_product": "주요공급물품",
+    "restriction":  "부정당업자 제재정보",
+}
+
 def get_g2b_corp_info(brn: str, service_key: str) -> dict:
     """
     사업자등록번호(10자리)로 나라장터 정보를 조회
@@ -85,8 +102,6 @@ def _request_g2b(url: str, service_key: str, extra_params: dict) -> dict:
             res_code = header.get("resultCode", "00")
             
             if res_code != "00":
-                # 에러 로그 (필요시 상세 출력)
-                # print(f"PPS API Error [{res_code}]: {G2B_ERROR_CODES.get(res_code, 'Unknown')}")
                 return {}
 
             body = data.get("response", {}).get("body", {})
@@ -100,12 +115,12 @@ def _request_g2b(url: str, service_key: str, extra_params: dict) -> dict:
 
 def _parse_g2b_item(item: dict) -> dict:
     """G2B V2 응답 데이터를 공통 포맷으로 파싱 (get_g2b_corp_info 내부에서 필요한 필드 추출용)"""
-    # 이 함수는 직접 호출되지 않고 로직 가이드용으로 유지하거나 확장 가능
     return {
         "corp_name": item.get("corpNm") or item.get("dminstNm") or "",
         "brn": item.get("bizno", ""),
         "ceo_nm": item.get("rprsntvNm", ""),
         "addr": item.get("adres", ""),
         "telno": item.get("telNo") or item.get("telno") or "",
+        "corpSizeNm": item.get("corpSizeNm") or "", # 기업구분 (대/중/소 등)
         "source": "G2B_V2"
     }

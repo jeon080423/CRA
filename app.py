@@ -44,7 +44,7 @@ from api.fss_api import (
     FSS_FINA_SELECTABLE_FIELDS, FSS_FINA_FIELD_LABELS,
 )
 from api.dart_api import get_dart_corp_info
-from api.g2b_api import get_g2b_corp_info
+from api.g2b_api import get_g2b_corp_info, G2B_SELECTABLE_FIELDS, G2B_FIELD_LABELS
 from api.nts_api import get_nts_business_status
 from utils.excel_handler import load_excel, export_result_excel
 from utils.matcher import normalize_brn, clean_company_names_bulk, clean_addresses_bulk, clean_address, split_address
@@ -918,8 +918,11 @@ def show_business_info_crawling():
                 st.caption("📑 **사업체 기준 조회:** 각 행별로 독립적인 행정자료 매칭 결과를 제공합니다.")
                 
             st.markdown("<br>", unsafe_allow_html=True)
+            
+            # 선택 항목 초기화
+            selected_nps, selected_nhis, selected_nts, selected_g2b = [], [], [], []
 
-            col_nps, col_nhis, col_nts = st.columns(3)
+            col_nps, col_nhis, col_nts, col_g2b = st.columns(4)
 
             with col_nps:
                 st.markdown("""
@@ -928,11 +931,12 @@ def show_business_info_crawling():
     <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">국민연금 가입 사업장 내역</div>
 </div>
 """, unsafe_allow_html=True)
-                selected_nps = []
                 for field in NPS_SELECTABLE_FIELDS:
                     label = NPS_FIELD_LABELS.get(field, field)
+                    if field == "jnngpCnt":
+                        label += " 💡" # 종사자수 강조
                     if field == "avgBasSalary":
-                        label += " 💡"
+                        label += " 💰" # 매출/소득 관련
                     if st.checkbox(label, value=(field != "avgBasSalary"), key=f"nps_{field}"):
                         selected_nps.append(field)
 
@@ -944,7 +948,7 @@ def show_business_info_crawling():
 </div>
 """, unsafe_allow_html=True)
                 if brn_col == "(선택 안 함)":
-                    st.info("💡 **사업자번호가 없다면**, '회사명'과 '주소' 컬럼을 모두 매핑해 주세요. (주소 정보가 있을 때 매칭 정확도가 가장 높습니다.)")
+                    st.info("💡 **사업자번호가 없다면**, '회사명'과 '주소' 컬럼을 모두 매핑해 주세요.")
                 
                 nhis_year = st.selectbox(
                     "데이터 시점 선택", 
@@ -953,9 +957,10 @@ def show_business_info_crawling():
                     key="nhis_year_selector"
                 )
                 selected_nhis_uddi = NHIS_ENDPOINTS[nhis_year]
-                selected_nhis = []
                 for field in NHIS_SELECTABLE_FIELDS:
                     label = NHIS_FIELD_LABELS.get(field, field)
+                    if field == "직장가입자수":
+                        label += " 💡" # 종업원수 강조
                     if st.checkbox(label, value=True, key=f"nhis_{field}"):
                         selected_nhis.append(field)
 
@@ -966,15 +971,27 @@ def show_business_info_crawling():
     <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.1rem;">진위확인 및 상태조회</div>
 </div>
 """, unsafe_allow_html=True)
-                selected_nts = []
                 nts_fields = [
-                    ("status", "사업자상태 (계속/휴업/폐업)"),
+                    ("status", "사업자상태 🚩"), # 휴폐업정보 강조
                     ("tax_type", "과세유형 (일반/간이 등)"),
-                    ("end_dt", "폐업일자"),
+                    ("end_dt", "폐업일자 📅"),
                 ]
                 for field_id, label in nts_fields:
                     if st.checkbox(label, value=True, key=f"nts_{field_id}"):
                         selected_nts.append(field_id)
+
+            with col_g2b:
+                st.markdown("""
+<div class="qx-card">
+    <div class="qx-card-title">🔍 나라장터 (G2B)</div>
+    <div style="font-size:0.78rem; color:#8B96A9; margin-bottom:0.5rem;">조달청 업체정보 및 업종</div>
+</div>
+""", unsafe_allow_html=True)
+                for field in G2B_SELECTABLE_FIELDS:
+                    label = G2B_FIELD_LABELS.get(field, field)
+                    # 강조는 이미 label에 포함되어 있을 수 있음 (전화번호 📞 등)
+                    if st.checkbox(label, value=True, key=f"g2b_{field}"):
+                        selected_g2b.append(field)
 
             # ── 금융위원회 기업정보 (3번째 컬럼)
             st.markdown("<br>", unsafe_allow_html=True)
@@ -996,6 +1013,8 @@ def show_business_info_crawling():
                 selected_fss_corp = []
                 for field in FSS_CORP_SELECTABLE_FIELDS:
                     label = FSS_CORP_FIELD_LABELS.get(field, field)
+                    if field == "enpEmpeCnt":
+                        label += " 💡" # 종업원수 강조
                     checked = st.checkbox(label, value=fss_available, key=f"fss_corp_{field}", disabled=not fss_available)
                     if checked and fss_available:
                         selected_fss_corp.append(field)
@@ -1010,11 +1029,13 @@ def show_business_info_crawling():
                 selected_fss_fina = []
                 for field in FSS_FINA_SELECTABLE_FIELDS:
                     label = FSS_FINA_FIELD_LABELS.get(field, field)
+                    if field == "enpSaleAmt":
+                        label += " 💰" # 매출액 강조
                     checked = st.checkbox(label, value=fss_available, key=f"fss_fina_{field}", disabled=not fss_available)
                     if checked and fss_available:
                         selected_fss_fina.append(field)
 
-            has_any_selection = selected_nps or selected_nhis or selected_fss_corp or selected_fss_fina or selected_nts
+            has_any_selection = selected_nps or selected_nhis or selected_fss_corp or selected_fss_fina or selected_nts or selected_g2b
             if not has_any_selection:
                 st.info("조회할 항목을 하나 이상 선택하세요.")
             else:
@@ -1161,6 +1182,9 @@ def show_business_info_crawling():
                                     res_id["api_tel"] = g2b_info.get("telno")
                                     res_id["api_biz_type"] = g2b_info.get("bizType")
                                     res_id["api_addr"] = res_id["api_addr"] or g2b_info.get("addr", "")
+                                    res_id["corpSizeNm"] = g2b_info.get("corpSizeNm", "")
+                                    res_id["main_product"] = g2b_info.get("main_product", "")
+                                    res_id["restriction"] = g2b_info.get("restriction", "")
                                     _log_debug(f"G2B Enriched: {current_brn}")
 
                             # 3) FSS API 최종 확인 및 상세정보 확보
@@ -1386,8 +1410,6 @@ def show_business_info_crawling():
                         result_df["[공공데이터] 주소(도로명)"] = ""
                         result_df["[행정] 시도"] = ""
                         result_df["[행정] 시군구"] = ""
-                        result_df["[조달청] 등록업종"] = ""
-                        result_df["[조달청] 전화번호"] = ""
                         result_df["유사도(%)"] = 0.0
 
                         rows_with_data = 0
@@ -1416,10 +1438,25 @@ def show_business_info_crawling():
                                 result_df.at[idx, "[행정] 시도"] = a_sido
                                 result_df.at[idx, "[행정] 시군구"] = a_sgg
 
-                            result_df.at[idx, "[조달청] 등록업종"] = res_id.get("api_biz_type", "")
-                            result_df.at[idx, "[조달청] 전화번호"] = res_id.get("api_tel", "")
+                            # result_df.at[idx, "[조달청] 등록업종"] = res_id.get("api_biz_type", "")
+                            # result_df.at[idx, "[조달청] 전화번호"] = res_id.get("api_tel", "")
                             
                             has_any_data = False
+
+                            # G2B 결과 추출 (v13.0)
+                            if selected_g2b:
+                                for field in selected_g2b:
+                                    label = G2B_FIELD_LABELS.get(field, field).replace(" 📞", "")
+                                    col_name = f"[나라장터] {label}"
+                                    val = ""
+                                    if field == "bizType": val = res_id.get("api_biz_type", "")
+                                    elif field == "telno": val = res_id.get("api_tel", "")
+                                    elif field == "corpSizeNm": val = res_id.get("corpSizeNm", "")
+                                    elif field == "main_product": val = res_id.get("main_product", "")
+                                    elif field == "restriction": val = res_id.get("restriction", "")
+                                    
+                                    result_df.at[idx, col_name] = str(val) if val else "해당없음"
+                                    if val: has_any_data = True
 
                             # NPS 결과 추출
                             if selected_nps:
