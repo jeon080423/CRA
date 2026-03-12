@@ -42,21 +42,35 @@ class DataImputer:
             new_val = fill_values.loc[idx]
             self._apply_imputation(column, [idx], new_val, f"층별 평균 대체({', '.join(strata_columns)})")
 
-    def impute_knn(self, column: str, target_indices: list, k=5):
-        """k-NN (최근접 이웃) 대체"""
-        numeric_df = self.df.select_dtypes(include=[np.number])
+    def impute_knn(self, column: str, target_indices: list, k=5, donor_columns: list = None):
+        """k-NN (최근접 이웃) 대체 - donor_columns가 있으면 해당 변수들만 유사도 기준으로 사용"""
+        # [v4.7] 기준 변수 필터링 지원
+        cols_to_use = [column]
+        if donor_columns:
+            # 존재하는 컬럼만 필터링
+            valid_donors = [c for c in donor_columns if c in self.df.columns and c != column]
+            cols_to_use.extend(valid_donors)
+        
+        numeric_df = self.df[cols_to_use].select_dtypes(include=[np.number])
         if column not in numeric_df.columns:
             return # 수치형이 아니면 스킵
             
         imputer = KNNImputer(n_neighbors=k)
-        imputed_data = imputer.fit_transform(numeric_df)
-        
-        col_idx = list(numeric_df.columns).index(column)
-        
-        for idx in target_indices:
-            row_pos = numeric_df.index.get_loc(idx)
-            new_val = imputed_data[row_pos, col_idx]
-            self._apply_imputation(column, [idx], new_val, f"k-NN 대체(k={k})")
+        # KNNImputer는 입력 데이터의 모든 변수를 사용하여 거리를 계산함
+        try:
+            imputed_data = imputer.fit_transform(numeric_df)
+            col_target_idx = list(numeric_df.columns).index(column)
+            
+            for idx in target_indices:
+                row_pos = numeric_df.index.get_loc(idx)
+                new_val = imputed_data[row_pos, col_target_idx]
+                method_name = f"k-NN 대체(k={k}"
+                if donor_columns:
+                    method_name += f", 기준:{len(valid_donors)}개 변수"
+                method_name += ")"
+                self._apply_imputation(column, [idx], new_val, method_name)
+        except Exception as e:
+            print(f"k-NN imputation error: {e}")
 
     def impute_mice(self, column: str, target_indices: list):
         """MICE (다중 대체) 알고리즘"""

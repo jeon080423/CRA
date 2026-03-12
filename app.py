@@ -3160,6 +3160,14 @@ def show_outlier_inspection_system(mode="outlier"):
             df = pd.read_csv(df_file)
         else:
             df = pd.read_excel(df_file)
+            
+        # [v4.7] 신규 파일 로드 시 이전 보완 결과 초기화 (KeyError 방지)
+        if st.session_state.get(f"last_loaded_file_{mode}") != df_file.name:
+            st.session_state[f"last_loaded_file_{mode}"] = df_file.name
+            keys_to_clear = [f"imputed_df_{mode}", f"impute_summary_{mode}", f"impute_log_{mode}"]
+            for k in keys_to_clear:
+                if k in st.session_state:
+                    del st.session_state[k]
     except Exception as e:
         st.error(f"데이터 로드 중 오류 발생: {e}")
         return
@@ -3352,6 +3360,16 @@ def show_outlier_inspection_system(mode="outlier"):
                 selected_method = st.selectbox(f"보완 방법 선택 ({col})", options=methods, key=f"method_{mode}_{col}")
                 
                 options = {}
+                # [v4.7] 상관관계 도움말 및 변수 추천
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+                    if len(numeric_cols) > 1:
+                        corr_series = df[numeric_cols].corr()[col].drop(col).abs().sort_values(ascending=False).dropna()
+                        if not corr_series.empty:
+                            top_corrs = corr_series.head(5)
+                            corr_text = ", ".join([f"{cb_parser.get_var_label(c) if cb_parser else c}({val:.2f})" for c, val in top_corrs.items()])
+                            st.caption(f"💡 **상관관계 상위 변수**: {corr_text}")
+
                 if selected_method == "층별 평균 대체":
                     # [v4.6] 층별 변수도 라벨링 적용
                     st_labels = cb_parser.get_all_var_labels([c for c in df.columns if c != col]) if cb_parser else [c for c in df.columns if c != col]
@@ -3360,6 +3378,10 @@ def show_outlier_inspection_system(mode="outlier"):
                 elif selected_method == "k-NN 대체":
                     k_val = st.slider(f"k값 설정 ({display_name})", 1, 10, 5, key=f"k_{mode}_{col}")
                     options["k"] = k_val
+                    # [v4.7] k-NN 기준 변수(Donors) 선택
+                    donor_labels = cb_parser.get_all_var_labels([c for c in df.columns if c != col and pd.api.types.is_numeric_dtype(df[c])]) if cb_parser else [c for c in df.columns if c != col and pd.api.types.is_numeric_dtype(df[c])]
+                    sel_donor_labels = st.multiselect(f"유사도 측정 기준 변수 선택 (미선택 시 전체 수치변수 사용)", options=donor_labels, key=f"donors_{mode}_{col}")
+                    options["donors"] = [cb_parser.get_column_from_label(lb) for lb in sel_donor_labels] if cb_parser else sel_donor_labels
                 elif selected_method == "재확인(Call Back)":
                     st.warning("⚠️ 이 데이터는 보완하지 않고 '재조사 명단'에 포함합니다.")
                 
@@ -3393,7 +3415,7 @@ def show_outlier_inspection_system(mode="outlier"):
                 elif method == "중앙값 대체": imputer.impute_median(col, missing_idx)
                 elif method == "최빈값 대체": imputer.impute_mode(col, missing_idx)
                 elif method == "층별 평균 대체" and opts.get("strata"): imputer.impute_stratified_mean(col, missing_idx, opts["strata"])
-                elif method == "k-NN 대체": imputer.impute_knn(col, missing_idx, k=opts.get("k", 5))
+                elif method == "k-NN 대체": imputer.impute_knn(col, missing_idx, k=opts.get("k", 5), donor_columns=opts.get("donors"))
                 elif method == "MICE 다중 대체": imputer.impute_mice(col, missing_idx)
                 elif method == "재확인(Call Back)": imputer._apply_imputation(col, missing_idx, "CALL_BACK", "재확인 대상분류")
                 else: imputer.impute_grand_mean(col, missing_idx)
@@ -3441,9 +3463,12 @@ def show_outlier_inspection_system(mode="outlier"):
         # 결과 엑셀용 DF 구성
         export_df = orig_df.copy()
         for col in target_cols:
-            export_df[f"{col}_보완"] = adj_df[col]
-            method_map = {row['인덱스']: row['적용방법'] for row in log_list if row['변수명'] == col}
-            export_df[f"{col}_보완방법"] = export_df.index.map(lambda x: method_map.get(x, ""))
+            if col in adj_df.columns:
+                export_df[f"{col}_보완"] = adj_df[col]
+                method_map = {row['인덱스']: row['적용방법'] for row in log_list if row['변수명'] == col}
+                export_df[f"{col}_보완방법"] = export_df.index.map(lambda x: method_map.get(x, ""))
+            else:
+                st.warning(f"변수 '{col}'이(가) 보완 데이터프레임에 존재하지 않아 결과 리포트에서 제외되었습니다. 검토 변수를 다시 선택하거나 보완을 재실행해 주세요.")
 
         # [v4.9] 리포트 및 Raw Data 분리 다운로드
         report_output = io.BytesIO()
