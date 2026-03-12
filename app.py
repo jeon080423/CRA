@@ -48,6 +48,7 @@ from api.g2b_api import get_g2b_corp_info, G2B_SELECTABLE_FIELDS, G2B_FIELD_LABE
 from api.nts_api import get_nts_business_status
 from utils.excel_handler import load_excel, export_result_excel
 from utils.matcher import normalize_brn, clean_company_names_bulk, clean_addresses_bulk, clean_address, split_address
+from utils.stats_utils import get_association
 from usage_tracker import UsageTracker
 
 # ── 이용 통계 트래커 초기화
@@ -3360,15 +3361,33 @@ def show_outlier_inspection_system(mode="outlier"):
                 selected_method = st.selectbox(f"보완 방법 선택 ({col})", options=methods, key=f"method_{mode}_{col}")
                 
                 options = {}
-                # [v4.7] 상관관계 도움말 및 변수 추천
-                if pd.api.types.is_numeric_dtype(df[col]):
-                    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-                    if len(numeric_cols) > 1:
-                        corr_series = df[numeric_cols].corr()[col].drop(col).abs().sort_values(ascending=False).dropna()
-                        if not corr_series.empty:
-                            top_corrs = corr_series.head(5)
-                            corr_text = ", ".join([f"{cb_parser.get_var_label(c) if cb_parser else c}({val:.2f})" for c, val in top_corrs.items()])
-                            st.caption(f"💡 **상관관계 상위 변수**: {corr_text}")
+                # [v4.7] 상관관계/연관성 도움말 및 변수 추천 (명목형 지원 추가)
+                other_cols = [c for c in df.columns if c != col]
+                if other_cols:
+                    with st.spinner("연관성 분석 중..."):
+                        associations = []
+                        for c in other_cols:
+                            assoc_val = get_association(df, col, c)
+                            associations.append((c, assoc_val))
+                        
+                        associations.sort(key=lambda x: x[1], reverse=True)
+                        top_associations = associations[:5]
+                        
+                        if top_associations:
+                            assoc_items = []
+                            for c, val in top_associations:
+                                label = cb_parser.get_var_label(c) if cb_parser else c
+                                # 타입에 따라 지표 명칭 변경
+                                is_num1 = pd.api.types.is_numeric_dtype(df[col])
+                                is_num2 = pd.api.types.is_numeric_dtype(df[c])
+                                
+                                metric_name = "r" # Pearson
+                                if not is_num1 and not is_num2: metric_name = "V" # Cramers V
+                                elif is_num1 != is_num2: metric_name = "η" # Correlation Ratio
+                                
+                                assoc_items.append(f"{label}({metric_name}={val:.2f})")
+                            
+                            st.caption(f"💡 **연관성 상위 변수 (추천 기준)**: {', '.join(assoc_items)}")
 
                 if selected_method == "층별 평균 대체":
                     # [v4.6] 층별 변수도 라벨링 적용
@@ -3378,9 +3397,10 @@ def show_outlier_inspection_system(mode="outlier"):
                 elif selected_method == "k-NN 대체":
                     k_val = st.slider(f"k값 설정 ({display_name})", 1, 10, 5, key=f"k_{mode}_{col}")
                     options["k"] = k_val
-                    # [v4.7] k-NN 기준 변수(Donors) 선택
-                    donor_labels = cb_parser.get_all_var_labels([c for c in df.columns if c != col and pd.api.types.is_numeric_dtype(df[c])]) if cb_parser else [c for c in df.columns if c != col and pd.api.types.is_numeric_dtype(df[c])]
-                    sel_donor_labels = st.multiselect(f"유사도 측정 기준 변수 선택 (미선택 시 전체 수치변수 사용)", options=donor_labels, key=f"donors_{mode}_{col}")
+                    # [v4.7] k-NN 기준 변수(Donors) 선택 - 명목형(명목/서열)도 포함
+                    # 내부에서 원핫 인코딩 처리하므로 선택 가능
+                    donor_labels = cb_parser.get_all_var_labels(other_cols) if cb_parser else other_cols
+                    sel_donor_labels = st.multiselect(f"유사도 측정 기준 변수 선택 (미선택 시 전체 변수 사용)", options=donor_labels, key=f"donors_{mode}_{col}")
                     options["donors"] = [cb_parser.get_column_from_label(lb) for lb in sel_donor_labels] if cb_parser else sel_donor_labels
                 elif selected_method == "재확인(Call Back)":
                     st.warning("⚠️ 이 데이터는 보완하지 않고 '재조사 명단'에 포함합니다.")

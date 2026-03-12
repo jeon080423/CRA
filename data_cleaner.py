@@ -44,31 +44,70 @@ class DataImputer:
 
     def impute_knn(self, column: str, target_indices: list, k=5, donor_columns: list = None):
         """k-NN (최근접 이웃) 대체 - donor_columns가 있으면 해당 변수들만 유사도 기준으로 사용"""
-        # [v4.7] 기준 변수 필터링 지원
+        # [v4.7] 기준 변수 필터링 및 범주형 지원 보완
         cols_to_use = [column]
+        donor_cols_detected = []
         if donor_columns:
-            # 존재하는 컬럼만 필터링
             valid_donors = [c for c in donor_columns if c in self.df.columns and c != column]
             cols_to_use.extend(valid_donors)
+            donor_cols_detected = valid_donors
         
-        numeric_df = self.df[cols_to_use].select_dtypes(include=[np.number])
-        if column not in numeric_df.columns:
-            return # 수치형이 아니면 스킵
+        # 분석용 데이터프레임 구성
+        working_df = self.df[cols_to_use].copy()
+        
+        # 1. 범주형 변수(명목/서열) 인코딩 처리
+        # 수치형이 아닌 모든 컬럼을 더미 변수로 변환 (One-Hot Encoding)
+        # 단, 대상 변수(column)가 범주형인 경우 인코딩하고 나중에 복구해야 함
+        is_target_numeric = pd.api.types.is_numeric_dtype(working_df[column])
+        
+        # 원본 데이터 보관 (디코딩용)
+        target_series = working_df[column].copy()
+        
+        if not is_target_numeric:
+            # 대상 변수가 범주형이면 숫자로 매핑 (Categorical -> Codes)
+            codes, uniques = pd.factorize(working_df[column])
+            working_df[column] = np.where(target_series.isna(), np.nan, codes.astype(float))
             
+        # 나머지 도우너 변수들 인코딩 (One-Hot)
+        if donor_cols_detected:
+            # 명목형 도우너 변수들만 원핫 인코딩
+            cat_donors = [c for c in donor_cols_detected if not pd.api.types.is_numeric_dtype(working_df[c])]
+            if cat_donors:
+                # get_dummies를 사용하여 거리 계산이 가능하도록 수치화
+                working_df = pd.get_dummies(working_df, columns=cat_donors, dummy_na=False)
+
+        # 수치형 데이터만 남았는지 최종 확인
+        numeric_df = working_df.select_dtypes(include=[np.number])
+        
+        # 2. KNN Imputation 수행
         imputer = KNNImputer(n_neighbors=k)
-        # KNNImputer는 입력 데이터의 모든 변수를 사용하여 거리를 계산함
         try:
             imputed_data = imputer.fit_transform(numeric_df)
-            col_target_idx = list(numeric_df.columns).index(column)
+            
+            # numeric_df에서 원본 target column의 위치 (대부분 0번)
+            # get_dummies 이후 컬럼명이 바뀌었을 수 있으므로 정확히 찾아야 함
+            col_target_idx = list(numeric_df.columns).get_loc(column)
             
             for idx in target_indices:
                 row_pos = numeric_df.index.get_loc(idx)
                 new_val = imputed_data[row_pos, col_target_idx]
+                
+                # 범주형인 경우 다시 라벨로 복구
+                final_val = new_val
+                if not is_target_numeric:
+                    # 소수점으로 나올 경우 반올림하여 가장 가까운 카테고리 선택
+                    cat_idx = int(round(new_val))
+                    if 0 <= cat_idx < len(uniques):
+                        final_val = uniques[cat_idx]
+                    else:
+                        final_val = uniques[0] # Fallback
+                
                 method_name = f"k-NN 대체(k={k}"
                 if donor_columns:
-                    method_name += f", 기준:{len(valid_donors)}개 변수"
+                    method_name += f", 기준:{len(donor_cols_detected)}개 변수"
                 method_name += ")"
-                self._apply_imputation(column, [idx], new_val, method_name)
+                self._apply_imputation(column, [idx], final_val, method_name)
+                
         except Exception as e:
             print(f"k-NN imputation error: {e}")
 
