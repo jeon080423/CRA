@@ -1096,7 +1096,8 @@ def show_business_info_crawling():
                                 "api_addr": "", "api_ceo": "",
                                 "api_tel": "", "api_biz_type": "",
                                 "match_score": 0.0,
-                                "brn_mismatch": False
+                                "brn_mismatch": False,
+                                "nps_name": "", "g2b_name": "", "fss_name": "", "dart_name": "" # [v13.5] 각 기관별 등록명 추가
                             }
                             def _log_debug(msg):
                                 try:
@@ -1170,7 +1171,8 @@ def show_business_info_crawling():
                                     api_brn = normalize_brn(dart_info.get("brn", ""))
                                     res_id["brn"] = _update_brn(row_brn, api_brn)
                                     res_id["crno"] = res_id["crno"] or dart_info.get("crno", "")
-                                    res_id["api_name"] = dart_info.get("corp_name", "")
+                                    res_id["dart_name"] = dart_info.get("corp_name", "") # [v13.5]
+                                    res_id["api_name"] = res_id["api_name"] or res_id["dart_name"]
                                     res_id["api_addr"] = dart_info.get("addr", "")
                                     _log_debug(f"DART Unmasked/Enriched: {res_id['brn']}")
 
@@ -1180,10 +1182,13 @@ def show_business_info_crawling():
                                 g2b_info = get_g2b_corp_info(current_brn, api_service_key)
                                 if g2b_info:
                                     # G2B info available
+                                    res_id["g2b_name"] = g2b_info.get("corp_name", "") # [v13.5]
+                                    res_id["api_name"] = res_id["api_name"] or res_id["g2b_name"]
                                     res_id["api_ceo"] = res_id["api_ceo"] or g2b_info.get("ceo_nm", "")
                                     res_id["api_tel"] = res_id["api_tel"] or g2b_info.get("telno", "")
                                     res_id["api_biz_type"] = res_id["api_biz_type"] or g2b_info.get("bizType", "")
-                                    res_id["api_addr"] = res_id["api_addr"] or g2b_info.get("addr", "")
+                                    # [v13.5] G2B 주소가 있고 기존 DART 주소만 있는 경우, G2B 주소로 업데이트 (DART보단 실무 데이터인 G2B/NPS 선호)
+                                    res_id["api_addr"] = g2b_info.get("addr", "") or res_id["api_addr"]
                                     res_id["corpSizeNm"] = g2b_info.get("corpSizeNm", "")
                                     res_id["main_product"] = g2b_info.get("main_product", "")
                                     res_id["restriction"] = g2b_info.get("restriction", "")
@@ -1220,8 +1225,10 @@ def show_business_info_crawling():
                                             res_id["brn"] = _update_brn(res_id["brn"], api_brn, initial_input=row_brn)
                                             
                                         res_id["crno"] = res_id["crno"] or str(fss_id_res.get("crno", "")).strip()
-                                        res_id["api_name"] = res_id["api_name"] or api_name
-                                        res_id["api_addr"] = res_id["api_addr"] or api_addr
+                                        res_id["fss_name"] = api_name # [v13.5]
+                                        res_id["api_name"] = res_id["api_name"] or res_id["fss_name"]
+                                        # [v13.5] 금융위 주소는 공시 정보이므로 우선순위 높임 (DART와 유사하나 개별 재무 공시 기준)
+                                        res_id["api_addr"] = api_addr or res_id["api_addr"]
                                         res_id["api_ceo"] = res_id["api_ceo"] or str(fss_id_res.get("ceoNm", "")).strip()
                                         
                                         if not is_input_brn_missing:
@@ -1239,8 +1246,13 @@ def show_business_info_crawling():
                                 if nps_id_res and "_error" not in nps_id_res:
                                     api_brn = normalize_brn(nps_id_res.get("bzowrRgstNo", ""))
                                     res_id["brn"] = _update_brn(res_id["brn"], api_brn, initial_input=row_brn)
-                                    res_id["api_name"] = res_id["api_name"] or str(nps_id_res.get("wkplNm", "")).strip()
-                                    res_id["api_addr"] = res_id["api_addr"] or str(nps_id_res.get("wkplRoadNmAddr", "") or nps_id_res.get("wkplRoadNmDtlAddr", "")).strip()
+                                    res_id["nps_name"] = str(nps_id_res.get("wkplNm", "")).strip() # [v13.5]
+                                    res_id["api_name"] = res_id["api_name"] or res_id["nps_name"]
+                                    # [v13.5] 국민연금 주소는 매달 갱신되므로 가장 최신일 확률이 높음 → 최우선 적용
+                                    nps_addr = str(nps_id_res.get("wkplRoadNmAddr", "") or nps_id_res.get("wkplRoadNmDtlAddr", "")).strip()
+                                    if nps_addr:
+                                        res_id["api_addr"] = nps_addr
+                                    
                                     if res_id["match_score"] < 70:
                                         res_id["match_score"] = 70.0
                             except Exception as e:
@@ -1410,6 +1422,12 @@ def show_business_info_crawling():
                         result_df["[공공데이터] 법인등록번호"] = ""
                         result_df["[공공데이터] 대표자명"] = ""
                         result_df["[공공데이터] 주소(도로명)"] = ""
+                        # [v13.5] 각 기관별 등록명 컬럼 추가
+                        result_df["[국민연금] 등록명"] = ""
+                        result_df["[건강보험] 등록명"] = ""
+                        result_df["[나라장터] 등록명"] = ""
+                        result_df["[금융위] 등록명"] = ""
+                        result_df["[전자공시] 등록명"] = ""
                         result_df["[행정] 시도"] = ""
                         result_df["[행정] 시군구"] = ""
                         result_df["유사도(%)"] = 0.0
@@ -1439,6 +1457,12 @@ def show_business_info_crawling():
                                 a_sido, a_sgg, _ = split_address(api_addr)
                                 result_df.at[idx, "[행정] 시도"] = a_sido
                                 result_df.at[idx, "[행정] 시군구"] = a_sgg
+
+                            # [v13.5] 각 기관별 등록명 채우기
+                            result_df.at[idx, "[국민연금] 등록명"] = res_id.get("nps_name", "")
+                            result_df.at[idx, "[나라장터] 등록명"] = res_id.get("g2b_name", "")
+                            result_df.at[idx, "[금융위] 등록명"] = res_id.get("fss_name", "")
+                            result_df.at[idx, "[전자공시] 등록명"] = res_id.get("dart_name", "")
 
                             # result_df.at[idx, "[조달청] 등록업종"] = res_id.get("api_biz_type", "")
                             # result_df.at[idx, "[조달청] 전화번호"] = res_id.get("api_tel", "")
@@ -1489,6 +1513,12 @@ def show_business_info_crawling():
                                     result_df.at[idx, f"[건강보험] {NHIS_FIELD_LABELS.get(field, field)}"] = val
                                     if val not in ["조회불가", "미조회", "해당없음"]:
                                         has_any_data = True
+                                    
+                                    # [v13.5] 건강보험 등록명 별도 추출 (룩업 결과 활용)
+                                    if field == selected_nhis[0]: # 한 번만 수행
+                                        res_nhis_name = _extract_nhis_field(idx, "사업장명")
+                                        if res_nhis_name not in ["조회불가", "미조회", "해당없음"]:
+                                            result_df.at[idx, "[건강보험] 등록명"] = res_nhis_name
 
                             # NTS 결과 추출
                             if selected_nts:

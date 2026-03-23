@@ -65,16 +65,18 @@ def get_g2b_corp_info(brn: str, service_key: str) -> dict:
     return {}
 
 def _request_g2b(url: str, service_key: str, extra_params: dict) -> dict:
+    # [v13.5] serviceKey를 URL에 직접 포함하여 double-encoding 방지 (data.go.kr 표준 대응)
+    full_url = f"{url}?serviceKey={service_key}"
+    
     params = {
-        "serviceKey": service_key,
-        "type": "json",
+        "dataType": "json", # [v13.5] type -> dataType로 변경 (UsrInfoService02 표준)
         "numOfRows": 10,
         "pageNo": 1
     }
     params.update(extra_params)
     
     try:
-        resp = requests.get(url, params=params, timeout=15)
+        resp = requests.get(full_url, params=params, timeout=15)
         if resp.status_code == 200:
             data = resp.json()
             header = data.get("response", {}).get("header", {})
