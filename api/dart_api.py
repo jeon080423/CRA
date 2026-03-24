@@ -69,8 +69,10 @@ def get_dart_corp_info(company_name: str, api_key: str) -> dict:
             alias_norm = target_norm.replace("LIG", "엘아이지")
             for name, code in _CORP_CODE_CACHE.items():
                 n_norm = _normalize(name)
-                if n_norm == alias_norm or target_norm in n_norm or n_norm in target_norm:
-                    # 상호명이 너무 짧으면 오매칭 위험 (3자 이상만 허용)
+                # [v2.0] 안전한 방향으로만 포함 매칭:
+                #   n_norm in target_norm : DART 등록명이 검색어의 일부인 경우만 허용
+                #   target_norm in n_norm 방향은 제거 → '메트릭스'가 '시메트릭스스페이스'에 포함되는 오매칭 방지
+                if n_norm == alias_norm or n_norm in target_norm:
                     if len(target_norm) >= 3:
                         corp_code = code
                         break
