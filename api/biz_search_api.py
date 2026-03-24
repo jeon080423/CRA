@@ -1,6 +1,7 @@
 import requests
 import json
 import concurrent.futures
+import pandas as pd
 from .nps_api import search_nps_by_name, get_nps_detail, NPS_FIELD_LABELS
 from .g2b_api import get_g2b_corp_info, G2B_FIELD_LABELS
 from .nhis_api import get_nhis_subscriber_count
