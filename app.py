@@ -1246,6 +1246,53 @@ def show_business_info_crawling():
                         status_area.caption("🆔 기업 식별자 조회 중 (1/2단계)...")
                         resolved_identities = {} # {idx: {brn, crno, api_name, api_addr, match_score}}
 
+                        def _is_masked(b):
+                            b_str = str(b).strip()
+                            if "*" in b_str or not b_str or b_str == "0000000000":
+                                return True
+                            return False
+
+                        def _are_brns_consistent(b1, b2):
+                            """마스킹을 고려하여 두 사업자번호가 일치하는지 확인 (불일치 시 False)"""
+                            b1s = str(b1 or "").replace("-", "").replace(" ", "").zfill(10)
+                            b2s = str(b2 or "").replace("-", "").replace(" ", "").zfill(10)
+                            if not b1s or not b2s or (_is_masked(b1s) and _is_masked(b2s)):
+                                return True
+                            if len(b1s) != 10 or len(b2s) != 10: return True
+                            for i in range(10):
+                                if b1s[i] != "*" and b2s[i] != "*" and b1s[i] != b2s[i]:
+                                    return False
+                            return True
+
+                        def _update_brn(current, new_candidate, res_id_ref, initial_input=None):
+                            """마스킹되지 않은 유효한 10자리 번호를 우선시하여 업데이트하며 충돌 시 플래그 설정"""
+                            c_clean = str(current or "").replace("-", "").replace(" ", "")
+                            n_clean = str(new_candidate or "").replace("-", "").replace(" ", "")
+                            i_clean = str(initial_input or "").replace("-", "").replace(" ", "") if initial_input else ""
+                            
+                            if not n_clean or n_clean == "0000000000" or n_clean == "None":
+                                return c_clean
+
+                            # [v12.0] BRN 불일치 확인
+                            if c_clean and not _is_masked(c_clean) and not _is_masked(n_clean):
+                                if not _are_brns_consistent(c_clean, n_clean):
+                                    if res_id_ref is not None: res_id_ref["brn_mismatch"] = True
+                                    return c_clean
+
+                            # [v12.1] 추가: 입력된 사업자번호와도 대조
+                            if i_clean and not _is_masked(i_clean) and not _is_masked(n_clean):
+                                if not _are_brns_consistent(i_clean, n_clean):
+                                    if res_id_ref is not None: res_id_ref["brn_mismatch"] = True
+                                    return i_clean
+
+                            if _is_masked(c_clean) and not _is_masked(n_clean) and len(n_clean) >= 10:
+                                return n_clean
+                            if not c_clean or c_clean == "0000000000":
+                                return n_clean
+                            if not _is_masked(c_clean) and len(c_clean) >= 10:
+                                return c_clean
+                            return n_clean
+
                         def _resolve_identity_task(idx, row_brn, row_name, row_addr, row_crno):
                             """단건에 대해 BRN 및 CRNO를 확정하는 로직"""
                             res_id = {
@@ -1266,58 +1313,7 @@ def show_business_info_crawling():
                                         f.write(f"[{datetime.datetime.now()}] {msg}\n")
                                 except: pass
 
-                            def _is_masked(b):
-                                b_str = str(b).strip()
-                                if "*" in b_str or not b_str or b_str == "0000000000":
-                                    return True
-                                return False
-
-                            def _are_brns_consistent(b1, b2):
-                                """마스킹을 고려하여 두 사업자번호가 일치하는지 확인 (불일치 시 False)"""
-                                b1s = str(b1 or "").replace("-", "").replace(" ", "").zfill(10)
-                                b2s = str(b2 or "").replace("-", "").replace(" ", "").zfill(10)
-                                if not b1s or not b2s or _is_masked(b1s) and _is_masked(b2s):
-                                    return True
-                                if len(b1s) != 10 or len(b2s) != 10: return True
-                                for i in range(10):
-                                    if b1s[i] != "*" and b2s[i] != "*" and b1s[i] != b2s[i]:
-                                        return False
-                                return True
-
-                            def _update_brn(current, new_candidate, initial_input=None):
-                                """마스킹되지 않은 유효한 10자리 번호를 우선시하여 업데이트하며 충돌 시 플래그 설정"""
-                                c_clean = str(current or "").replace("-", "").replace(" ", "")
-                                n_clean = str(new_candidate or "").replace("-", "").replace(" ", "")
-                                i_clean = str(initial_input or "").replace("-", "").replace(" ", "") if initial_input else ""
-                                
-                                if not n_clean or n_clean == "0000000000" or n_clean == "None":
-                                    return c_clean
-
-                                # [v12.0] BRN 불일치 확인 (기존 정보 vs 새 후보)
-                                if c_clean and not _is_masked(c_clean) and not _is_masked(n_clean):
-                                    if not _are_brns_consistent(c_clean, n_clean):
-                                        res_id["brn_mismatch"] = True
-                                        _log_debug(f"BRN Mismatch detected: {c_clean} vs {n_clean}")
-                                        return c_clean
-
-                                # [v12.1] 추가: 입력된 사업자번호(row_brn)와도 대조
-                                if i_clean and not _is_masked(i_clean) and not _is_masked(n_clean):
-                                    if not _are_brns_consistent(i_clean, n_clean):
-                                        res_id["brn_mismatch"] = True
-                                        _log_debug(f"Input BRN Mismatch detected: {i_clean} vs {n_clean}")
-                                        # 입력값이 명확한데 API 결과가 다르면 일단 입력값 우선 (또는 보수적 처리)
-                                        return c_clean
-
-                                if _is_masked(c_clean) and not _is_masked(n_clean) and len(n_clean) >= 10:
-                                    return n_clean
-                                    
-                                if not c_clean or c_clean == "0000000000":
-                                    return n_clean
-                                
-                                if not _is_masked(c_clean) and len(c_clean) >= 10:
-                                    return c_clean
-                                    
-                                return n_clean
+                            # (Helpers already moved to parent scope)
 
                             # [v10.0] BRN-First Discovery Strategy 적용
                             # 모든 정보의 결합 목적은 "정확한(마스킹 없는) BRN 확보"
@@ -1329,7 +1325,7 @@ def show_business_info_crawling():
                                 dart_info = get_dart_corp_info(row_name, DART_API_KEY, brn=row_brn)
                                 if dart_info:
                                     api_brn = normalize_brn(dart_info.get("brn", ""))
-                                    res_id["brn"] = _update_brn(row_brn, api_brn)
+                                    res_id["brn"] = _update_brn(row_brn, api_brn, res_id, initial_input=row_brn)
                                     res_id["crno"] = res_id["crno"] or dart_info.get("crno", "")
                                     res_id["dart_name"] = dart_info.get("corp_name", "") # [v13.5]
                                     res_id["api_name"] = res_id["api_name"] or res_id["dart_name"]
@@ -1374,7 +1370,7 @@ def show_business_info_crawling():
                                         
                                         # 조건을 만족할 때만 BRN으로 채택
                                         if name_sim >= 0.7 and u_sido == a_sido and u_sido:
-                                            res_id["brn"] = _update_brn(res_id["brn"], api_brn, initial_input=row_brn)
+                                            res_id["brn"] = _update_brn(res_id["brn"], api_brn, res_id, initial_input=row_brn)
                                             res_id["match_score"] = name_sim * 100
                                         else:
                                             # 조건 미충족 시 FSS 결과 무시 (BRN 확보 실패)
@@ -1382,7 +1378,7 @@ def show_business_info_crawling():
                                     
                                     if api_brn:
                                         if not is_input_brn_missing:
-                                            res_id["brn"] = _update_brn(res_id["brn"], api_brn, initial_input=row_brn)
+                                            res_id["brn"] = _update_brn(res_id["brn"], api_brn, res_id, initial_input=row_brn)
                                             
                                         res_id["crno"] = res_id["crno"] or str(fss_id_res.get("crno", "")).strip()
                                         res_id["fss_name"] = api_name # [v13.5]
@@ -1405,7 +1401,7 @@ def show_business_info_crawling():
                                 nps_id_res = search_and_match_nps(row_name, current_brn, api_service_key, address=row_addr)
                                 if nps_id_res and "_error" not in nps_id_res:
                                     api_brn = normalize_brn(nps_id_res.get("bzowrRgstNo", ""))
-                                    res_id["brn"] = _update_brn(res_id["brn"], api_brn, initial_input=row_brn)
+                                    res_id["brn"] = _update_brn(res_id["brn"], api_brn, res_id, initial_input=row_brn)
                                     res_id["nps_name"] = str(nps_id_res.get("wkplNm", "")).strip() # [v13.5]
                                     res_id["api_name"] = res_id["api_name"] or res_id["nps_name"]
                                     # [v13.5] 국민연금 주소는 매달 갱신되므로 가장 최신일 확률이 높음 → 최우선 적용
@@ -1417,6 +1413,12 @@ def show_business_info_crawling():
                                         res_id["match_score"] = 70.0
                             except Exception as e:
                                 res_id["nps_error"] = str(e)
+                            
+                            # [v15.3] G2B industry 필드 이중 체크 (api_biz_type이 비어있는 경우)
+                            if not res_id.get("api_biz_type") and res_id.get("g2b_name"):
+                                # G2B가 이미 1단계에서 실행되었으므로 g2b_info는 로컬에 없지만 res_id에는 데이터가 있어야 함
+                                # 만약 1단계에서 g2b_info["bizType"]을 못 가져왔다면 여기서 다시 한번 로깅하거나 보완 가능
+                                pass
 
                             return idx, res_id
 
@@ -1544,6 +1546,13 @@ def show_business_info_crawling():
                             # 1) BRN으로 우선 검색
                             if brn:
                                 nrow = nhis_lookup.get(brn)
+                                # [v15.3] 마스킹된 BRN인 경우 대조 처리하여 nhis_lookup 검색
+                                if not nrow and _is_masked(brn):
+                                    for target_brn, target_row in nhis_lookup.items():
+                                        if _are_brns_consistent(brn, target_brn):
+                                            nrow = target_row
+                                            break
+                                            
                                 if nrow:
                                     val = nrow.get(field, "")
                                     return str(val) if val else "해당없음"

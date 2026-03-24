@@ -71,11 +71,17 @@ def get_dart_corp_info(company_name: str, api_key: str, brn: str = "") -> dict:
             alias_norm = target_norm.replace("LIG", "엘아이지")
             for name, code in _CORP_CODE_CACHE.items():
                 n_norm = _normalize(name)
-                # 양방향 포함 매칭:
-                #  - n_norm in target_norm : DART 등록명이 검색어의 일부 (항상 허용)
-                #  - target_norm in n_norm : 검색어가 DART 등록명의 일부 (BRN이 있을 때만 허용, 이후 BRN 교차검증으로 오매칭 차단)
-                safe_match = n_norm == alias_norm or n_norm in target_norm
-                risky_match = brn and (target_norm in n_norm)  # BRN 있을 때만 허용 (v2.2 교차검증이 뒤에서 보호)
+                # 안전한 매칭 (검색어와 거의 일치하거나 검색어가 상위 개념인 경우)
+                # n_norm.startswith(...) 추가: '메트릭스' -> '메트릭스리서치' 매칭 허용 (안전한 방향)
+                safe_match = (n_norm == alias_norm or 
+                              n_norm in target_norm or 
+                              n_norm.startswith(target_norm))
+                
+                # 다소 위험한 매칭 (검색어가 이름의 뒤쪽에 포함된 경우 등)
+                # target_norm in n_norm : '메트릭스' -> '시메트릭스스페이스' 등
+                # 이 경우는 알려진 BRN이 있을 때만 허용한 뒤 v2.2 교차검증 단계에서 필터링함
+                risky_match = brn and (target_norm in n_norm)
+                
                 if (safe_match or risky_match) and len(target_norm) >= 3:
                     corp_code = code
                     break
