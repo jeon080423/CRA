@@ -46,6 +46,11 @@ from api.fss_api import (
 from api.dart_api import get_dart_corp_info
 from api.g2b_api import get_g2b_corp_info, G2B_SELECTABLE_FIELDS, G2B_FIELD_LABELS
 from api.nts_api import get_nts_business_status
+from api.biz_search_api import (
+    get_ai_industry_suggestions, 
+    batch_search_and_consolidate,
+    SIDO_LIST as BIZ_SIDO_LIST
+)
 from utils.excel_handler import load_excel, export_result_excel
 from utils.matcher import normalize_brn, clean_company_names_bulk, clean_addresses_bulk, clean_address, split_address
 from utils.stats_utils import get_association
@@ -580,6 +585,160 @@ def perform_rfp_analysis():
     progress_bar.empty()
     st.rerun()
 
+
+# ── 업체 통합 검색 UI ──
+def show_unified_business_search():
+    """AI 추천 및 공공데이터 연동 업체 통합 검색 시스템 UI"""
+    st.markdown("""
+    <div class="qx-topbar">
+        <span class="qx-topbar-logo">업체 통합 검색</span>
+        <span class="qx-topbar-sep"></span>
+        <span class="qx-topbar-title">AI 기반 업체 발굴 솔루션</span>
+        <span class="qx-topbar-badge">G2B · NPS · NHIS 통합</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.expander("📘 기능 및 이용 안내", expanded=False):
+        st.markdown(\"\"\"
+        ### 🛠️ 주요 기능
+        1. **지역 및 산업 맞춤 검색:** 시도(Sido), 업종명, 키워드를 조합하여 타겟 업체를 발굴합니다.
+        2. **AI 업종 추천:** 입력한 키워드를 분석하여 관련성 높은 공식 업종명을 제안합니다.
+        3. **나라장터 입찰/계약 연동:** 최근 나라장터에서 해당 분야의 계약 실적이 있는 업체를 실시간으로 추출합니다.
+        4. **범기관 정보 통합:** NPS(국민연금), NHIS(건강보험), G2B(나라장터)의 데이터를 가장 최신 정보 기준으로 통합하여 제공합니다.
+        5. **중복 제거 및 최신화:** 여러 기관에 분산된 동일 업체 정보를 자동 식별하여 단일 레코드로 제시합니다.
+        \"\"\")
+
+    # 검색 설정 영역
+    st.markdown('<div class="qx-section-label">SEARCH FILTERS</div>', unsafe_allow_html=True)
+    
+    col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
+    with col_s1:
+        sido = st.selectbox("시도 선택", options=BIZ_SIDO_LIST)
+    with col_s2:
+        # 업종명 동기화 (AI 추천 클릭 시 반영)
+        if "biz_selected_industry" not in st.session_state:
+            st.session_state["biz_selected_industry"] = ""
+            
+        industry = st.text_input(
+            "업종명", 
+            value=st.session_state["biz_selected_industry"],
+            placeholder="예: 시장조사 및 여론조사업",
+            key="biz_industry_input"
+        )
+        # 사용자가 직접 입력한 경우에도 세션 상태 동기화
+        st.session_state["biz_selected_industry"] = industry
+        
+    with col_s3:
+        keyword = st.text_input("검색 키워드", placeholder="예: 설문조사, 리서치, 빅데이터")
+
+    # AI 추천 버튼
+    if keyword and st.button("🪄 AI 업종 추천 받기"):
+        with st.spinner("AI가 최적의 업종명을 분석 중입니다..."):
+            suggestions = get_ai_industry_suggestions(keyword)
+            if suggestions:
+                st.session_state["biz_industry_suggestions"] = suggestions
+            else:
+                st.warning("추천 업종을 생성하지 못했습니다.")
+
+    # 추천 결과 표시
+    if "biz_industry_suggestions" in st.session_state:
+        st.markdown('<div style="font-size:0.85rem; color:#475569; margin-bottom:0.5rem;">💡 **AI 추천 업종:** (클릭 시 자동 입력)</div>', unsafe_allow_html=True)
+        cols = st.columns(len(st.session_state["biz_industry_suggestions"]))
+        for i, sugg in enumerate(st.session_state["biz_industry_suggestions"]):
+            if cols[i].button(sugg, key=f"sugg_{i}"):
+                st.session_state["biz_selected_industry"] = sugg
+                st.rerun()
+
+    # 업종명 동기화
+    if "biz_selected_industry" in st.session_state:
+        # 텍스트 입력값 업데이트를 위해 UI 재구성 시 활용 (여기서는 단순 표시 및 변수 업데이트)
+        pass
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+    
+    # 검색 실행
+    if st.button("🚀 전체 업체 리스트 검색 및 수집 시작", type="primary", use_container_width=True):
+        if not (keyword or industry):
+            st.error("키워드 또는 업종명을 최소 하나 이상 입력해 주세요.")
+        else:
+            with st.spinner("다중 기관 데이터를 실시간으로 수집 및 통합 중입니다 (약 30초~1분 소요)..."):
+                # 건강보험 캐시 데이터 가져오기 (있는 경우)
+                nhis_df = st.session_state.get("biz_nhis_dataset")
+                results = batch_search_and_consolidate(sido, keyword, industry, SERVICE_KEY, nhis_df=nhis_df)
+                if results:
+                    st.session_state["biz_search_results"] = results
+                    st.success(f"총 {len(results)}건의 업체 정보를 통합 완료했습니다.")
+                else:
+                    st.warning("검색 결과가 없습니다. 키워드를 변경해 보세요.")
+
+    # 결과 표시
+    if "biz_search_results" in st.session_state:
+        results = st.session_state["biz_search_results"]
+        
+        st.markdown('<div class="qx-section-label">SEARCH RESULTS</div>', unsafe_allow_html=True)
+        
+        # 전체 선택/해제 관리
+        col_ctrl1, col_ctrl2 = st.columns([1, 4])
+        with col_ctrl1:
+            if st.button("✅ 전체 선택", use_container_width=True):
+                st.session_state["biz_selected_indices"] = list(range(len(results)))
+                st.rerun()
+        with col_ctrl2:
+            if st.button("❌ 전체 해제", use_container_width=True):
+                st.session_state["biz_selected_indices"] = []
+                st.rerun()
+
+        if "biz_selected_indices" not in st.session_state:
+            st.session_state["biz_selected_indices"] = list(range(len(results)))
+
+        # 결과 데이터프레임 구성
+        display_data = []
+        for i, res in enumerate(results):
+            display_data.append({
+                "선택": i in st.session_state["biz_selected_indices"],
+                "업체명": res["corp_name"],
+                "업종": res["industry"],
+                "주소": res["address"],
+                "가입자(NPS)": f"{res['nps_subscriber']:,}명",
+                "가입자(NHIS)": f"{res['nhis_subscriber']:,}명",
+                "전화번호": res["tel"],
+                "기업규모": res["corp_size"],
+                "데이터출처": ", ".join(res["source"])
+            })
+        
+        df_display = pd.DataFrame(display_data)
+        
+        # 에디터 기능을 활용한 선택 처리
+        edited_df = st.data_editor(
+            df_display,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "선택": st.column_config.CheckboxColumn("선택", default=True),
+            },
+            key="biz_results_editor"
+        )
+        
+        # 선택된 데이터 추출
+        selected_rows = edited_df[edited_df["선택"] == True]
+        
+        # 엑셀 다운로드
+        if not selected_rows.empty:
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                selected_rows.drop(columns=["선택"]).to_excel(writer, index=False, sheet_name='Search_Results')
+            output.seek(0)
+            
+            st.download_button(
+                label=f"📥 선택된 {len(selected_rows)}건 리스트 다운로드 (Excel)",
+                data=output,
+                file_name=f"업체검색결과_{datetime.datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                type="primary"
+            )
+        else:
+            st.info("다운로드할 업체를 선택해 주세요.")
 
 
 # ── 기업체 일반 현황 행정자료 비교 UI ──
@@ -3585,6 +3744,7 @@ with st.sidebar:
         "AI 결측치 검토 (Call Back, Imputation)",
         "AI 단위 무응답 검토",
         "기업체 일반 현황 행정자료 비교",
+        "업체 통합 검색",
         "보고서 검수 AI Tools"
     ]
     
@@ -3992,6 +4152,9 @@ else:
         st.stop()
     elif st.session_state["menu_selection"] == "기업체 일반 현황 행정자료 비교":
         show_business_info_crawling()
+        st.stop()
+    elif st.session_state["menu_selection"] == "업체 통합 검색":
+        show_unified_business_search()
         st.stop()
     elif st.session_state["menu_selection"] == "AI 설문지 최적화":
         show_questionnaire_optimization_system()

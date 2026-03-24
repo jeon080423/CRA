@@ -5,13 +5,13 @@ G2B User Info API module
 import requests
 import xml.etree.ElementTree as ET
 
-# G2B API Endpoints
+# G2B API Endpoints (Updated based on 2025 User Guide)
 G2B_BASE_URL = "http://apis.data.go.kr/1230000/ao/UsrInfoService02"
-G2B_CORP_INFO_URL   = f"{G2B_BASE_URL}/getPromntCorpBasInfo02"
-G2B_CORP_INDST_URL  = f"{G2B_BASE_URL}/getPromntCorpIndstryInfo02"
-G2B_CORP_PRDCT_URL  = f"{G2B_BASE_URL}/getPromntCorpSplyPrdctInfo02"
+G2B_CORP_INFO_URL   = f"{G2B_BASE_URL}/getPrcrmntCorpBasicInfo02"
+G2B_CORP_INDST_URL  = f"{G2B_BASE_URL}/getPrcrmntCorpIndstryInfo02"
+G2B_CORP_PRDCT_URL  = f"{G2B_BASE_URL}/getPrcrmntCorpSplyPrdctInfo02"
 G2B_UNPT_INFO_URL   = f"{G2B_BASE_URL}/getUnptRsttCorpInfo02"
-G2B_INST_INFO_URL   = f"{G2B_BASE_URL}/getDminstInfo02"
+G2B_INST_INFO_URL   = f"{G2B_BASE_URL}/getDminsttInfo02"
 
 G2B_SELECTABLE_FIELDS = [
     "bizType",
@@ -66,10 +66,11 @@ def get_g2b_corp_info(brn: str, service_key: str) -> dict:
 
 def _request_g2b(url: str, service_key: str, extra_params: dict) -> dict:
     # [v13.5] serviceKey를 URL에 직접 포함하여 double-encoding 방지 (data.go.kr 표준 대응)
-    full_url = f"{url}?serviceKey={service_key}"
+    # [v14.1] ServiceKey는 대문자 S로 시작 (가이드북 기준)
+    full_url = f"{url}?ServiceKey={service_key}"
     
     params = {
-        "dataType": "json", # [v13.5] type -> dataType로 변경 (UsrInfoService02 표준)
+        "type": "json", # [v14.0] dataType -> type로 변경 (가이드북 기준)
         "numOfRows": 10,
         "pageNo": 1
     }
@@ -96,10 +97,10 @@ def _request_g2b(url: str, service_key: str, extra_params: dict) -> dict:
 
 def _parse_g2b_item(item: dict) -> dict:
     return {
-        "corp_name": item.get("corpNm") or item.get("dminstNm") or "",
+        "corp_name": item.get("corpNm", ""),
         "brn": item.get("bizno", ""),
-        "ceo_nm": item.get("rprsntvNm", ""),
-        "addr": item.get("adres", ""),
+        "ceo_nm": item.get("ceoNm", ""),
+        "addr": item.get("adrs", ""),
         "telno": item.get("telNo") or item.get("telno") or "",
         "corpSizeNm": item.get("corpSizeNm") or "",
         "source": "G2B_V2"

@@ -167,100 +167,84 @@ def get_nps_period_status(seq: str, period: str, service_key: str) -> dict:
         return {}
 
 
-def search_and_match_nps(
-    company_name: str,
-    brn: str,
-    service_key: str,
-    address: str = "",
-    input_sido: str = "",
-) -> dict:
+def search_and_match_nps(company_name, brn, service_key, address=""):
     """
-    사업장명 및 사업자번호(앞6자리)로 검색 후 정밀 매칭 (시도 검증 포함)
+    NPS 사업장 정보를 검색하고 최적의 결과를 반환합니다.
+    [v14.7] LG/엘지 교차 검색 및 상위 후보 상세조회 기반 랭킹 적용
     """
-    if not company_name and not brn:
-        return {"_error": "회사명 또는 사업자번호 부족"}
-
-    brn_clean = str(brn).replace("-", "").strip()
+    brn_clean = brn.replace("-", "") if brn else ""
     brn_6 = brn_clean[:6] if len(brn_clean) >= 6 else ""
 
     try:
-        # 6자리 번호와 회사명으로 시너지 검색
-        results = search_nps_by_name(company_name.strip() if company_name else "", service_key, brn_6)
+        # 1. 검색어 정규화 및 교차 검색 생성 (LG <-> 엘지)
+        search_names = [company_name.strip() if company_name else ""]
+        if company_name:
+            if "LG" in company_name.upper():
+                search_names.append(company_name.upper().replace("LG", "엘지"))
+            elif "엘지" in company_name:
+                search_names.append(company_name.replace("엘지", "LG"))
+
+        all_raw_results = []
+        for s_name in search_names:
+            if not s_name and not brn_6: continue
+            
+            # (1) 이름 + 사업자번호 앞6자리
+            raw_results = search_nps_by_name(s_name, service_key, brn_6)
+            all_raw_results.extend(raw_results)
+            
+            # (2) 결과가 부족하면 이름만으로 다시 검색
+            if not raw_results or len(raw_results) < 3:
+                raw_results_name_only = search_nps_by_name(s_name, service_key)
+                all_raw_results.extend(raw_results_name_only)
+        
+        # 2. 중복 제거
+        unique_results = []
+        seen_seq = set()
+        for item in all_raw_results:
+            seq = item.get("seq")
+            if seq and seq not in seen_seq:
+                unique_results.append(item)
+                seen_seq.add(seq)
+        
+        # 3. 상위 후보들에 대해 상세 정보를 조회하여 최적의 매치 선정
+        # [v14.9] 모든 검색 결과를 이름 유사도 순으로 정렬하여 상격 높은 후보부터 상세 조회
+        from difflib import SequenceMatcher
+        def _get_similarity(a, b):
+            a_norm = str(a or "").replace(" ", "").upper()
+            b_norm = str(b or "").replace(" ", "").upper()
+            for w in ["(주)", "㈜", "주식회사"]:
+                a_norm = a_norm.replace(w, "")
+                b_norm = b_norm.replace(w, "")
+            return SequenceMatcher(None, a_norm, b_norm).ratio()
+
+        unique_results.sort(key=lambda x: _get_similarity(company_name, x.get("wkplNm")), reverse=True)
+
+        best_item = None
+        max_score = -1
+        
+        # 상위 30개 후보 조사 (본사 탐색 성공률 극대화)
+        for item in unique_results[:30]:
+            detail = get_nps_detail(item.get("seq"), service_key)
+            if detail:
+                item.update(detail)
+                cnt = int(detail.get("jnngpCnt", 0) or 0)
+                # 본사(wkplStlDvCd='1')인 경우 가중치 부여
+                is_main = 1 if str(detail.get("wkplStlDvCd", "")) == "1" else 0
+                sim = _get_similarity(company_name, detail.get("wkplNm"))
+                
+                # 점수계산: (유사도 가중치) + (본사 여부) + (인원수 가중치)
+                # [v14.9.1] 인원수가 100명 이상인 경우 매우 강한 가중치 부여 (대기업 본사 우선)
+                cnt_weight = cnt * 100 if cnt > 100 else cnt
+                score = (sim * 100000) + (is_main * 50000) + cnt_weight
+                
+                if score > max_score:
+                    max_score = score
+                    best_item = item
+        
+        return best_item if best_item else (unique_results[0] if unique_results else {})
+
     except Exception as e:
         return {"_error": f"검색 오류: {str(e)}"}
-
-    if not results:
-        return {"_error": "검색결과 없음"}
-
-    # 1) 사업자등록번호로 매칭 시도 (마스킹 포함)
-    target_brn_norm = brn_clean.zfill(10) if brn_clean else ""
-    for item in results:
-        api_brn = str(item.get("bzowrRgstNo", "")).replace("-", "").replace(" ", "").zfill(10)
-        
-        # 완전 일치 또는 마스킹 일치 확인
-        match = False
-        if target_brn_norm and api_brn == target_brn_norm:
-            match = True
-        elif target_brn_norm and "*" in api_brn and len(api_brn) == 10:
-            match = True
-            for i in range(10):
-                if api_brn[i] != "*" and api_brn[i] != target_brn_norm[i]:
-                    match = False
-                    break
-        
-        if match:
-            detail = get_nps_detail(item.get("seq"), service_key)
-            if detail: item.update(detail)
-            return item
-
-    # 2) 상호명 및 주소 유사도 기반 매칭
-    from difflib import SequenceMatcher
-    def _get_sim(a, b):
-        if not a or not b: return 0.0
-        a_norm = str(a).replace(" ", "").lower()
-        b_norm = str(b).replace(" ", "").lower()
-        return SequenceMatcher(None, a_norm, b_norm).ratio()
-
-    search_name_norm = company_name.strip().replace(" ", "").lower() if company_name else ""
-    best_item = None
-    max_score = 0.0
-
-    for item in results:
-        api_name = str(item.get("wkplNm", "")).strip().replace(" ", "").lower()
-        api_addr = item.get("wkplRoadNmDtlAddr", "") or item.get("wkplNmAdrs", "")
-        
-        name_sim = _get_sim(search_name_norm, api_name) if search_name_norm else 0.5
-        addr_sim = _get_sim(address, api_addr) if address else 0.5
-        
-        # ── [v12.7] 시도(Sido) 검증 로직 추가 ──────────────────────
-        sido_match = True
-        if input_sido and api_addr:
-            # 주소에서 첫 단어(시도) 추출
-            api_sido = api_addr.split()[0][:2] # '서울', '경기' 등 2글자만 비교
-            user_sido = input_sido[:2]
-            if api_sido != user_sido:
-                sido_match = False
-
-        # 이름 일치 시 가중치 부여
-        score = name_sim * 0.7 + addr_sim * 0.3
-        
-        # 시도가 다른 경우 강력한 페널티 (매칭 제외 수준)
-        if not sido_match:
-            score *= 0.5
-        
-        if score > max_score:
-            max_score = score
-            best_item = item
-
-    # 최종 점수 기반 결과 반환
-    # (사업자번호 10자리 완전 일치는 위에서 이미 리턴됨)
-    if best_item and max_score >= 0.6:
-        detail = get_nps_detail(best_item.get("seq"), service_key)
-        if detail: best_item.update(detail)
-        best_item["_match_score"] = round(max_score, 2)
-        return best_item
-
-    return {"_error": f"검색결과 {len(results)}건 중 신뢰할 수 있는 매칭 실패 (최고유사도: {max_score:.2f})", "_candidates": len(results)}
 
 
 def estimate_avg_salary(nps_data: dict) -> str:

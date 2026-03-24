@@ -145,3 +145,20 @@ def download_nhis_dataset(service_key: str, uddi: str = "71a6826c-7c86-4b4c-8e90
         df["_brn"] = df["사업자등록번호"].astype(str).str.replace("-", "", regex=False).str.replace(" ", "", regex=False).str.zfill(10)
 
     return df
+
+def get_nhis_subscriber_count(brn: str, nhis_df: pd.DataFrame = None) -> int:
+    """사업자번호로 건강보험 가입자 수 조회 (로컬 DF 매칭)"""
+    if nhis_df is None or nhis_df.empty:
+        return 0
+    
+    clean_brn = brn.replace("-", "").zfill(10)
+    if "_brn" not in nhis_df.columns:
+        return 0
+        
+    match = nhis_df[nhis_df["_brn"] == clean_brn]
+    if not match.empty:
+        try:
+            return int(match.iloc[0].get("직장가입자수", 0))
+        except:
+            return 0
+    return 0
