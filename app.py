@@ -1321,16 +1321,19 @@ def show_business_info_crawling():
                             # 1) DART API를 통한 언마스킹 시도 (가장 강력한 언마스킹 수단)
                             dart_info = {}
                             if DART_API_KEY and row_name:
-                                # [v2.1] row_brn을 전달하여 이름 매칭 후 BRN 교차 검증
-                                dart_info = get_dart_corp_info(row_name, DART_API_KEY, brn=row_brn)
-                                if dart_info:
-                                    api_brn = normalize_brn(dart_info.get("brn", ""))
-                                    res_id["brn"] = _update_brn(res_id["brn"], api_brn, res_id, initial_input=row_brn)
-                                    res_id["crno"] = res_id["crno"] or dart_info.get("crno", "")
-                                    res_id["dart_name"] = dart_info.get("corp_name", "")
-                                    res_id["api_name"] = res_id["api_name"] or res_id["dart_name"]
-                                    res_id["api_addr"] = dart_info.get("addr", "")
-                                    _log_debug(f"DART Unmasked/Enriched: {res_id['brn']}, CRNO: {res_id['crno']}")
+                                # [v16.0] 이름 매칭 강화: (주) 접두사 시도
+                                dart_names_to_try = [row_name, f"(주){row_name}", f"{row_name}리서치", f"{row_name}코리아"]
+                                for target_nm in dart_names_to_try:
+                                    dart_info = get_dart_corp_info(target_nm, DART_API_KEY, brn=row_brn)
+                                    if dart_info:
+                                        api_brn = normalize_brn(dart_info.get("brn", ""))
+                                        res_id["brn"] = _update_brn(res_id["brn"], api_brn, res_id, initial_input=row_brn)
+                                        res_id["crno"] = res_id["crno"] or dart_info.get("crno", "")
+                                        res_id["dart_name"] = dart_info.get("corp_name", "")
+                                        res_id["api_name"] = res_id["api_name"] or res_id["dart_name"]
+                                        res_id["api_addr"] = dart_info.get("addr", "")
+                                        _log_debug(f"DART Unmasked/Enriched ({target_nm}): {res_id['brn']}, CRNO: {res_id['crno']}")
+                                        break
 
                             # 2) G2B(나라장터)를 통한 보완 (BRN 기반 직접 조회)
                             current_brn = normalize_brn(res_id["brn"] or row_brn)
@@ -1351,11 +1354,18 @@ def show_business_info_crawling():
                                     _log_debug(f"G2B Enriched: {current_brn}")
 
                             # 3) FSS API 최종 확인 및 상세정보 확보
-                            # 확보된 (언마스킹된) BRN이나 발굴된 CRNO가 있으면 이를 검색어로 사용하여 FSS에서 최종 데이터 결합
                             try:
                                 target_brn_for_fss = res_id["brn"] if not _is_masked(res_id["brn"]) else row_brn
                                 target_crno_for_fss = res_id["crno"] or row_crno
-                                fss_id_res = search_corp_by_name(row_name, api_service_key, brn=target_brn_for_fss, address=row_addr, crno=target_crno_for_fss)
+                                
+                                # [v16.0] FSS 또한 이름 매칭 시도 (주식회사 접두어 등)
+                                fss_names_to_try = [row_name, f"(주){row_name}", f"주식회사 {row_name}"]
+                                fss_id_res = None
+                                
+                                for f_nm in fss_names_to_try:
+                                    fss_id_res = search_corp_by_name(f_nm, api_service_key, brn=target_brn_for_fss, address=row_addr, crno=target_crno_for_fss)
+                                    if fss_id_res and "_error" not in fss_id_res:
+                                        break
                                 
                                 if fss_id_res and "_error" not in fss_id_res:
                                     api_brn = normalize_brn(fss_id_res.get("bzno", ""))
@@ -1608,9 +1618,12 @@ def show_business_info_crawling():
                                         nhis_name_lookup[nm].append(n_row.to_dict())
 
                         # 식별된 마스터 ID를 기반으로 신뢰도 및 기본 정보 세팅
+                        result_df["회사명 정제"] = ""
+                        result_df["주소 정제"] = ""
+                        result_df["시도"] = ""
+                        result_df["시군"] = ""
                         result_df["[입력] 주소(정제)"] = ""
-                        result_df["[입력] 시도"] = ""
-                        result_df["[입력] 시군구"] = ""
+                        result_df["[입력] 상호(정제)"] = ""
                         result_df["[공공데이터] 사업자등록번호"] = ""
                         result_df["[공공데이터] 법인등록번호"] = ""
                         result_df["[공공데이터] 대표자명"] = ""
@@ -1632,9 +1645,15 @@ def show_business_info_crawling():
                             if uaddr:
                                 c_uaddr = clean_address(uaddr)
                                 u_sido, u_sgg, _ = split_address(c_uaddr)
+                                # [UI 개선] 사용자 요청 명칭 반영
+                                result_df.at[idx, "회사명 정제"] = row_name
+                                result_df.at[idx, "주소 정제"] = c_uaddr
+                                result_df.at[idx, "시도"] = u_sido
+                                result_df.at[idx, "시군"] = u_sgg
+                                
+                                # 히든용 원본 유지
                                 result_df.at[idx, "[입력] 주소(정제)"] = c_uaddr
-                                result_df.at[idx, "[입력] 시도"] = u_sido
-                                result_df.at[idx, "[입력] 시군구"] = u_sgg
+                                result_df.at[idx, "[입력] 상호(정제)"] = row_name
 
                             res_id = resolved_identities.get(idx, {})
                             master_brn = res_id.get("brn", "")
@@ -1891,8 +1910,9 @@ def show_business_info_crawling():
                             "sim_dist": dist_bins
                         }
 
-                        # [v15.5] 통합 등록명 생성 및 컬럼 재배치
-                        priority_cols = ["유사도(%)", "[입력] 상호(정제)", "[입력] 주소(정제)"]
+                        # [v16.0] 사용자 요청 컬럼 순서 재배치 및 가시성 조정
+                        # 요청: 유사도, 회사명 정제, 기관 통합 등록명, 주소 정제, 시도, 시군
+                        priority_cols = ["유사도(%)", "회사명 정제", "[행정] 기관 통합 등록명", "주소 정제", "시도", "시군"]
                         
                         # 1. 기관명 통합 (DART > G2B > NPS > NHIS/FSS)
                         for idx, ident in resolved_identities.items():
@@ -1905,23 +1925,28 @@ def show_business_info_crawling():
                             if unified_nm:
                                 result_df.at[idx, "[행정] 기관 통합 등록명"] = unified_nm
                         
-                        priority_cols.insert(3, "[행정] 기관 통합 등록명")
-
-                        # [UI 개선] 컬럼 재배치 및 원본 컬럼 숨김
-                        cols = list(result_df.columns)
-                        
-                        # 2. 숨길 컬럼 정의 (원본 + 시도/시군구 보조 필드)
+                        # 2. 숨길 컬럼 정의 (원본 + 원본보조필드 + 특정 NPS 필드)
                         raw_input_cols = [c for c in [brn_col, name_col, ceo_col, addr_col] if c and c != "(선택 안 함)"]
-                        redundant_cols = ["[입력] 시도", "[입력] 시군구", "[전자공시] 등록명", "[건강보험] 등록명"]
+                        redundant_cols = [
+                            "[입력] 시도", "[입력] 시군구", "[전자공시] 등록명", "[건강보험] 등록명", 
+                            "[입력] 주소(정제)", "[입력] 상호(정제)",
+                            "[국민연금] 사업자등록번호(6자리)", "[국민연금] 도로명주소"
+                        ]
                         hide_list = raw_input_cols + redundant_cols
                         
                         # 3. 나머지 컬럼 필터링 (원본 제외)
                         other_cols = [c for c in cols if c not in priority_cols and c not in hide_list and c != "_agg_key"]
                         
-                        # 4. 최종 컬럼 구성
+                        # 4. 최종 컬럼 구성 및 이름 변경
                         final_col_order = [c for c in priority_cols if c in result_df.columns] + other_cols
                         result_df = result_df[final_col_order]
-
+                        
+                        # 컬럼명 최종 매핑 (사용자 요청 명칭으로 간결화)
+                        rename_map = {
+                            "[행정] 기관 통합 등록명": "기관 통합 등록명"
+                        }
+                        result_df = result_df.rename(columns=rename_map)
+                        
                         st.session_state["biz_crawl_result"] = result_df
                         st.session_state["biz_crawl_stats"] = stats
                         st.session_state["biz_crawl_selected_nps"] = selected_nps
