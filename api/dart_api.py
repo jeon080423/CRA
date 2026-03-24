@@ -66,16 +66,19 @@ def get_dart_corp_info(company_name: str, api_key: str, brn: str = "") -> dict:
                 corp_code = code
                 break
         
-        # 3) 별칭 처리 및 안전한 방향의 포함 관계 매칭만 허용
+        # 3) 별칭 처리 및 포함 관계 매칭
         if not corp_code:
             alias_norm = target_norm.replace("LIG", "엘아이지")
             for name, code in _CORP_CODE_CACHE.items():
                 n_norm = _normalize(name)
-                # DART 등록명이 검색어의 일부인 경우만 허용 (반대 방향은 오매칭 위험)
-                if n_norm == alias_norm or n_norm in target_norm:
-                    if len(target_norm) >= 3:
-                        corp_code = code
-                        break
+                # 양방향 포함 매칭:
+                #  - n_norm in target_norm : DART 등록명이 검색어의 일부 (항상 허용)
+                #  - target_norm in n_norm : 검색어가 DART 등록명의 일부 (BRN이 있을 때만 허용, 이후 BRN 교차검증으로 오매칭 차단)
+                safe_match = n_norm == alias_norm or n_norm in target_norm
+                risky_match = brn and (target_norm in n_norm)  # BRN 있을 때만 허용 (v2.2 교차검증이 뒤에서 보호)
+                if (safe_match or risky_match) and len(target_norm) >= 3:
+                    corp_code = code
+                    break
 
     if not corp_code:
         return {}

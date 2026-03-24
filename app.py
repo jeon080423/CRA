@@ -1482,19 +1482,23 @@ def show_business_info_crawling():
                                 if res_brn and res_brn in cached_nps:
                                     details["nps"] = cached_nps[res_brn]
                                 else:
-                                    # [v12.7] input_sido 추가
                                     res_sido = resolved_id.get("sido", "")
                                     details["nps"] = search_and_match_nps(res_name, res_brn, api_service_key, address=resolved_id.get("api_addr", ""), input_sido=res_sido)
-                                    if res_brn and "_error" not in details["nps"]:
+                                    
+                                    # [v15.2] 1차 검색 실패 시 원본 입력명으로 재시도 (api_name != 사용자 입력명인 경우)
+                                    original_input_name = query_items[idx][2]
+                                    if (not details["nps"] or "_error" in details["nps"]) and original_input_name and original_input_name != res_name:
+                                        details["nps"] = search_and_match_nps(original_input_name, res_brn, api_service_key, address=resolved_id.get("api_addr", ""), input_sido=res_sido)
+                                    
+                                    if res_brn and details["nps"] and "_error" not in details["nps"]:
                                         cached_nps[res_brn] = details["nps"]
                                 
-                                # [v15.1] 2단계에서 NPS를 찾은 경우 등록명을 resolved_identities에 역전파
+                                # [v15.1] NPS를 찾은 경우 등록명을 resolved_identities에 역전파
                                 if details["nps"] and "_error" not in details["nps"]:
                                     nps_wkpl_nm = details["nps"].get("wkplNm", "")
                                     if nps_wkpl_nm and not resolved_id.get("nps_name"):
                                         resolved_id["nps_name"] = nps_wkpl_nm
                                         resolved_id["api_name"] = resolved_id.get("api_name") or nps_wkpl_nm
-                                        # NPS 주소도 최신 데이터로 업데이트
                                         nps_addr = details["nps"].get("wkplRoadNmAddr") or details["nps"].get("wkplRoadNmDtlAddr") or ""
                                         if nps_addr and not resolved_id.get("api_addr"):
                                             resolved_id["api_addr"] = nps_addr

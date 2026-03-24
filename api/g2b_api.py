@@ -40,10 +40,19 @@ def get_g2b_corp_info(brn: str, service_key: str) -> dict:
     if res:
         parsed = _parse_g2b_item(res)
         
-        # Industry info
+        # Industry info - 업종명은 여러 필드명이 올 수 있으므로 모두 체크
         indst_res = _request_g2b(G2B_CORP_INDST_URL, service_key, {"bizno": clean_brn, "inqryDiv": "3"})
-        if indst_res and "indstryNm" in indst_res:
-            parsed["bizType"] = indst_res.get("indstryNm")
+        if indst_res:
+            industry_name = (
+                indst_res.get("indstryNm") or     # 주요 필드명
+                indst_res.get("prdctClsfNoNm") or  # 물품분류명
+                indst_res.get("bizType") or
+                indst_res.get("indstry") or
+                indst_res.get("clsfNm") or
+                ""
+            )
+            if industry_name:
+                parsed["bizType"] = industry_name
             
         # Product info
         prdct_res = _request_g2b(G2B_CORP_PRDCT_URL, service_key, {"bizno": clean_brn, "inqryDiv": "3"})
