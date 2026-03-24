@@ -1445,8 +1445,16 @@ def show_business_info_crawling():
                                 for idx, ident in resolved_identities.items():
                                     b_no = ident.get("brn")
                                     if b_no in nts_results:
+                                        status_val = nts_results[b_no].get("status", "")
+                                        # [v15.5] 국세청 상태 아이콘 적용
+                                        if "계속" in status_val: status_val = f"🟢 {status_val}"
+                                        elif "폐업" in status_val: status_val = f"🔴 {status_val}"
+                                        elif "휴업" in status_val: status_val = f"🟡 {status_val}"
+                                        
                                         resolved_identities[idx].update({
-                                            f"nts_{k}": v for k, v in nts_results[b_no].items()
+                                            "nts_status": status_val,
+                                            "nts_tax_type": nts_results[b_no].get("tax_type", ""),
+                                            "nts_end_dt": nts_results[b_no].get("end_dt", "")
                                         })
                             progress.progress(0.4, text="국세청 상태 조회 완료")
 
@@ -1533,12 +1541,12 @@ def show_business_info_crawling():
 
                         def _extract_nps_field(results_dict, idx, field):
                             res = results_dict.get(idx)
-                            if not res or "_error" in res: return "조회불가"
+                            if not res or "_error" in res: return "-"
                             val = res.get(field, "")
                             if field == "crrmmNtcAmt" and val:
                                 try: return f"{int(float(val)):,}"
                                 except: pass
-                            return str(val) if val else "해당없음"
+                            return str(val) if val else "-"
 
                         def _extract_nhis_field(idx, field):
                             res_id = resolved_identities.get(idx, {})
@@ -1556,7 +1564,7 @@ def show_business_info_crawling():
                                             
                                 if nrow:
                                     val = nrow.get(field, "")
-                                    return str(val) if val else "해당없음"
+                                    return str(val) if val else "-"
                             
                             # 2) 상호명+주소로 대체 검색 (BRN 없거나 매칭 안된 경우)
                             row_name = query_items[idx][2] # 정제된 이름
@@ -1575,9 +1583,9 @@ def show_business_info_crawling():
                                 # 주소가 어느 정도 유사하거나, 주소 정보가 둘 다 없는 경우 매칭
                                 if best_match and (max_sim > 0.4 or (not row_addr and not best_match.get("주소"))):
                                     val = best_match.get(field, "")
-                                    return str(val) if val else "해당없음"
+                                    return str(val) if val else "-"
                                     
-                            return "조회불가" if not brn else "미조회"
+                            return "-"
 
                         # 4) 결과 병합 및 유사도 계산
                         progress.progress(0.8, text="결과 병합 중...")
@@ -1666,7 +1674,7 @@ def show_business_info_crawling():
                                     elif field == "main_product": val = res_id.get("main_product", "")
                                     elif field == "restriction": val = res_id.get("restriction", "")
                                     
-                                    result_df.at[idx, col_name] = str(val) if val else "해당없음"
+                                    result_df.at[idx, col_name] = str(val) if val else "-"
                                     if val: has_any_data = True
 
                             # NPS 결과 추출
@@ -1684,7 +1692,8 @@ def show_business_info_crawling():
                                 for field in selected_nps:
                                     label = NPS_FIELD_LABELS.get(field, field)
                                     col_name = f"[국민연금] {label}"
-                                    result_df.at[idx, col_name] = _extract_nps_field(nps_results, idx, field)
+                                    val = _extract_nps_field(nps_results, idx, field)
+                                    result_df.at[idx, col_name] = val
                                 
                                 if "avgBasSalary" in selected_nps:
                                     result_df.at[idx, "[국민연금] 추정 평균 기준소득월액"] = estimate_avg_salary(nps_row)
@@ -1695,9 +1704,9 @@ def show_business_info_crawling():
                             if selected_nhis:
                                 for field in selected_nhis:
                                     val = _extract_nhis_field(idx, field)
-                                    result_df.at[idx, f"[건강보험] {NHIS_FIELD_LABELS.get(field, field)}"] = val
-                                    if val not in ["조회불가", "미조회", "해당없음"]:
+                                    if val and val != "-":
                                         has_any_data = True
+                                    result_df.at[idx, f"[건강보험] {NHIS_FIELD_LABELS.get(field, field)}"] = val
                                     
                                     # [v13.5] 건강보험 등록명 별도 추출 (룩업 결과 활용)
                                     if field == selected_nhis[0]: # 한 번만 수행
@@ -1712,8 +1721,9 @@ def show_business_info_crawling():
                                     label = nts_labels.get(field, field)
                                     col_name = f"[국세청] {label}"
                                     val = res_id.get(f"nts_{field}", "")
+                                    if not val: val = "-"
                                     result_df.at[idx, col_name] = val
-                                    if val and val not in ["", "조회실패"]:
+                                    if val and val != "-":
                                         has_any_data = True
 
                             # FSS 결과 추출
@@ -1727,8 +1737,9 @@ def show_business_info_crawling():
                                 for field in selected_fss_corp:
                                     label = FSS_CORP_FIELD_LABELS.get(field, field)
                                     col_name = f"[기업정보] {label}"
-                                    val = corp.get(field, "") if "_error" not in corp else "조회불가"
-                                    result_df.at[idx, col_name] = str(val) if val else "해당없음"
+                                    val = corp.get(field, "") if "_error" not in corp else "-"
+                                    if not val: val = "-"
+                                    result_df.at[idx, col_name] = str(val)
 
                             if selected_fss_fina:
                                 fina = fss_data.get("fina", {})
@@ -1740,10 +1751,11 @@ def show_business_info_crawling():
                                     label = FSS_FINA_FIELD_LABELS.get(field, field)
                                     col_name = f"[재무정보] {label}"
                                     val = fina.get(field, "")
-                                    if val and str(val).replace("-", "").replace(".", "").isdigit():
+                                    if not val: val = "-"
+                                    elif str(val).replace("-", "").replace(".", "").isdigit():
                                         try: val = f"{int(float(val)):,}"
                                         except: pass
-                                    result_df.at[idx, col_name] = str(val) if val else "해당없음"
+                                    result_df.at[idx, col_name] = str(val)
                             
                             if has_any_data:
                                 rows_with_data += 1
@@ -1879,17 +1891,32 @@ def show_business_info_crawling():
                             "sim_dist": dist_bins
                         }
 
+                        # [v15.5] 통합 등록명 생성 및 컬럼 재배치
+                        priority_cols = ["유사도(%)", "[입력] 상호(정제)", "[입력] 주소(정제)"]
+                        
+                        # 1. 기관명 통합 (DART > G2B > NPS > NHIS/FSS)
+                        for idx, ident in resolved_identities.items():
+                            dart_nm = ident.get("dart_name")
+                            g2b_nm = ident.get("g2b_name")
+                            nps_nm = ident.get("nps_name")
+                            fss_nm = ident.get("fss_name")
+                            
+                            unified_nm = dart_nm or g2b_nm or fss_nm or nps_nm or ""
+                            if unified_nm:
+                                result_df.at[idx, "[행정] 기관 통합 등록명"] = unified_nm
+                        
+                        priority_cols.insert(3, "[행정] 기관 통합 등록명")
+
                         # [UI 개선] 컬럼 재배치 및 원본 컬럼 숨김
                         cols = list(result_df.columns)
                         
-                        # 1. 유지할 핵심 컬럼 정의
-                        priority_cols = ["유사도(%)", "[입력] 상호(정제)", "[입력] 주소(정제)"]
-                        
-                        # 2. 숨길 원본 컬럼 정의
+                        # 2. 숨길 컬럼 정의 (원본 + 시도/시군구 보조 필드)
                         raw_input_cols = [c for c in [brn_col, name_col, ceo_col, addr_col] if c and c != "(선택 안 함)"]
+                        redundant_cols = ["[입력] 시도", "[입력] 시군구", "[전자공시] 등록명", "[건강보험] 등록명"]
+                        hide_list = raw_input_cols + redundant_cols
                         
                         # 3. 나머지 컬럼 필터링 (원본 제외)
-                        other_cols = [c for c in cols if c not in priority_cols and c not in raw_input_cols and c != "_agg_key"]
+                        other_cols = [c for c in cols if c not in priority_cols and c not in hide_list and c != "_agg_key"]
                         
                         # 4. 최종 컬럼 구성
                         final_col_order = [c for c in priority_cols if c in result_df.columns] + other_cols
