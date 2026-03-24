@@ -1325,7 +1325,8 @@ def show_business_info_crawling():
                             # 1) DART API를 통한 언마스킹 시도 (가장 강력한 언마스킹 수단)
                             dart_info = {}
                             if DART_API_KEY and row_name:
-                                dart_info = get_dart_corp_info(row_name, DART_API_KEY)
+                                # [v2.1] row_brn을 전달하여 이름 매칭 후 BRN 교차 검증
+                                dart_info = get_dart_corp_info(row_name, DART_API_KEY, brn=row_brn)
                                 if dart_info:
                                     api_brn = normalize_brn(dart_info.get("brn", ""))
                                     res_id["brn"] = _update_brn(row_brn, api_brn)
