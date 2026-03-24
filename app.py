@@ -599,14 +599,14 @@ def show_unified_business_search():
     """, unsafe_allow_html=True)
 
     with st.expander("📘 기능 및 이용 안내", expanded=False):
-        st.markdown(\"\"\"
+        st.markdown("""
         ### 🛠️ 주요 기능
         1. **지역 및 산업 맞춤 검색:** 시도(Sido), 업종명, 키워드를 조합하여 타겟 업체를 발굴합니다.
         2. **AI 업종 추천:** 입력한 키워드를 분석하여 관련성 높은 공식 업종명을 제안합니다.
         3. **나라장터 입찰/계약 연동:** 최근 나라장터에서 해당 분야의 계약 실적이 있는 업체를 실시간으로 추출합니다.
         4. **범기관 정보 통합:** NPS(국민연금), NHIS(건강보험), G2B(나라장터)의 데이터를 가장 최신 정보 기준으로 통합하여 제공합니다.
         5. **중복 제거 및 최신화:** 여러 기관에 분산된 동일 업체 정보를 자동 식별하여 단일 레코드로 제시합니다.
-        \"\"\")
+        """)
 
     # 검색 설정 영역
     st.markdown('<div class="qx-section-label">SEARCH FILTERS</div>', unsafe_allow_html=True)
