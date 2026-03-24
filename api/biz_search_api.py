@@ -111,7 +111,7 @@ def get_unified_corp_info(brn: str, service_key: str, nhis_df: pd.DataFrame = No
     
     return unified
 
-def batch_search_and_consolidate(sido: str, keyword: str, industry: str, service_key: str, nhis_df: pd.DataFrame = None) -> list[dict]:
+def batch_search_and_consolidate(sido: str, sigg: str, keyword: str, industry: str, service_key: str, nhis_df: pd.DataFrame = None) -> list[dict]:
     """전체 검색 및 통합 프로세스 실행"""
     all_brns = set()
     
@@ -138,8 +138,11 @@ def batch_search_and_consolidate(sido: str, keyword: str, industry: str, service
         for f in concurrent.futures.as_completed(futures):
             try:
                 info = f.result()
-                # 시도 필터링
-                if sido == "전체" or sido in info["address"]:
+                # 시도 및 시군구 필터링
+                addr = info.get("address", "")
+                sido_match = (sido == "전체" or sido in addr)
+                sigg_match = (sigg == "전체" or sigg in addr)
+                if sido_match and sigg_match:
                     final_results.append(info)
             except:
                 continue
