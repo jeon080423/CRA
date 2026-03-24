@@ -586,12 +586,12 @@ def perform_rfp_analysis():
     st.rerun()
 
 
-# ── 기업체 명부 추출 UI ──
+# ── 사업체 명부 추출 UI ──
 def show_unified_business_search():
-    """AI 추천 및 공공데이터 연동 기업체 명부 추출 시스템 UI"""
+    """AI 추천 및 공공데이터 연동 사업체 명부 추출 시스템 UI"""
     st.markdown("""
     <div class="qx-topbar">
-        <span class="qx-topbar-logo">기업체 명부 추출</span>
+        <span class="qx-topbar-logo">사업체 명부 추출</span>
         <span class="qx-topbar-sep"></span>
         <span class="qx-topbar-title">AI 기반 업체 발굴 솔루션</span>
         <span class="qx-topbar-badge">G2B · NPS · NHIS 통합</span>
@@ -3858,7 +3858,7 @@ with st.sidebar:
         "AI 결측치 검토 (Call Back, Imputation)",
         "AI 단위 무응답 검토",
         "기업체 일반 현황 행정자료 비교",
-        "기업체 명부 추출",
+        "사업체 명부 추출",
         "보고서 검수 AI Tools"
     ]
     
@@ -4267,7 +4267,7 @@ else:
     elif st.session_state["menu_selection"] == "기업체 일반 현황 행정자료 비교":
         show_business_info_crawling()
         st.stop()
-    elif st.session_state["menu_selection"] == "기업체 명부 추출":
+    elif st.session_state["menu_selection"] == "사업체 명부 추출":
         show_unified_business_search()
         st.stop()
     elif st.session_state["menu_selection"] == "AI 설문지 최적화":

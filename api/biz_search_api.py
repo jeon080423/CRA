@@ -115,22 +115,34 @@ def batch_search_and_consolidate(sido: str, sigg: str, keyword: str, industry: s
     """전체 검색 및 통합 프로세스 실행"""
     all_brns = set()
     
-    # 1. G2B 계약 이력으로 BRN 추출
+    # 키워드와 다중 업종명(콤마 기준) 통합 검색
+    search_terms = []
     if keyword:
-        g2b_brns = search_g2b_contracts_by_keyword(keyword, service_key)
+        search_terms.append(keyword.strip())
+    if industry:
+        search_terms.extend([x.strip() for x in industry.split(",") if x.strip()])
+        
+    for term in search_terms:
+        if not term: continue
+        # 1. G2B 계약 이력으로 BRN 추출
+        g2b_brns = search_g2b_contracts_by_keyword(term, service_key)
         all_brns.update(g2b_brns)
         
-    # 2. NPS 이름/업종 검색으로 후보군 추출
-    search_term = industry if industry else keyword
-    if search_term:
-        nps_candidates = search_nps_companies_by_keyword(search_term, service_key)
-        # NPS V2는 전체 BRN을 주지 않으므로 이름으로 G2B 재검색 필요할 수도 있지만,
-        # 여기서는 NPS 결과에서 유추 가능한 정보를 활용
-        # (NPS V2 결과에는 bzowrRgstNo 앞 6자리만 있음)
-    
+        # 2. NPS 업종 검색으로 후보군 추출
+        nps_candidates = search_nps_companies_by_keyword(term, service_key)
+        # NPS V2는 전체 BRN을 주지 않으므로 이름으로 DART 검색하여 BRN 추출 (가능한 경우)
+        from api.constants import OPEN_DART_API_KEY
+        from api.dart_api import get_unmasked_brn
+        for cand in (nps_candidates or [])[:5]: # 상위 5개만 샘플링
+            c_name = cand.get("wkplNm")
+            if c_name:
+                cand_brn = get_unmasked_brn(c_name, OPEN_DART_API_KEY)
+                if cand_brn:
+                    all_brns.add(cand_brn.replace("-", ""))
+                    
     # 3. 통합 정보 수집 (병렬 처리)
     # 실무적으로는 모든 BRN에 대해 다 하는 것보다 상위 N개만 처리
-    brn_list = list(all_brns)[:30] # 샘플링
+    brn_list = list(all_brns)[:50] # 샘플링 증가
     
     final_results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
