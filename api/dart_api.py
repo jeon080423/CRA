@@ -104,17 +104,22 @@ def get_dart_corp_info(company_name: str, api_key: str, brn: str = "") -> dict:
                 "source": "DART"
             }
             
-            # [v2.1] BRN 교차 검증: 알려진 BRN이 있으면 DART 결과와 대조
+            # [v2.2] BRN 교차 검증 - 마스킹 부분 고려 자릿수 비교
             if brn:
                 input_brn_clean = _brn_clean(brn)
                 dart_brn_clean = _brn_clean(result["brn"])
-                
-                # 마스킹 없는 완전한 BRN이 모두 있는 경우에만 엄격히 검증
-                if ("*" not in input_brn_clean and "*" not in dart_brn_clean
-                        and input_brn_clean != "0000000000" and dart_brn_clean != "0000000000"
-                        and input_brn_clean != dart_brn_clean):
-                    # BRN이 불일치하면 오매칭 → 빈 dict 반환
-                    return {}
+
+                # DART BRN이 비어 있거나 전부 0이면 검증 불가 → 통과
+                if dart_brn_clean and dart_brn_clean != "0000000000":
+                    # 자릿수 단위 비교: 양쪽 모두 '*'가 아닌 위치에서 숫자가 달라야 불일치
+                    mismatch = False
+                    for ch_input, ch_dart in zip(input_brn_clean, dart_brn_clean):
+                        if ch_input != "*" and ch_dart != "*" and ch_input != ch_dart:
+                            mismatch = True
+                            break
+                    if mismatch:
+                        # 공개된 자릿수가 하나라도 다르면 다른 업체 → 제외
+                        return {}
             
             return result
     except Exception as e:
