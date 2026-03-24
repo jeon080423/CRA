@@ -660,10 +660,12 @@ def show_unified_business_search():
     if "biz_industry_suggestions" in st.session_state:
         st.markdown('<div style="font-size:0.85rem; color:#475569; margin-bottom:0.5rem;">💡 **AI 추천 업종:** (클릭 시 자동 입력)</div>', unsafe_allow_html=True)
         cols = st.columns(len(st.session_state["biz_industry_suggestions"]))
+        
+        def set_industry(s):
+            st.session_state["biz_industry_input"] = s
+            
         for i, sugg in enumerate(st.session_state["biz_industry_suggestions"]):
-            if cols[i].button(sugg, key=f"sugg_{i}"):
-                st.session_state["biz_industry_input"] = sugg
-                st.rerun()
+            cols[i].button(sugg, key=f"sugg_{i}", on_click=set_industry, args=(sugg,))
 
     st.markdown("<hr>", unsafe_allow_html=True)
     
