@@ -107,6 +107,14 @@ def get_unified_corp_info(brn: str, service_key: str, nhis_df: pd.DataFrame = No
         else:
             tel = "정보없음"
             
+    # 웹크롤링 보완 (혁신적인 방법 - Naver 검색결과 등에서 추출)
+    if not tel or tel == "정보없음":
+        if clean_corp_name != "정보없음":
+            crawled_tel = scrap_phone_from_web(clean_corp_name)
+            if crawled_tel:
+                tel = crawled_tel
+                sources.append("WebCrawling")
+            
     unified = {
         "brn": brn,
         "corp_name": clean_corp_name,
@@ -120,6 +128,43 @@ def get_unified_corp_info(brn: str, service_key: str, nhis_df: pd.DataFrame = No
     }
     
     return unified
+
+def scrap_phone_from_web(company_name: str) -> str:
+    """네이버 검색을 통해 중소기업의 전화번호를 동적으로 크롤링하여 추출"""
+    import urllib.parse
+    import re
+    from bs4 import BeautifulSoup
+    
+    query = urllib.parse.quote(f"{company_name} 전화번호")
+    url = f"https://search.naver.com/search.naver?query={query}"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            
+            # 플레이스 (지도) 영역 혹은 네이버 지식스니펫의 전화번호 탐색
+            # 클래스명은 네이버 검색결과 구조에 따라 자주 변하지만, 일반적으로 span이나 div 텍스트에 들어있음
+            # 정규표현식으로 전화번호 패턴 추출 (대표번호, 지역번호 등)
+            phone_pattern = re.compile(r'(\d{2,3}-\d{3,4}-\d{4})')
+            
+            # 먼저 강조된 전화번호 텍스트 (플레이스 영역 등) 탐색 시도
+            texts = soup.get_text()
+            matches = phone_pattern.findall(texts)
+            if matches:
+                # 너무 많은 매치가 있을 수 있으니 가장 먼저 노출된 혹은 빈도수 높은 번호를 선정
+                # 간단히 첫 번째 매칭 반환
+                for match in matches:
+                    # 렌덤한 날짜 정보 제외
+                    if not match.startswith("202"):
+                        return match
+                        
+    except Exception as e:
+        print(f"Web scraping error for {company_name}: {e}")
+        pass
+        
+    return ""
 
 def batch_search_and_consolidate(sido: str, sigg: str, keyword: str, industry: str, service_key: str, nhis_df: pd.DataFrame = None) -> list[dict]:
     """전체 검색 및 통합 프로세스 실행"""
