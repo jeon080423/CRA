@@ -1487,6 +1487,17 @@ def show_business_info_crawling():
                                     details["nps"] = search_and_match_nps(res_name, res_brn, api_service_key, address=resolved_id.get("api_addr", ""), input_sido=res_sido)
                                     if res_brn and "_error" not in details["nps"]:
                                         cached_nps[res_brn] = details["nps"]
+                                
+                                # [v15.1] 2단계에서 NPS를 찾은 경우 등록명을 resolved_identities에 역전파
+                                if details["nps"] and "_error" not in details["nps"]:
+                                    nps_wkpl_nm = details["nps"].get("wkplNm", "")
+                                    if nps_wkpl_nm and not resolved_id.get("nps_name"):
+                                        resolved_id["nps_name"] = nps_wkpl_nm
+                                        resolved_id["api_name"] = resolved_id.get("api_name") or nps_wkpl_nm
+                                        # NPS 주소도 최신 데이터로 업데이트
+                                        nps_addr = details["nps"].get("wkplRoadNmAddr") or details["nps"].get("wkplRoadNmDtlAddr") or ""
+                                        if nps_addr and not resolved_id.get("api_addr"):
+                                            resolved_id["api_addr"] = nps_addr
                             
                             # FSS 수집
                             if selected_fss_corp or selected_fss_fina:

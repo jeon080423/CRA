@@ -103,5 +103,6 @@ def _parse_g2b_item(item: dict) -> dict:
         "addr": item.get("adrs", ""),
         "telno": item.get("telNo") or item.get("telno") or "",
         "corpSizeNm": item.get("corpSizeNm") or "",
+        "bizType": item.get("indstryNm") or item.get("bizType") or "",  # 업종명
         "source": "G2B_V2"
     }
