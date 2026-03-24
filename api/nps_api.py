@@ -167,7 +167,7 @@ def get_nps_period_status(seq: str, period: str, service_key: str) -> dict:
         return {}
 
 
-def search_and_match_nps(company_name, brn, service_key, address=""):
+def search_and_match_nps(company_name, brn, service_key, address="", input_sido=""):
     """
     NPS 사업장 정보를 검색하고 최적의 결과를 반환합니다.
     [v14.7] LG/엘지 교차 검색 및 상위 후보 상세조회 기반 랭킹 적용
@@ -232,10 +232,14 @@ def search_and_match_nps(company_name, brn, service_key, address=""):
                 is_main = 1 if str(detail.get("wkplStlDvCd", "")) == "1" else 0
                 sim = _get_similarity(company_name, detail.get("wkplNm"))
                 
-                # 점수계산: (유사도 가중치) + (본사 여부) + (인원수 가중치)
+                # [v15.0] 시도 일치 여부 확인 (있을 경우 가중치)
+                api_addr = detail.get("wkplRoadNmAddr") or detail.get("wkplRoadNmDtlAddr") or ""
+                sido_match = 1 if input_sido and input_sido[:2] in api_addr else 0
+                
+                # 점수계산: (유사도 가중치) + (본사 여부) + (시도 일치) + (인원수 가중치)
                 # [v14.9.1] 인원수가 100명 이상인 경우 매우 강한 가중치 부여 (대기업 본사 우선)
                 cnt_weight = cnt * 100 if cnt > 100 else cnt
-                score = (sim * 100000) + (is_main * 50000) + cnt_weight
+                score = (sim * 100000) + (is_main * 50000) + (sido_match * 30000) + cnt_weight
                 
                 if score > max_score:
                     max_score = score
