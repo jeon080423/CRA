@@ -662,7 +662,13 @@ def show_unified_business_search():
         cols = st.columns(len(st.session_state["biz_industry_suggestions"]))
         
         def set_industry(s):
-            st.session_state["biz_industry_input"] = s
+            current = st.session_state.get("biz_industry_input", "").strip()
+            if not current:
+                st.session_state["biz_industry_input"] = s
+            else:
+                items = [x.strip() for x in current.split(",") if x.strip()]
+                if s not in items:
+                    st.session_state["biz_industry_input"] = current + ", " + s
             
         for i, sugg in enumerate(st.session_state["biz_industry_suggestions"]):
             cols[i].button(sugg, key=f"sugg_{i}", on_click=set_industry, args=(sugg,))
