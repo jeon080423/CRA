@@ -1296,14 +1296,14 @@ def show_business_info_crawling():
                         def _resolve_identity_task(idx, row_brn, row_name, row_addr, row_crno):
                             """단건에 대해 BRN 및 CRNO를 확정하는 로직"""
                             res_id = {
-                                "brn": "", # API에서 확인된 BRN만 담음
-                                "input_brn": row_brn, # 사용자 입력 BRN (Fallback용)
+                                "brn": normalize_brn(row_brn) if not _is_masked(row_brn) else "", 
+                                "input_brn": row_brn,
                                 "crno": "", "api_name": "", 
                                 "api_addr": "", "api_ceo": "",
                                 "api_tel": "", "api_biz_type": "",
                                 "match_score": 0.0,
                                 "brn_mismatch": False,
-                                "nps_name": "", "g2b_name": "", "fss_name": "", "dart_name": "" # [v13.5] 각 기관별 등록명 추가
+                                "nps_name": "", "g2b_name": "", "fss_name": "", "dart_name": ""
                             }
                             def _log_debug(msg):
                                 try:
@@ -1325,12 +1325,12 @@ def show_business_info_crawling():
                                 dart_info = get_dart_corp_info(row_name, DART_API_KEY, brn=row_brn)
                                 if dart_info:
                                     api_brn = normalize_brn(dart_info.get("brn", ""))
-                                    res_id["brn"] = _update_brn(row_brn, api_brn, res_id, initial_input=row_brn)
+                                    res_id["brn"] = _update_brn(res_id["brn"], api_brn, res_id, initial_input=row_brn)
                                     res_id["crno"] = res_id["crno"] or dart_info.get("crno", "")
-                                    res_id["dart_name"] = dart_info.get("corp_name", "") # [v13.5]
+                                    res_id["dart_name"] = dart_info.get("corp_name", "")
                                     res_id["api_name"] = res_id["api_name"] or res_id["dart_name"]
                                     res_id["api_addr"] = dart_info.get("addr", "")
-                                    _log_debug(f"DART Unmasked/Enriched: {res_id['brn']}")
+                                    _log_debug(f"DART Unmasked/Enriched: {res_id['brn']}, CRNO: {res_id['crno']}")
 
                             # 2) G2B(나라장터)를 통한 보완 (BRN 기반 직접 조회)
                             current_brn = normalize_brn(res_id["brn"] or row_brn)
@@ -1351,10 +1351,11 @@ def show_business_info_crawling():
                                     _log_debug(f"G2B Enriched: {current_brn}")
 
                             # 3) FSS API 최종 확인 및 상세정보 확보
-                            # 확보된 (언마스킹된) BRN이 있으면 이를 검색어로 사용하여 FSS에서 최종 데이터 결합
+                            # 확보된 (언마스킹된) BRN이나 발굴된 CRNO가 있으면 이를 검색어로 사용하여 FSS에서 최종 데이터 결합
                             try:
                                 target_brn_for_fss = res_id["brn"] if not _is_masked(res_id["brn"]) else row_brn
-                                fss_id_res = search_corp_by_name(row_name, api_service_key, brn=target_brn_for_fss, address=row_addr, crno=row_crno or res_id["crno"])
+                                target_crno_for_fss = res_id["crno"] or row_crno
+                                fss_id_res = search_corp_by_name(row_name, api_service_key, brn=target_brn_for_fss, address=row_addr, crno=target_crno_for_fss)
                                 
                                 if fss_id_res and "_error" not in fss_id_res:
                                     api_brn = normalize_brn(fss_id_res.get("bzno", ""))
@@ -1877,6 +1878,22 @@ def show_business_info_crawling():
                             "fss_fina_matched": fss_fina_matched,
                             "sim_dist": dist_bins
                         }
+
+                        # [UI 개선] 컬럼 재배치 및 원본 컬럼 숨김
+                        cols = list(result_df.columns)
+                        
+                        # 1. 유지할 핵심 컬럼 정의
+                        priority_cols = ["유사도(%)", "[입력] 상호(정제)", "[입력] 주소(정제)"]
+                        
+                        # 2. 숨길 원본 컬럼 정의
+                        raw_input_cols = [c for c in [brn_col, name_col, ceo_col, addr_col] if c and c != "(선택 안 함)"]
+                        
+                        # 3. 나머지 컬럼 필터링 (원본 제외)
+                        other_cols = [c for c in cols if c not in priority_cols and c not in raw_input_cols and c != "_agg_key"]
+                        
+                        # 4. 최종 컬럼 구성
+                        final_col_order = [c for c in priority_cols if c in result_df.columns] + other_cols
+                        result_df = result_df[final_col_order]
 
                         st.session_state["biz_crawl_result"] = result_df
                         st.session_state["biz_crawl_stats"] = stats
