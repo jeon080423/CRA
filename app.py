@@ -678,7 +678,10 @@ def show_unified_business_search():
         else:
             regional_df["근로자수_num"] = 0
         # 업종이 없는 경우 '정보없음' 처리
-        regional_df["업종코드_fill"] = regional_df.get("업종코드", "미기재").fillna("미기재")
+        if "업종코드" in regional_df.columns:
+            regional_df["업종코드_fill"] = regional_df["업종코드"].fillna("미기재")
+        else:
+            regional_df["업종코드_fill"] = "미기재"
         
         agg_df = regional_df.groupby("업종코드_fill").agg(
             사업체수=('_brn', 'count'),
