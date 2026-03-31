@@ -683,11 +683,16 @@ def show_unified_business_search():
         else:
             regional_df["업종코드_fill"] = "미기재"
         
-        agg_df = regional_df.groupby("업종코드_fill").agg(
-            사업체수=('_brn', 'count'),
-            총근로자수=('근로자수_num', 'sum')
-        ).reset_index().rename(columns={"업종코드_fill": "공단 업종코드"})
-        
+        # 집계: 업체 수는 언제나 집계하고, 근로자수는 컴럼 존재 시에만
+        agg_group = regional_df.groupby("업종코드_fill")
+        agg_count = agg_group.size().rename("사업체수")
+        if "근로자수_num" in regional_df.columns:
+            agg_sum = agg_group["근로자수_num"].sum().rename("총근로자수")
+            agg_df = pd.concat([agg_count, agg_sum], axis=1).reset_index()
+        else:
+            agg_df = agg_count.reset_index()
+            agg_df["총근로자수"] = 0
+        agg_df = agg_df.rename(columns={"업종코드_fill": "공단 업종코드"})
         agg_df = agg_df.sort_values("사업체수", ascending=False)
         
         # 3열 구성 (가운데 표, 우측 필터)
