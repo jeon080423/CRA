@@ -673,7 +673,10 @@ def show_unified_business_search():
         st.markdown(f'<div class="qx-section-label">STEP 2. 표준산업분류별 사업체수 집계 (선택 지역 총 {total_comps:,}개 업체)</div>', unsafe_allow_html=True)
         
         # 근로자수 수치화
-        regional_df["근로자수_num"] = pd.to_numeric(regional_df.get("직장가입자수", 0), errors="coerce").fillna(0)
+        if "직장가입자수" in regional_df.columns:
+            regional_df["근로자수_num"] = pd.to_numeric(regional_df["직장가입자수"], errors="coerce").fillna(0)
+        else:
+            regional_df["근로자수_num"] = 0
         # 업종이 없는 경우 '정보없음' 처리
         regional_df["업종코드_fill"] = regional_df.get("업종코드", "미기재").fillna("미기재")
         
