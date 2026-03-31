@@ -588,30 +588,28 @@ def perform_rfp_analysis():
 
 # ── 사업체 명부 추출 UI ──
 def show_unified_business_search():
-    """AI 추천 및 공공데이터 연동 사업체 명부 추출 시스템 UI"""
+    """AI 추천 및 공공데이터 연동 사업체 명부 추출 시스템 UI (4-Step Pipeline)"""
     st.markdown("""
     <div class="qx-topbar">
         <span class="qx-topbar-logo">사업체 명부 추출</span>
         <span class="qx-topbar-sep"></span>
-        <span class="qx-topbar-title">AI 기반 업체 발굴 솔루션</span>
+        <span class="qx-topbar-title">단계별 업체 발굴 솔루션</span>
         <span class="qx-topbar-badge">G2B · NPS · NHIS 통합</span>
     </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("📘 기능 및 이용 안내", expanded=False):
+    with st.expander("📘 단계별 이용 안내 (4-Step Pipeline)", expanded=False):
         st.markdown("""
-        ### 🛠️ 주요 기능
-        1. **지역 및 산업 맞춤 검색:** 시도(Sido), 업종명, 키워드를 조합하여 타겟 업체를 발굴합니다.
-        2. **AI 업종 추천:** 입력한 키워드를 분석하여 관련성 높은 공식 업종명을 제안합니다.
-        3. **나라장터 입찰/계약 연동:** 최근 나라장터에서 해당 분야의 계약 실적이 있는 업체를 실시간으로 추출합니다.
-        4. **범기관 정보 통합:** NPS(국민연금), NHIS(건강보험), G2B(나라장터)의 데이터를 가장 최신 정보 기준으로 통합하여 제공합니다.
-        5. **중복 제거 및 최신화:** 여러 기관에 분산된 동일 업체 정보를 자동 식별하여 단일 레코드로 제시합니다.
+        ### 🗺️ 파이프라인 단계
+        - **1단계 (지역 선택):** 시도 및 시군구를 지정하여 해당 지역 전체 사업장 기초 데이터를 수집합니다.
+        - **2단계 (현황 집계):** 선택한 지역 내 업체들의 업종분포와 근로자 수 규모를 한눈에 파악합니다.
+        - **3단계 (추출 기준 설정):** 집계된 통계를 바탕으로 타겟할 업종이나 근로자 수 스펙을 필터링합니다.
+        - **4단계 (상세 통합 추출):** 최종 선별된 타겟 업체들에 대해 공공망(NPS/G2B)을 찔러 실시간 전화번호, 상세 기업 정보를 조립해 냅니다.
         """)
 
-    # 검색 설정 영역
-    st.markdown('<div class="qx-section-label">SEARCH FILTERS</div>', unsafe_allow_html=True)
-    
-    col_s1, col_sigg, col_s2, col_s3 = st.columns([1, 1, 1.5, 1.5])
+    # --- Step 1 ---
+    st.markdown('<div class="qx-section-label">STEP 1. 지역 탐색</div>', unsafe_allow_html=True)
+    col_s1, col_sigg, col_btn1 = st.columns([1.5, 1.5, 1])
     with col_s1:
         sido = st.selectbox("시도 선택", options=BIZ_SIDO_LIST)
     with col_sigg:
@@ -637,72 +635,111 @@ def show_unified_business_search():
         }
         sigg_options = SIGG_MAP.get(sido, ["전체"])
         sigg = st.selectbox("시/군/구 선택", options=sigg_options)
-    with col_s2:
-        industry = st.text_input(
-            "업종명", 
-            placeholder="예: 시장조사 및 여론조사업",
-            key="biz_industry_input"
-        )
         
-    with col_s3:
-        keyword = st.text_input("검색 키워드", placeholder="예: 설문조사, 리서치, 빅데이터")
-
-    # AI 추천 버튼
-    if keyword and st.button("🪄 AI 업종 추천 받기"):
-        with st.spinner("AI가 최적의 업종명을 분석 중입니다..."):
-            suggestions = get_ai_industry_suggestions(keyword)
-            if suggestions:
-                st.session_state["biz_industry_suggestions"] = suggestions
+    with col_btn1:
+        st.markdown("<div style='margin-top: 28px'></div>", unsafe_allow_html=True)
+        if st.button("📊 1단계: 지역 현황 집계", use_container_width=True, type="secondary"):
+            if sido == "전체":
+                st.warning("전체 지역을 집계하기에는 데이터가 방대하므로 특정 시/도를 선택해 주시기 바랍니다.")
             else:
-                st.warning("추천 업종을 생성하지 못했습니다.")
-
-    # 추천 결과 표시
-    if "biz_industry_suggestions" in st.session_state:
-        st.markdown('<div style="font-size:0.85rem; color:#475569; margin-bottom:0.5rem;">💡 **AI 추천 업종:** (클릭 시 자동 입력)</div>', unsafe_allow_html=True)
-        cols = st.columns(len(st.session_state["biz_industry_suggestions"]))
-        
-        def set_industry(s):
-            current = st.session_state.get("biz_industry_input", "").strip()
-            if not current:
-                st.session_state["biz_industry_input"] = s
-            else:
-                items = [x.strip() for x in current.split(",") if x.strip()]
-                if s not in items:
-                    st.session_state["biz_industry_input"] = current + ", " + s
-            
-        for i, sugg in enumerate(st.session_state["biz_industry_suggestions"]):
-            cols[i].button(sugg, key=f"sugg_{i}", on_click=set_industry, args=(sugg,))
+                with st.spinner("건강보험 기초 데이터를 동기화하고 지역별 현황을 집계 중입니다..."):
+                    nhis_df = st.session_state.get("biz_nhis_dataset")
+                    if nhis_df is None or nhis_df.empty:
+                        st.toast("건강보험 전국망 기초 데이터를 1회 동기화합니다 (약 15초 소요).", icon="⏳")
+                        from api.nhis_api import download_nhis_dataset
+                        nhis_df = download_nhis_dataset(SERVICE_KEY)
+                        st.session_state["biz_nhis_dataset"] = nhis_df
+                    
+                    regional_df = nhis_df.copy()
+                    addr_cols = [c for c in regional_df.columns if "주소" in c or "addr" in c.lower()]
+                    
+                    if addr_cols:
+                        addr_col = addr_cols[0]
+                        regional_df = regional_df[regional_df[addr_col].str.contains(sido, na=False)]
+                        if sigg != "전체":
+                            regional_df = regional_df[regional_df[addr_col].str.contains(sigg, na=False)]
+                    
+                    st.session_state["biz_step1_df"] = regional_df
+                    # 새로운 지역으로 집계했으므로, 4단계 조회 결과는 파기
+                    st.session_state.pop("biz_step4_results", None)
 
     st.markdown("<hr>", unsafe_allow_html=True)
-    
-    # 검색 실행
-    if st.button("🚀 전체 업체 리스트 검색 및 수집 시작", type="primary", use_container_width=True):
-        if not (keyword or industry) and sido == "전체":
-            st.error("특정 지역(시/도)을 지정하거나 키워드/업종명을 입력해 주세요.")
-        else:
-            with st.spinner("다중 환경 데이터를 실시간으로 검색 및 취합 중입니다 (빠른 지역 조회의 경우 약 5~10초 소요)..."):
-                # 건강보험 캐시 데이터 가져오기 (없는 경우 1회 자동 다운로드 수행)
-                nhis_df = st.session_state.get("biz_nhis_dataset")
-                if nhis_df is None or nhis_df.empty:
-                    st.toast("건강보험 전국망 기초 데이터를 1회 동기화합니다 (약 15초 소요).", icon="⏳")
-                    from api.nhis_api import download_nhis_dataset
-                    nhis_df = download_nhis_dataset(SERVICE_KEY)
-                    st.session_state["biz_nhis_dataset"] = nhis_df
-                    
-                results = batch_search_and_consolidate(sido, sigg, keyword, industry, SERVICE_KEY, nhis_df=nhis_df)
-                if results:
-                    st.session_state["biz_search_results"] = results
-                    st.success(f"총 {len(results)}건의 업체 정보를 통합 완료했습니다.")
-                else:
-                    st.warning("검색 결과가 없습니다. 키워드를 변경해 보세요.")
 
+    # --- Step 2 & 3 ---
+    if "biz_step1_df" in st.session_state:
+        regional_df = st.session_state["biz_step1_df"]
+        total_comps = len(regional_df)
+        
+        st.markdown(f'<div class="qx-section-label">STEP 2. 표준산업분류별 사업체수 집계 (선택 지역 총 {total_comps:,}개 업체)</div>', unsafe_allow_html=True)
+        
+        # 근로자수 수치화
+        regional_df["근로자수_num"] = pd.to_numeric(regional_df.get("직장가입자수", 0), errors="coerce").fillna(0)
+        # 업종이 없는 경우 '정보없음' 처리
+        regional_df["업종코드_fill"] = regional_df.get("업종코드", "미기재").fillna("미기재")
+        
+        agg_df = regional_df.groupby("업종코드_fill").agg(
+            사업체수=('_brn', 'count'),
+            총근로자수=('근로자수_num', 'sum')
+        ).reset_index().rename(columns={"업종코드_fill": "공단 업종코드"})
+        
+        agg_df = agg_df.sort_values("사업체수", ascending=False)
+        
+        # 3열 구성 (가운데 표, 우측 필터)
+        col_t1, col_t2 = st.columns([1.5, 2.5])
+        
+        with col_t1:
+            st.dataframe(agg_df, use_container_width=True, hide_index=True, height=250)
+            st.caption("※ 출처: 국민건강보험공단 사업장관리 현황 (단위: 명, 개)")
+            
+        with col_t2:
+            st.markdown('<div style="padding: 1rem; background: #FAFBFE; border: 1px solid #E5E9F0; border-radius: 8px;">', unsafe_allow_html=True)
+            st.markdown('<div class="qx-section-label">STEP 3. 추출 기준 설정</div>', unsafe_allow_html=True)
+            
+            filter_type = st.radio("추출 기준 (라디오 버튼)", ["특정 산업분류 한정", "전체 업종 (근로자수만 지정)"], horizontal=True)
+            
+            target_inds = []
+            min_workers = 0
+            
+            subcol1, subcol2 = st.columns(2)
+            with subcol1:
+                if filter_type == "특정 산업분류 한정":
+                    target_inds = st.multiselect("대상 업종코드 선택", options=agg_df["공단 업종코드"].tolist(), placeholder="복수 선택 가능")
+            with subcol2:
+                min_workers = st.number_input("최소 근로자 수 (명 이상)", min_value=0, value=1)
+                
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown("<hr>", unsafe_allow_html=True)
+        
+        # --- Step 4 ---
+        if st.button("🚀 STEP 4. 최종 전체 추출 (NPS, G2B 상세 연락처 연동)", type="primary", use_container_width=True):
+            filtered_df = regional_df.copy()
+            
+            if filter_type == "특정 산업분류 한정" and target_inds:
+                filtered_df = filtered_df[filtered_df["업종코드_fill"].isin(target_inds)]
+                
+            filtered_df = filtered_df[filtered_df["근로자수_num"] >= min_workers]
+            brn_list = filtered_df["_brn"].dropna().tolist()
+            
+            if not brn_list:
+                st.warning("조건을 만족하는 업체가 0건입니다. 추출 기준을 완화해 보세요.")
+            else:
+                st.success(f"조건을 만족하는 총 {len(brn_list):,}개 업체 중, 최대 100건의 상세(연락처 등) 데이터를 정밀 취합합니다.")
+                with st.spinner("NPS, G2B 공공망과 통신하여 연락처 및 심층 데이터를 수집 중입니다..."):
+                    from api.biz_search_api import batch_fetch_by_brns
+                    results = batch_fetch_by_brns(brn_list, SERVICE_KEY, nhis_df=st.session_state["biz_nhis_dataset"])
+                    st.session_state["biz_step4_results"] = results
+                    
     # 결과 표시
-    if "biz_search_results" in st.session_state:
-        results = st.session_state["biz_search_results"]
+    if "biz_step4_results" in st.session_state:
+        results = st.session_state["biz_step4_results"]
         
-        st.markdown('<div class="qx-section-label">SEARCH RESULTS</div>', unsafe_allow_html=True)
+        st.markdown('<div class="qx-section-label">FINAL EXTRACTION RESULTS</div>', unsafe_allow_html=True)
         
-        # 전체 선택/해제 관리
+        if not results:
+            st.info("조건을 만족하는 업체의 상세 정보를 API에서 불러오지 못했습니다.")
+            return
+
         col_ctrl1, col_ctrl2 = st.columns([1, 4])
         with col_ctrl1:
             if st.button("✅ 전체 선택", use_container_width=True):
@@ -716,7 +753,6 @@ def show_unified_business_search():
         if "biz_selected_indices" not in st.session_state:
             st.session_state["biz_selected_indices"] = list(range(len(results)))
 
-        # 결과 데이터프레임 구성
         display_data = []
         for i, res in enumerate(results):
             display_data.append({
@@ -733,21 +769,14 @@ def show_unified_business_search():
         
         df_display = pd.DataFrame(display_data)
         
-        # 에디터 기능을 활용한 선택 처리
         edited_df = st.data_editor(
-            df_display,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "선택": st.column_config.CheckboxColumn("선택", default=True),
-            },
+            df_display, hide_index=True, use_container_width=True,
+            column_config={"선택": st.column_config.CheckboxColumn("선택", default=True)},
             key="biz_results_editor"
         )
         
-        # 선택된 데이터 추출
         selected_rows = edited_df[edited_df["선택"] == True]
         
-        # 엑셀 다운로드
         if not selected_rows.empty:
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -755,12 +784,10 @@ def show_unified_business_search():
             output.seek(0)
             
             st.download_button(
-                label=f"📥 선택된 {len(selected_rows)}건 리스트 다운로드 (Excel)",
-                data=output,
-                file_name=f"업체검색결과_{datetime.datetime.now().strftime('%Y%m%d')}.xlsx",
+                label=f"📥 선택된 {len(selected_rows)}건 최종 리스트 다운로드 (Excel)", data=output,
+                file_name=f"업체명부_4단계추출결과_{datetime.datetime.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                type="primary"
+                use_container_width=True, type="primary"
             )
         else:
             st.info("다운로드할 업체를 선택해 주세요.")

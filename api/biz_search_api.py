@@ -258,3 +258,32 @@ def batch_search_and_consolidate(sido: str, sigg: str, keyword: str, industry: s
                 continue
                 
     return final_results
+
+def batch_fetch_by_brns(brn_list: list[str], service_key: str, nhis_df: pd.DataFrame = None) -> list[dict]:
+    """확정된 사업자번호(BRN) 리스트만 받아 다중 기관 상세 정보를 병렬로 수집합니다."""
+    # 중복 제거 및 제한
+    unique_brns = []
+    seen = set()
+    for b in brn_list:
+        clean = str(b).replace("-", "").zfill(10)
+        if clean and clean not in seen:
+            unique_brns.append(clean)
+            seen.add(clean)
+            
+    # 전체를 다 할 경우 시간이 너무 오래 걸릴 수 있으므로 100건 제한 도입
+    target_brns = unique_brns[:100]
+    
+    final_results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(get_unified_corp_info, brn, service_key, nhis_df) for brn in target_brns]
+        for f in concurrent.futures.as_completed(futures):
+            try:
+                info = f.result()
+                if info:
+                    final_results.append(info)
+            except Exception as e:
+                print(f"Error fetching detail for BRN: {e}")
+                continue
+                
+    return final_results
+
