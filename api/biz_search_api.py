@@ -191,19 +191,24 @@ def batch_search_and_consolidate(sido: str, sigg: str, keyword: str, industry: s
             if sigg != "전체":
                 regional_df = regional_df[regional_df[addr_col].str.contains(sigg, na=False)]
         
-        # 1-2. 키워드/업종 기반 추가 필터링
-        for term in search_terms:
-            if not term: continue
-            # 사업장명 검색
-            mask = regional_df["사업장명"].str.contains(term, na=False, case=False)
-            
-            # 업종 관련 컬럼 검색 (있을 경우)
-            ind_cols = [c for c in regional_df.columns if "업종" in c]
-            for ic in ind_cols:
-                mask = mask | regional_df[ic].astype(str).str.contains(term, na=False, case=False)
+        # 1-2. 키워드/업종 기반 추가 필터링 (검색어가 있을 경우에만)
+        if search_terms:
+            for term in search_terms:
+                if not term: continue
+                # 사업장명 검색
+                mask = regional_df["사업장명"].str.contains(term, na=False, case=False)
                 
-            matches = regional_df[mask]
-            for b in matches["_brn"].dropna().tolist():
+                # 업종 관련 컬럼 검색 (있을 경우)
+                ind_cols = [c for c in regional_df.columns if "업종" in c]
+                for ic in ind_cols:
+                    mask = mask | regional_df[ic].astype(str).str.contains(term, na=False, case=False)
+                    
+                matches = regional_df[mask]
+                for b in matches["_brn"].dropna().tolist():
+                    all_brns.add(str(b).zfill(10))
+        else:
+            # 검색어가 아예 없으면 선택한 지역 내 업체 모두를 대상으로 브로드하게 수집 (최대 100건 제한)
+            for b in regional_df["_brn"].dropna().head(100).tolist():
                 all_brns.add(str(b).zfill(10))
     
     # 2. 결과가 부족하거나 캐시가 없을 경우 기동하는 Fallback (NPS, G2B API)

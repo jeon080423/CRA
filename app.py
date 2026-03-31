@@ -677,10 +677,10 @@ def show_unified_business_search():
     
     # 검색 실행
     if st.button("🚀 전체 업체 리스트 검색 및 수집 시작", type="primary", use_container_width=True):
-        if not (keyword or industry):
-            st.error("키워드 또는 업종명을 최소 하나 이상 입력해 주세요.")
+        if not (keyword or industry) and sido == "전체":
+            st.error("특정 지역(시/도)을 지정하거나 키워드/업종명을 입력해 주세요.")
         else:
-            with st.spinner("다중 기관 데이터를 실시간으로 수집 및 통합 중입니다 (약 30초~1분 소요)..."):
+            with st.spinner("다중 환경 데이터를 실시간으로 검색 및 취합 중입니다 (빠른 지역 조회의 경우 약 5~10초 소요)..."):
                 # 건강보험 캐시 데이터 가져오기 (있는 경우)
                 nhis_df = st.session_state.get("biz_nhis_dataset")
                 results = batch_search_and_consolidate(sido, sigg, keyword, industry, SERVICE_KEY, nhis_df=nhis_df)
