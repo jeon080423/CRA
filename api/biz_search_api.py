@@ -177,32 +177,61 @@ def batch_search_and_consolidate(sido: str, sigg: str, keyword: str, industry: s
     if industry:
         search_terms.extend([x.strip() for x in industry.split(",") if x.strip()])
         
-    for term in search_terms:
-        if not term: continue
+    # 0. NHIS 캐시(건강보험공단업체) 기반 지역 우선 검색
+    if nhis_df is not None and not nhis_df.empty and "_brn" in nhis_df.columns:
+        regional_df = nhis_df.copy()
         
-        # 0. NHIS 캐시(건강보험공단업체) 기반 검색 (존재시)
-        if nhis_df is not None and not nhis_df.empty and "_brn" in nhis_df.columns:
-            matches = nhis_df[nhis_df["사업장명"].str.contains(term, na=False, case=False)]
-            if not matches.empty:
-                for b in matches["_brn"].dropna().tolist():
-                    all_brns.add(str(b).zfill(10))
+        # 1-1. 주소 기반 필터링 (주소 관련 컬럼 자동 탐지)
+        addr_cols = [c for c in regional_df.columns if "주소" in c or "addr" in c.lower()]
+        addr_col = addr_cols[0] if addr_cols else None
+        
+        if addr_col:
+            if sido != "전체":
+                regional_df = regional_df[regional_df[addr_col].str.contains(sido, na=False)]
+            if sigg != "전체":
+                regional_df = regional_df[regional_df[addr_col].str.contains(sigg, na=False)]
+        
+        # 1-2. 키워드/업종 기반 추가 필터링
+        for term in search_terms:
+            if not term: continue
+            # 사업장명 검색
+            mask = regional_df["사업장명"].str.contains(term, na=False, case=False)
+            
+            # 업종 관련 컬럼 검색 (있을 경우)
+            ind_cols = [c for c in regional_df.columns if "업종" in c]
+            for ic in ind_cols:
+                mask = mask | regional_df[ic].astype(str).str.contains(term, na=False, case=False)
+                
+            matches = regional_df[mask]
+            for b in matches["_brn"].dropna().tolist():
+                all_brns.add(str(b).zfill(10))
+    
+    # 2. 결과가 부족하거나 캐시가 없을 경우 기동하는 Fallback (NPS, G2B API)
+    if len(all_brns) < 10 or not (nhis_df is not None and not nhis_df.empty):
+        for term in search_terms:
+            if not term: continue
+            
+            # NPS 업종 검색으로 후보군 추출
+            nps_candidates = search_nps_companies_by_keyword(term, service_key)
+            from api.constants import OPEN_DART_API_KEY
+            from api.dart_api import get_unmasked_brn
+            
+            for cand in (nps_candidates or [])[:10]:
+                c_name = cand.get("wkplNm")
+                # NPS 결과가 사용자가 선택한 지역과 너무 동떨어졌다면 스킵 (가벼운 필터링)
+                cand_addr = cand.get("wkplRoadNmDtlAddr") or cand.get("wkplRoadNmAddr") or ""
+                if sido != "전체" and sido not in cand_addr:
+                    continue
                     
-        # 1. NPS 업종 검색으로 후보군 추출 (기초)
-        nps_candidates = search_nps_companies_by_keyword(term, service_key)
-        # NPS V2는 전체 BRN을 주지 않으므로 이름으로 DART 검색하여 BRN 추출 (가능한 경우)
-        from api.constants import OPEN_DART_API_KEY
-        from api.dart_api import get_unmasked_brn
-        for cand in (nps_candidates or [])[:10]: # 기초 리스트 상위 10개 확보
-            c_name = cand.get("wkplNm")
-            if c_name:
-                clean_name = c_name.split("/")[0].strip()
-                cand_brn = get_unmasked_brn(clean_name, OPEN_DART_API_KEY)
-                if cand_brn:
-                    all_brns.add(cand_brn.replace("-", ""))
-                    
-        # 2. G2B 계약 이력으로 BRN 추출 (보완)
-        g2b_brns = search_g2b_contracts_by_keyword(term, service_key)
-        all_brns.update(g2b_brns)
+                if c_name:
+                    clean_name = c_name.split("/")[0].strip()
+                    cand_brn = get_unmasked_brn(clean_name, OPEN_DART_API_KEY)
+                    if cand_brn:
+                        all_brns.add(cand_brn.replace("-", ""))
+                        
+            # G2B 계약 이력으로 BRN 추출
+            g2b_brns = search_g2b_contracts_by_keyword(term, service_key)
+            all_brns.update(g2b_brns)
                     
     # 3. 통합 정보 수집 (병렬 처리)
     # 실무적으로는 모든 BRN에 대해 다 하는 것보다 상위 N개만 처리
