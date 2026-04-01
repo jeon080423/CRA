@@ -607,11 +607,46 @@ def show_unified_business_search():
         - **4단계 (상세 통합 추출):** 최종 선별된 타겟 업체들에 대해 공공망(NPS/G2B)을 찔러 실시간 전화번호, 상세 기업 정보를 조립해 냅니다.
         """)
 
+    # --- 환경 데이터 로더 (사전 준비) ---
+    nhis_df = st.session_state.get("biz_nhis_dataset")
+    nhis_loaded = nhis_df is not None and not nhis_df.empty
+
+    if nhis_loaded:
+        st.success(f"✅ 건강보험 기초 데이터 {len(nhis_df):,}건 준비됨 \u2014 지역 현황 집계 버튼을 눌러주세요.", icon="🏛️")
+    else:
+        st.warning("📊 **선행 작업:** 지역 현황 집계를 시작하려면 건강보험 전국 데이터를 먼저 다운로드해야 합니다. (**약 2\u22125분 소요**) 한번만 수행하면 이후 지역 검색에서 재사용됩니다.")
+        if st.button("🔽 건강보험 전국 데이터 다운로드 (필수)", type="primary", use_container_width=True, key="nhis_download_btn"):
+            prog_bar = st.progress(0, text="건강보험 전국망 데이터를 수집 중입니다...")
+            status_ph = st.empty()
+
+            def nhis_dl_progress(page, total, msg):
+                pct = int(page / total * 100) if total > 0 else 0
+                prog_bar.progress(pct, text=msg)
+                status_ph.caption(msg)
+
+            from api.nhis_api import download_nhis_dataset, NHIS_ENDPOINTS
+            # 최신 데이터 연도 샄플(2024년 말) UDDI 사용
+            target_uddi = list(NHIS_ENDPOINTS.values())[0]
+            dl_df = download_nhis_dataset(SERVICE_KEY, uddi=target_uddi, progress_callback=nhis_dl_progress)
+
+            prog_bar.empty()
+            status_ph.empty()
+
+            if dl_df.empty:
+                st.error("다운로드에 실패했습니다. API 키를 확인해 주세요.")
+            else:
+                st.session_state["biz_nhis_dataset"] = dl_df
+                # 실제 컴럼명 확인 및 전시
+                st.success(f"✅ {len(dl_df):,}건 수집 완료! 컴럼: {list(dl_df.columns)[:8]}")
+                st.rerun()
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+
     # --- Step 1 ---
     st.markdown('<div class="qx-section-label">STEP 1. 지역 탐색</div>', unsafe_allow_html=True)
     col_s1, col_sigg, col_btn1 = st.columns([1.5, 1.5, 1])
     with col_s1:
-        sido = st.selectbox("시도 선택", options=BIZ_SIDO_LIST)
+        sido = st.selectbox("시도 선택", options=BIZ_SIDO_LIST, disabled=not nhis_loaded)
     with col_sigg:
         SIGG_MAP = {
             "전체": ["전체"],
@@ -634,33 +669,29 @@ def show_unified_business_search():
             "제주특별자치도": ["전체", "서귀포시", "제주시"]
         }
         sigg_options = SIGG_MAP.get(sido, ["전체"])
-        sigg = st.selectbox("시/군/구 선택", options=sigg_options)
+        sigg = st.selectbox("시/군/구 선택", options=sigg_options, disabled=not nhis_loaded)
         
     with col_btn1:
         st.markdown("<div style='margin-top: 28px'></div>", unsafe_allow_html=True)
-        if st.button("📊 1단계: 지역 현황 집계", use_container_width=True, type="secondary"):
+        if st.button("📊 1단계: 지역 현황 집계", use_container_width=True, type="secondary", disabled=not nhis_loaded):
             if sido == "전체":
                 st.warning("전체 지역을 집계하기에는 데이터가 방대하므로 특정 시/도를 선택해 주시기 바랍니다.")
             else:
-                with st.spinner("건강보험 기초 데이터를 동기화하고 지역별 현황을 집계 중입니다..."):
-                    nhis_df = st.session_state.get("biz_nhis_dataset")
-                    if nhis_df is None or nhis_df.empty:
-                        st.toast("건강보험 전국망 기초 데이터를 1회 동기화합니다 (약 15초 소요).", icon="⏳")
-                        from api.nhis_api import download_nhis_dataset
-                        nhis_df = download_nhis_dataset(SERVICE_KEY)
-                        st.session_state["biz_nhis_dataset"] = nhis_df
-                    
+                with st.spinner(f"{sido} {sigg} 지역 포함 업체 필터링 중 (데이터 준비됨)..."):
+                    # 실제 컴럼명 확인 및 주소 일치 컴럼 자동 탐지
+                    addr_cols = [c for c in nhis_df.columns if "주소" in c or "addr" in c.lower() or "addr" in str(c.lower())]
                     regional_df = nhis_df.copy()
-                    addr_cols = [c for c in regional_df.columns if "주소" in c or "addr" in c.lower()]
-                    
                     if addr_cols:
                         addr_col = addr_cols[0]
-                        regional_df = regional_df[regional_df[addr_col].str.contains(sido, na=False)]
+                        regional_df = regional_df[regional_df[addr_col].astype(str).str.contains(sido[:2], na=False)]
                         if sigg != "전체":
-                            regional_df = regional_df[regional_df[addr_col].str.contains(sigg, na=False)]
+                            sigg_keyword = sigg.replace("시", "").replace("군", "").replace("구", "")
+                            regional_df = regional_df[regional_df[addr_col].astype(str).str.contains(sigg, na=False) | regional_df[addr_col].astype(str).str.contains(sigg_keyword, na=False)]
+                    else:
+                        st.error(f"주소 컴럼을 지정할 수 없습니다. 실제 컴럼목록: {list(nhis_df.columns)[:10]}")
+                        regional_df = nhis_df.copy()
                     
                     st.session_state["biz_step1_df"] = regional_df
-                    # 새로운 지역으로 집계했으므로, 4단계 조회 결과는 파기
                     st.session_state.pop("biz_step4_results", None)
 
     st.markdown("<hr>", unsafe_allow_html=True)
