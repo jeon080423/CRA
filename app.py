@@ -677,111 +677,143 @@ def show_unified_business_search():
             if sido == "전체":
                 st.warning("전체 지역을 집계하기에는 데이터가 방대하므로 특정 시/도를 선택해 주시기 바랍니다.")
             else:
-                with st.spinner(f"{sido} {sigg} 지역 포함 업체 필터링 중 (데이터 준비됨)..."):
-                    # 실제 컴럼명 확인 및 주소 일치 컴럼 자동 탐지
-                    addr_cols = [c for c in nhis_df.columns if "주소" in c or "addr" in c.lower() or "addr" in str(c.lower())]
-                    regional_df = nhis_df.copy()
-                    if addr_cols:
-                        addr_col = addr_cols[0]
-                        regional_df = regional_df[regional_df[addr_col].astype(str).str.contains(sido[:2], na=False)]
+                with st.spinner(f"{sido} {sigg} 지역 통계를 파싱 중..."):
+                    # 구분 컴럼으로 행 필터 (지역명 키워드 매칭)
+                    if "구분" in nhis_df.columns:
+                        sido_kw = sido[:2]  # e.g. '경기'
+                        region_rows = nhis_df[nhis_df["구분"].astype(str).str.contains(sido_kw, na=False)]
                         if sigg != "전체":
-                            sigg_keyword = sigg.replace("시", "").replace("군", "").replace("구", "")
-                            regional_df = regional_df[regional_df[addr_col].astype(str).str.contains(sigg, na=False) | regional_df[addr_col].astype(str).str.contains(sigg_keyword, na=False)]
+                            sigg_kw = sigg.replace("시", "").replace("군", "").replace("구", "")
+                            region_rows = nhis_df[nhis_df["구분"].astype(str).str.contains(sigg_kw, na=False)]
+                        # 피벗 테이블을 롱폼으로 melt
+                        id_cols = ["구분"]
+                        value_cols = [c for c in nhis_df.columns if c not in id_cols]
+                        melted = region_rows.melt(id_vars=id_cols, value_vars=value_cols,
+                                                   var_name="산업분류", value_name="사업체수")
+                        melted["사업체수"] = pd.to_numeric(melted["사업체수"], errors="coerce").fillna(0)
+                        melted = melted.sort_values("사업체수", ascending=False)
+                        st.session_state["biz_step1_df"] = melted
+                        st.session_state["biz_step1_sido"] = sido
+                        st.session_state["biz_step1_sigg"] = sigg
                     else:
-                        st.error(f"주소 컴럼을 지정할 수 없습니다. 실제 컴럼목록: {list(nhis_df.columns)[:10]}")
-                        regional_df = nhis_df.copy()
-                    
-                    st.session_state["biz_step1_df"] = regional_df
+                        # 데이터 구조가 다를 때: 주소 컴럼 탐색 후 직접 필터
+                        addr_cols = [c for c in nhis_df.columns if "주소" in c or "addr" in c.lower()]
+                        if addr_cols:
+                            addr_col = addr_cols[0]
+                            filtered = nhis_df[nhis_df[addr_col].astype(str).str.contains(sido[:2], na=False)]
+                            if sigg != "전체":
+                                sigg_kw = sigg.replace("시", "").replace("군", "").replace("구", "")
+                                filtered = filtered[filtered[addr_col].astype(str).str.contains(sigg, na=False) |
+                                                   filtered[addr_col].astype(str).str.contains(sigg_kw, na=False)]
+                            st.session_state["biz_step1_df"] = filtered
+                            st.session_state["biz_step1_sido"] = sido
+                            st.session_state["biz_step1_sigg"] = sigg
+                        else:
+                            st.error(f"데이터 구조를 인식할 수 없습니다. 컴럼: {list(nhis_df.columns)[:12]}")
                     st.session_state.pop("biz_step4_results", None)
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # --- Step 2 & 3 ---
     if "biz_step1_df" in st.session_state:
-        regional_df = st.session_state["biz_step1_df"]
-        total_comps = len(regional_df)
+        step1_df = st.session_state["biz_step1_df"]
+        sido_selected = st.session_state.get("biz_step1_sido", sido)
+        sigg_selected = st.session_state.get("biz_step1_sigg", sigg)
         
-        st.markdown(f'<div class="qx-section-label">STEP 2. 표준산업분류별 사업체수 집계 (선택 지역 총 {total_comps:,}개 업체)</div>', unsafe_allow_html=True)
+        # 피벗 테이블 멜트 방식 (biz_step1_df가 피벗 melt 결과인지 철크)
+        is_melted = "산업분류" in step1_df.columns and "사업체수" in step1_df.columns
         
-        # 근로자수 수치화
-        if "직장가입자수" in regional_df.columns:
-            regional_df["근로자수_num"] = pd.to_numeric(regional_df["직장가입자수"], errors="coerce").fillna(0)
+        if is_melted:
+            total_comps = int(step1_df["사업체수"].sum())
+            display_df = step1_df[step1_df["사업체수"] > 0].copy()
+            st.markdown(f'<div class="qx-section-label">STEP 2. 표준산업분류별 사업체수 집계 ({sido_selected} {sigg_selected} 포함 업체 총 {total_comps:,}개)</div>', unsafe_allow_html=True)
         else:
-            regional_df["근로자수_num"] = 0
-        # 업종이 없는 경우 '정보없음' 처리
-        if "업종코드" in regional_df.columns:
-            regional_df["업종코드_fill"] = regional_df["업종코드"].fillna("미기재")
-        else:
-            regional_df["업종코드_fill"] = "미기재"
+            total_comps = len(step1_df)
+            st.markdown(f'<div class="qx-section-label">STEP 2. 표준산업분류별 사업체수 집계 (선택 지역 총 {total_comps:,}개 업체)</div>', unsafe_allow_html=True)
         
-        # 집계: 업체 수는 언제나 집계하고, 근로자수는 컴럼 존재 시에만
-        agg_group = regional_df.groupby("업종코드_fill")
-        agg_count = agg_group.size().rename("사업체수")
-        if "근로자수_num" in regional_df.columns:
-            agg_sum = agg_group["근로자수_num"].sum().rename("총근로자수")
-            agg_df = pd.concat([agg_count, agg_sum], axis=1).reset_index()
-        else:
-            agg_df = agg_count.reset_index()
-            agg_df["총근로자수"] = 0
-        agg_df = agg_df.rename(columns={"업종코드_fill": "공단 업종코드"})
-        agg_df = agg_df.sort_values("사업체수", ascending=False)
-        
-        # 3열 구성 (가운데 표, 우측 필터)
         col_t1, col_t2 = st.columns([1.5, 2.5])
         
         with col_t1:
-            st.dataframe(agg_df, use_container_width=True, hide_index=True, height=250)
-            st.caption("※ 출처: 국민건강보험공단 사업장관리 현황 (단위: 명, 개)")
+            if is_melted:
+                show_df = display_df[["산업분류", "사업체수"]].copy()
+                show_df["사업체수"] = show_df["사업체수"].astype(int)
+                st.dataframe(show_df, use_container_width=True, hide_index=True, height=260)
+            else:
+                # 레코드형 데이터일 때는 업종코드별 집계
+                if "업종코드" in step1_df.columns:
+                    sub_agg = step1_df.groupby("업종코드").size().reset_index(name="사업체수")
+                    st.dataframe(sub_agg.sort_values("사업체수", ascending=False), use_container_width=True, hide_index=True, height=260)
+                else:
+                    st.dataframe(step1_df.head(20), use_container_width=True, hide_index=True)
+            st.caption("※ 출처: 국민건강보험공단 사업장관리 현황 (단위: 개)")
             
         with col_t2:
             st.markdown('<div style="padding: 1rem; background: #FAFBFE; border: 1px solid #E5E9F0; border-radius: 8px;">', unsafe_allow_html=True)
             st.markdown('<div class="qx-section-label">STEP 3. 추출 기준 설정</div>', unsafe_allow_html=True)
             
-            filter_type = st.radio("추출 기준 (라디오 버튼)", ["특정 산업분류 한정", "전체 업종 (근로자수만 지정)"], horizontal=True)
+            if is_melted:
+                industry_options = display_df["산업분류"].tolist()
+            else:
+                industry_options = step1_df.get("업종코드", pd.Series()).unique().tolist()
+            
+            filter_type = st.radio("추출 기준 (라디오 버튼)", ["특정 산업분류 한정", "전체 업종"], horizontal=True)
             
             target_inds = []
-            min_workers = 0
-            
             subcol1, subcol2 = st.columns(2)
             with subcol1:
                 if filter_type == "특정 산업분류 한정":
-                    target_inds = st.multiselect("대상 업종코드 선택", options=agg_df["공단 업종코드"].tolist(), placeholder="복수 선택 가능")
+                    target_inds = st.multiselect("대상 산업분류 선택", options=industry_options, placeholder="복수 선택 가능")
             with subcol2:
-                min_workers = st.number_input("최소 근로자 수 (명 이상)", min_value=0, value=1)
+                max_results = st.number_input("최대 수집 업체 수", min_value=10, max_value=500, value=50, step=10)
                 
             st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown("<hr>", unsafe_allow_html=True)
         
         # --- Step 4 ---
-        if st.button("🚀 STEP 4. 최종 전체 추출 (NPS, G2B 상세 연락처 연동)", type="primary", use_container_width=True):
-            filtered_df = regional_df.copy()
-            
-            if filter_type == "특정 산업분류 한정" and target_inds:
-                filtered_df = filtered_df[filtered_df["업종코드_fill"].isin(target_inds)]
+        selected_industries = target_inds if filter_type == "특정 산업분류 한정" and target_inds else industry_options
+        
+        if st.button("🚀 STEP 4. 목표 산업 내 NPS 등록 업체 추출 시작", type="primary", use_container_width=True):
+            if not selected_industries:
+                st.warning("산업분류를 선택해 주세요.")
+            else:
+                from api.nps_api import search_nps_by_name
+                all_results = []
+                prog_s4 = st.progress(0, text="NPS 업체 검색 시작...")
                 
-            filtered_df = filtered_df[filtered_df["근로자수_num"] >= min_workers]
-            # _brn 컴럼 안전하게 추출 (난 경우 사업자등록번호 컴럼 활용)
-            if "_brn" in filtered_df.columns:
-                brn_list = filtered_df["_brn"].dropna().tolist()
-            elif "사업자등록번호" in filtered_df.columns:
-                brn_list = (
-                    filtered_df["사업자등록번호"]
-                    .astype(str).str.replace("-", "", regex=False).str.zfill(10)
-                    .dropna().tolist()
-                )
-            else:
-                brn_list = []
-            
-            if not brn_list:
-                st.warning("조건을 만족하는 업체가 0건입니다. 추출 기준을 완화해 보세요.")
-            else:
-                st.success(f"조건을 만족하는 총 {len(brn_list):,}개 업체 중, 최대 100건의 상세(연락처 등) 데이터를 정밀 취합합니다.")
-                with st.spinner("NPS, G2B 공공망과 통신하여 연락처 및 심층 데이터를 수집 중입니다..."):
-                    from api.biz_search_api import batch_fetch_by_brns
-                    results = batch_fetch_by_brns(brn_list, SERVICE_KEY, nhis_df=st.session_state["biz_nhis_dataset"])
-                    st.session_state["biz_step4_results"] = results
-                    
+                # 선택된 산업명으로 NPS 키워드 검색 (최대 3개 산업 키워드)
+                search_keywords = selected_industries[:3]
+                for idx, ind in enumerate(search_keywords):
+                    pct = int((idx + 1) / len(search_keywords) * 80)
+                    prog_s4.progress(pct, text=f"NPS 검색 중: {ind} ({idx+1}/{len(search_keywords)})...")
+                    try:
+                        res = search_nps_by_name(ind, SERVICE_KEY)
+                        if isinstance(res, list):
+                            for r in res:
+                                # NPS 응답의 주소 필드 탐색
+                                addr = r.get("wkplRoadNmAddr", "") or r.get("wkplAddr", "") or str(r)
+                                if sido_selected[:2] in addr:
+                                    if sigg_selected == "전체" or sigg_selected.replace("시","").replace("군","").replace("구","") in addr:
+                                        all_results.append(r)
+                    except Exception as e:
+                        st.warning(f"키워드 '{ind}' 검색 실패: {e}")
+                
+                prog_s4.progress(100, text="완료")
+                prog_s4.empty()
+                
+                if all_results:
+                    seen_brns = set()
+                    unique_results = []
+                    for r in all_results:
+                        brn = str(r.get("bizrNo", r.get("사업자등록번호", ""))).replace("-", "")
+                        if brn and brn not in seen_brns:
+                            seen_brns.add(brn)
+                            unique_results.append(r)
+                    st.session_state["biz_step4_results"] = unique_results[:max_results]
+                    st.success(f"취득 완료! 지역 내 {len(unique_results)}개 업체 발굴")
+                else:
+                    st.warning("키워드로 검색된 해당 지역 업체가 없습니다. 다른 산업분류를 선택해 보세요.")
+
     # 결과 표시
     if "biz_step4_results" in st.session_state:
         results = st.session_state["biz_step4_results"]
