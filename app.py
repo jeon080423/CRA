@@ -730,7 +730,17 @@ def show_unified_business_search():
                 filtered_df = filtered_df[filtered_df["업종코드_fill"].isin(target_inds)]
                 
             filtered_df = filtered_df[filtered_df["근로자수_num"] >= min_workers]
-            brn_list = filtered_df["_brn"].dropna().tolist()
+            # _brn 컴럼 안전하게 추출 (난 경우 사업자등록번호 컴럼 활용)
+            if "_brn" in filtered_df.columns:
+                brn_list = filtered_df["_brn"].dropna().tolist()
+            elif "사업자등록번호" in filtered_df.columns:
+                brn_list = (
+                    filtered_df["사업자등록번호"]
+                    .astype(str).str.replace("-", "", regex=False).str.zfill(10)
+                    .dropna().tolist()
+                )
+            else:
+                brn_list = []
             
             if not brn_list:
                 st.warning("조건을 만족하는 업체가 0건입니다. 추출 기준을 완화해 보세요.")
