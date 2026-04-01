@@ -678,26 +678,41 @@ def show_unified_business_search():
                 st.warning("전체 지역을 집계하기에는 데이터가 방대하므로 특정 시/도를 선택해 주시기 바랍니다.")
             else:
                 with st.spinner(f"{sido} {sigg} 지역 통계를 파싱 중..."):
-                    # NHIS 피벗 테이블은 시도 단위까지만 제공 ─ 시군구(성남시 등) 행은 없음
-                    # → 항상 시도 기준으로만 필터하고, 시군구는 STEP 4 NPS 주소 필터에서 적용
+                    # NHIS 데이터셋 구조 판별: '구분' 컬럼이 연도인지 지역인지 확인
                     if "구분" in nhis_df.columns:
-                        sido_kw = sido[:2]  # '경기도' → '경기'
-                        region_rows = nhis_df[nhis_df["구분"].astype(str).str.contains(sido_kw, na=False)]
-                        if region_rows.empty:
-                            all_regions = nhis_df["구분"].astype(str).unique().tolist()
-                            st.warning(f"'{sido_kw}' 매칭 실패. 실제 구분값: {all_regions}")
-                        # 피벗 테이블을 롱폼으로 melt
-                        id_cols = ["구분"]
-                        value_cols = [c for c in nhis_df.columns if c not in id_cols]
-                        melted = region_rows.melt(id_vars=id_cols, value_vars=value_cols,
-                                                   var_name="산업분류", value_name="사업체수")
-                        melted["사업체수"] = pd.to_numeric(melted["사업체수"], errors="coerce").fillna(0)
-                        melted = melted.sort_values("사업체수", ascending=False)
-                        st.session_state["biz_step1_df"] = melted
-                        st.session_state["biz_step1_sido"] = sido
-                        st.session_state["biz_step1_sigg"] = sigg
-                        if sigg != "전체":
-                            st.info(f"ℹ️ NHIS 통계는 {sido} 단위입니다. {sigg} 주소 필터는 STEP 4에서 적용됩니다.")
+                        gubn_vals = nhis_df["구분"].astype(str).unique().tolist()
+                        is_year_pivot = any(v.strip().isdigit() for v in gubn_vals)  # 연도형 판별
+                        
+                        if is_year_pivot:
+                            # 연도×산업 피벗: 최신 연도 행을 선택
+                            latest_year = sorted([v.strip() for v in gubn_vals if v.strip().isdigit()])[-1]
+                            region_rows = nhis_df[nhis_df["구분"].astype(str).str.strip() == latest_year]
+                            id_cols = ["구분"]
+                            value_cols = [c for c in nhis_df.columns if c not in id_cols]
+                            melted = region_rows.melt(id_vars=id_cols, value_vars=value_cols,
+                                                       var_name="산업분류", value_name="사업체수")
+                            melted["사업체수"] = pd.to_numeric(melted["사업체수"], errors="coerce").fillna(0)
+                            melted = melted.sort_values("사업체수", ascending=False)
+                            st.session_state["biz_step1_df"] = melted
+                            st.session_state["biz_step1_sido"] = sido
+                            st.session_state["biz_step1_sigg"] = sigg
+                            st.info(f"ℹ️ NHIS 통계는 전국 연도별({latest_year}년) 산업분류 데이터입니다. {sido} {sigg} 필터는 STEP 4 NPS 검색 시 주소 기준으로 적용됩니다.")
+                        else:
+                            # 지역×산업 피벗: 시도 기준 필터
+                            sido_kw = sido[:2]
+                            region_rows = nhis_df[nhis_df["구분"].astype(str).str.contains(sido_kw, na=False)]
+                            id_cols = ["구분"]
+                            value_cols = [c for c in nhis_df.columns if c not in id_cols]
+                            melted = region_rows.melt(id_vars=id_cols, value_vars=value_cols,
+                                                       var_name="산업분류", value_name="사업체수")
+                            melted["사업체수"] = pd.to_numeric(melted["사업체수"], errors="coerce").fillna(0)
+                            melted = melted.sort_values("사업체수", ascending=False)
+                            st.session_state["biz_step1_df"] = melted
+                            st.session_state["biz_step1_sido"] = sido
+                            st.session_state["biz_step1_sigg"] = sigg
+                            if sigg != "전체":
+                                st.info(f"ℹ️ NHIS 통계는 {sido} 단위입니다. {sigg} 주소 필터는 STEP 4에서 적용됩니다.")
+
 
                     else:
                         # 데이터 구조가 다를 때: 주소 컴럼 탐색 후 직접 필터
