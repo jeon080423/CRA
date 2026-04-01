@@ -73,6 +73,66 @@ def get_g2b_corp_info(brn: str, service_key: str) -> dict:
     
     return {}
 
+
+def search_g2b_by_region(sido: str, sigg: str, service_key: str, max_count: int = 200) -> list:
+    """
+    조달청(G2B) API를 사용하여 특정 지역(시도+시군구)의 조달업체 명단을 검색합니다.
+    NPS의 지역 검색 한계를 극복하기 위해 G2B에서 먼저 업체 명단(사업자번호, 상호명)을 확보하는 용도입니다.
+    """
+    region_kw = f"{sido[:2]} {sigg.replace('시', '').replace('군', '').replace('구', '')}" if sigg != "전체" else sido[:2]
+    
+    all_items = []
+    page = 1
+    per_page = 100
+    
+    url = f"{G2B_CORP_INFO_URL}?ServiceKey={service_key}"
+    
+    while len(all_items) < max_count:
+        params = {
+            "type": "json",
+            "numOfRows": per_page,
+            "pageNo": page,
+            "inqryDiv": "3",  # 등록업체
+            "rgnsNm": region_kw
+        }
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            if resp.status_code != 200:
+                break
+                
+            data = resp.json()
+            header = data.get("response", {}).get("header", {})
+            if header.get("resultCode", "00") != "00":
+                break
+                
+            body = data.get("response", {}).get("body", {})
+            total_count = int(body.get("totalCount", 0))
+            items = body.get("items", [])
+            
+            if not items:
+                break
+                
+            for item in items:
+                # 필요한 기본 정보만 추출
+                brn = item.get("bizno", "")
+                cmp_nm = item.get("cmpNm", "")
+                if brn and cmp_nm:
+                    all_items.append({
+                        "사업자등록번호": brn,
+                        "사업장명": cmp_nm,
+                        "주소": item.get("addr", "") or item.get("rgnsNm", "")
+                    })
+                    
+            if len(all_items) >= max_count or (page * per_page) >= total_count:
+                break
+                
+            page += 1
+        except Exception as e:
+            print(f"G2B 지역 검색 오류: {e}")
+            break
+            
+    return all_items[:max_count]
+
 def _request_g2b(url: str, service_key: str, extra_params: dict) -> dict:
     # [v13.5] serviceKey를 URL에 직접 포함하여 double-encoding 방지 (data.go.kr 표준 대응)
     # [v14.1] ServiceKey는 대문자 S로 시작 (가이드북 기준)

@@ -801,52 +801,84 @@ def show_unified_business_search():
             filter_info += f" / 근로자 {min_jnngp}명 이상"
         st.caption(f"🎯 현재 추출 조건: **{sido_selected} {sigg_selected}** | {filter_info} | 최대 {max_results}건")
 
-        if st.button("🚀 STEP 4. 지역 NPS 등록 업체 추출 시작", type="primary", use_container_width=True):
-            from api.nps_api import search_nps_by_region
+        if st.button("🚀 STEP 4. 자동 추출 시작 (G2B 지역검색 + NPS 연동)", type="primary", use_container_width=True):
+            from api.g2b_api import search_g2b_by_region
+            from api.nps_api import search_nps_by_name
             
             target_sigg = sigg_selected if sigg_selected != "전체" else sido_selected
-            prog_s4 = st.progress(0, text=f"NPS에서 '{target_sigg}' 지역 업체 검색 중...")
             
+            # 1. G2B(나라장터)에서 해당 지역 업체 1차 확보
+            prog_s4 = st.progress(0, text=f"지역 기반 탐색 중: 조달청(G2B)에서 '{target_sigg}' 업체 명단 확보 중...")
             try:
-                results_raw = search_nps_by_region(
-                    sigg=target_sigg,
-                    service_key=SERVICE_KEY,
-                    max_count=max_results,
-                    min_jnngp=min_jnngp
-                )
+                # 넉넉하게 추출 후 필터링하기 위해 max_count를 max_results의 3배수로 여유있게 가져옵니다.
+                g2b_candidates = search_g2b_by_region(sido_selected, target_sigg, SERVICE_KEY, max_count=max_results * 3)
             except Exception as e:
-                results_raw = []
-                st.error(f"NPS 검색 오류: {e}")
-            
-            prog_s4.progress(80, text="주소 기반 지역 필터 적용 중...")
-            
-            # 주소에서 지역 확인 필터
-            filtered = []
-            for r in results_raw:
-                addr = r.get("wkplRoadNmAddr", "") or r.get("wkplAddr", "") or r.get("wkplRoadNmDtlAddr", "") or ""
-                if not addr:
-                    filtered.append(r)  # 주소 없는 경우 일단 포함
-                    continue
-                if sido_selected[:2] in addr:
-                    if sigg_selected == "전체" or sigg_selected.replace("시","").replace("군","").replace("구","") in addr:
-                        filtered.append(r)
-            
-            prog_s4.progress(100, text="완료")
-            prog_s4.empty()
-            
-            if filtered:
-                seen_brns = set()
-                unique_results = []
-                for r in filtered:
-                    brn = str(r.get("bzowrRgstNo", r.get("bizrNo", ""))).replace("-", "")
-                    key = brn if brn else r.get("wkplNm", str(r))
-                    if key and key not in seen_brns:
-                        seen_brns.add(key)
-                        unique_results.append(r)
-                st.session_state["biz_step4_results"] = unique_results
-                st.success(f"✅ {len(unique_results)}개 업체 발굴 완료! 아래 결과를 확인하세요.")
+                g2b_candidates = []
+                st.error(f"G2B 검색 오류: {e}")
+                
+            if not g2b_candidates:
+                st.warning(f"G2B에 등록된 '{target_sigg}' 지역 업체가 없거나 검색에 실패했습니다.")
             else:
-                st.warning(f"'{target_sigg}' 지역에서 조건을 만족하는 업체를 찾지 못했습니다. 최소 근로자 수를 낮추거나 전체 지역으로 시도해 보세요.")
+                # 2. 확보된 명단을 바탕으로 NPS(국민연금)에서 상세 정보 및 근로자/업종 필터링
+                st.info(f"💡 G2B에서 {len(g2b_candidates)}개 업체 기초 명단 확보! 국민연금(NPS) 데이터 연동 및 필터링을 시작합니다.")
+                prog_s4.progress(30, text="NPS 연동 및 조건(근로자 수, 업종) 필터링 중...")
+                
+                final_results = []
+                seen_brns = set()
+                
+                for idx, corp in enumerate(g2b_candidates):
+                    if len(final_results) >= max_results:
+                        break
+                        
+                    pct = 30 + int((idx / len(g2b_candidates)) * 70)
+                    prog_s4.progress(pct, text=f"NPS 연동 중: {corp['사업장명']} ({len(final_results)}/{max_results}건 확보)...")
+                    
+                    brn = corp.get("사업자등록번호", "").replace("-", "")
+                    if len(brn) >= 6 and brn not in seen_brns:
+                        seen_brns.add(brn)
+                        # NPS는 사업장명 또는 사업자번호 앞 6자리로 검색
+                        nps_data_list = search_nps_by_name(corp['사업장명'], SERVICE_KEY, brn_6=brn[:6])
+                        
+                        # NPS 결과가 있는 경우 필터링 적용
+                        if nps_data_list and isinstance(nps_data_list, list):
+                            # 여러건이 반환될 수 있으므로 가장 유사한 첫번째 건 사용
+                            nps_data = nps_data_list[0]
+                            
+                            # 조건 1: 최소 근로자 수 필터
+                            jnngp = int(nps_data.get("jnngpCnt", 0) or 0)
+                            if min_jnngp > 0 and jnngp < min_jnngp:
+                                continue
+                                
+                            # 조건 2: 산업분류 필터 (NPS 업종명 기준)
+                            nps_ind = nps_data.get("vldtVlKrnNm", "")
+                            if selected_industries and filter_type == "특정 산업분류 한정":
+                                # 선택된 산업분류 중 하나라도 NPS 업종명에 포함되어야 함
+                                # (예: "도소매업" -> "도소매", "제조업" -> "제조")
+                                match_found = False
+                                for sel_ind in selected_industries:
+                                    # 앞 2글자 단어로 매칭 (예방접종)
+                                    kw = sel_ind[:2] 
+                                    if kw in nps_ind:
+                                        match_found = True
+                                        break
+                                if not match_found and nps_ind:
+                                    continue
+                                    
+                            # 조건 만족 시 최종 결과에 추가 (G2B 기본 정보에 NPS 정보 병합)
+                            corp.update(nps_data)
+                            corp["사업장명"] = nps_data.get("wkplNm", corp["사업장명"])
+                            corp["사업자등록번호"] = nps_data.get("bzowrRgstNo", corp["사업자등록번호"]) + "****" # NPS는 뒷자리 마스킹됨
+                            final_results.append(corp)
+                            
+                prog_s4.progress(100, text="완료")
+                prog_s4.empty()
+                
+                if final_results:
+                    st.session_state["biz_step4_results"] = final_results
+                    st.success(f"✅ {len(final_results)}개 업체 발굴 완료! 아래 결과를 확인하세요.")
+                else:
+                    st.warning(f"명단은 확보했으나, 근로자 수({min_jnngp}명 이상) 또는 선택된 업종을 만족하는 업체가 없습니다.")
+
 
 
     # 결과 표시
