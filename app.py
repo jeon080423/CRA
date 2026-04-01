@@ -745,10 +745,12 @@ def show_unified_business_search():
         if is_melted:
             total_comps = int(step1_df["사업체수"].sum())
             display_df = step1_df[step1_df["사업체수"] > 0].copy()
-            st.markdown(f'<div class="qx-section-label">STEP 2. 표준산업분류별 사업체수 집계 ({sido_selected} {sigg_selected} 포함 업체 총 {total_comps:,}개)</div>', unsafe_allow_html=True)
+            # NHIS 피벗 테이블은 전국 데이터이므로 명확하게 표기
+            st.markdown(f'<div class="qx-section-label">STEP 2. 표준산업분류별 사업체수 (전국 기준 총 {total_comps:,}개)</div>', unsafe_allow_html=True)
+            st.info(f"💡 현재 시도/시군구({sido_selected} {sigg_selected}) 필터는 STEP 4 실데이터 추출에서 적용됩니다. 위 표는 참고용 전국 통계입니다.")
         else:
             total_comps = len(step1_df)
-            st.markdown(f'<div class="qx-section-label">STEP 2. 표준산업분류별 사업체수 집계 (선택 지역 총 {total_comps:,}개 업체)</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="qx-section-label">STEP 2. 지역 내 사업체 현황 (총 {total_comps:,}개 업체)</div>', unsafe_allow_html=True)
         
         col_t1, col_t2 = st.columns([1.5, 2.5])
         
