@@ -612,10 +612,10 @@ def show_unified_business_search():
     nhis_loaded = nhis_df is not None and not nhis_df.empty
 
     if nhis_loaded:
-        st.success(f"✅ 건강보험 기초 데이터 {len(nhis_df):,}건 준비됨 \u2014 지역 현황 집계 버튼을 눌러주세요.", icon="🏛️")
+        st.success(f"✅ 전국 산업분야 기초 통계 {len(nhis_df):,}건 셋업 완료 \u2014 지역 현황 집계 버튼을 눌러주세요.", icon="🏛️")
     else:
-        st.warning("📊 **선행 작업:** 지역 현황 집계를 시작하려면 건강보험 전국 데이터를 먼저 다운로드해야 합니다. (**약 2\u22125분 소요**) 한번만 수행하면 이후 지역 검색에서 재사용됩니다.")
-        if st.button("🔽 건강보험 전국 데이터 다운로드 (필수)", type="primary", use_container_width=True, key="nhis_download_btn"):
+        st.warning("📊 **선행 작업:** 1~2단계 현황 집계를 보기 위해 건강보험 전국 통합 데이터를 먼저 불러와야 합니다. (이후 지역 검색에서 계속 재사용됩니다.)")
+        if st.button("🔽 [STEP 1-2 기초자료] 전국 산업분포 통계 불러오기 (최초 1회)", type="primary", use_container_width=True, key="nhis_download_btn"):
             prog_bar = st.progress(0, text="건강보험 전국망 데이터를 수집 중입니다...")
             status_ph = st.empty()
 
