@@ -778,60 +778,74 @@ def show_unified_business_search():
             filter_type = st.radio("추출 기준 (라디오 버튼)", ["특정 산업분류 한정", "전체 업종"], horizontal=True)
             
             target_inds = []
-            subcol1, subcol2 = st.columns(2)
+            subcol1, subcol2, subcol3 = st.columns(3)
             with subcol1:
                 if filter_type == "특정 산업분류 한정":
                     target_inds = st.multiselect("대상 산업분류 선택", options=industry_options, placeholder="복수 선택 가능")
             with subcol2:
-                max_results = st.number_input("최대 수집 업체 수", min_value=10, max_value=500, value=50, step=10)
+                min_jnngp = st.number_input("최소 근로자 수 (N명 이상)", min_value=0, value=0, step=1,
+                                             help="NPS 가입자수 기준. 0이면 전체 포함")
+            with subcol3:
+                max_results = st.number_input("최대 수집 업체 수", min_value=10, max_value=500, value=100, step=10)
                 
             st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown("<hr>", unsafe_allow_html=True)
         
         # --- Step 4 ---
-        selected_industries = target_inds if filter_type == "특정 산업분류 한정" and target_inds else industry_options
-        
-        if st.button("🚀 STEP 4. 목표 산업 내 NPS 등록 업체 추출 시작", type="primary", use_container_width=True):
-            if not selected_industries:
-                st.warning("산업분류를 선택해 주세요.")
+        selected_industries = target_inds if filter_type == "특정 산업분류 한정" and target_inds else []
+        filter_info = f"산업분류: {', '.join(selected_industries[:3])}{'...' if len(selected_industries) > 3 else ''}" if selected_industries else "전체 업종"
+        if min_jnngp > 0:
+            filter_info += f" / 근로자 {min_jnngp}명 이상"
+        st.caption(f"🎯 현재 추출 조건: **{sido_selected} {sigg_selected}** | {filter_info} | 최대 {max_results}건")
+
+        if st.button("🚀 STEP 4. 지역 NPS 등록 업체 추출 시작", type="primary", use_container_width=True):
+            from api.nps_api import search_nps_by_region
+            
+            target_sigg = sigg_selected if sigg_selected != "전체" else sido_selected
+            prog_s4 = st.progress(0, text=f"NPS에서 '{target_sigg}' 지역 업체 검색 중...")
+            
+            try:
+                results_raw = search_nps_by_region(
+                    sigg=target_sigg,
+                    service_key=SERVICE_KEY,
+                    max_count=max_results,
+                    min_jnngp=min_jnngp
+                )
+            except Exception as e:
+                results_raw = []
+                st.error(f"NPS 검색 오류: {e}")
+            
+            prog_s4.progress(80, text="주소 기반 지역 필터 적용 중...")
+            
+            # 주소에서 지역 확인 필터
+            filtered = []
+            for r in results_raw:
+                addr = r.get("wkplRoadNmAddr", "") or r.get("wkplAddr", "") or r.get("wkplRoadNmDtlAddr", "") or ""
+                if not addr:
+                    filtered.append(r)  # 주소 없는 경우 일단 포함
+                    continue
+                if sido_selected[:2] in addr:
+                    if sigg_selected == "전체" or sigg_selected.replace("시","").replace("군","").replace("구","") in addr:
+                        filtered.append(r)
+            
+            prog_s4.progress(100, text="완료")
+            prog_s4.empty()
+            
+            if filtered:
+                seen_brns = set()
+                unique_results = []
+                for r in filtered:
+                    brn = str(r.get("bzowrRgstNo", r.get("bizrNo", ""))).replace("-", "")
+                    key = brn if brn else r.get("wkplNm", str(r))
+                    if key and key not in seen_brns:
+                        seen_brns.add(key)
+                        unique_results.append(r)
+                st.session_state["biz_step4_results"] = unique_results
+                st.success(f"✅ {len(unique_results)}개 업체 발굴 완료! 아래 결과를 확인하세요.")
             else:
-                from api.nps_api import search_nps_by_name
-                all_results = []
-                prog_s4 = st.progress(0, text="NPS 업체 검색 시작...")
-                
-                # 선택된 산업명으로 NPS 키워드 검색 (최대 3개 산업 키워드)
-                search_keywords = selected_industries[:3]
-                for idx, ind in enumerate(search_keywords):
-                    pct = int((idx + 1) / len(search_keywords) * 80)
-                    prog_s4.progress(pct, text=f"NPS 검색 중: {ind} ({idx+1}/{len(search_keywords)})...")
-                    try:
-                        res = search_nps_by_name(ind, SERVICE_KEY)
-                        if isinstance(res, list):
-                            for r in res:
-                                # NPS 응답의 주소 필드 탐색
-                                addr = r.get("wkplRoadNmAddr", "") or r.get("wkplAddr", "") or str(r)
-                                if sido_selected[:2] in addr:
-                                    if sigg_selected == "전체" or sigg_selected.replace("시","").replace("군","").replace("구","") in addr:
-                                        all_results.append(r)
-                    except Exception as e:
-                        st.warning(f"키워드 '{ind}' 검색 실패: {e}")
-                
-                prog_s4.progress(100, text="완료")
-                prog_s4.empty()
-                
-                if all_results:
-                    seen_brns = set()
-                    unique_results = []
-                    for r in all_results:
-                        brn = str(r.get("bizrNo", r.get("사업자등록번호", ""))).replace("-", "")
-                        if brn and brn not in seen_brns:
-                            seen_brns.add(brn)
-                            unique_results.append(r)
-                    st.session_state["biz_step4_results"] = unique_results[:max_results]
-                    st.success(f"취득 완료! 지역 내 {len(unique_results)}개 업체 발굴")
-                else:
-                    st.warning("키워드로 검색된 해당 지역 업체가 없습니다. 다른 산업분류를 선택해 보세요.")
+                st.warning(f"'{target_sigg}' 지역에서 조건을 만족하는 업체를 찾지 못했습니다. 최소 근로자 수를 낮추거나 전체 지역으로 시도해 보세요.")
+
 
     # 결과 표시
     if "biz_step4_results" in st.session_state:

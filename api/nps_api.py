@@ -109,6 +109,60 @@ def search_nps_by_name(company_name: str, service_key: str, brn_6: str = "") -> 
         return []
 
 
+def search_nps_by_region(sigg: str, service_key: str, max_count: int = 200, min_jnngp: int = 0) -> list:
+    """
+    시군구 이름을 키워드로 NPS 사업장을 페이지 단위로 검색.
+    sigg가 '전체'인 경우 sido 앞글자를 키워드로 사용.
+    min_jnngp: 최소 가입자수(근로자수) 필터 (0이면 미적용)
+    """
+    all_items = []
+    page = 1
+    per_page = 100
+
+    # NPS는 사업장명(wkplNm) 키워드로만 검색 가능 → 지역명 앞 2~3글자를 키워드로 활용
+    keyword = sigg.replace("시", "").replace("군", "").replace("구", "")[:3] if sigg and sigg != "전체" else ""
+    if not keyword:
+        return []
+
+    while len(all_items) < max_count:
+        params = {
+            "serviceKey": service_key,
+            "pageNo": page,
+            "numOfRows": per_page,
+            "dataType": "json",
+            "wkplNm": keyword,
+        }
+        try:
+            resp = requests.get(SEARCH_URL, params=params, timeout=20)
+            if resp.status_code != 200:
+                break
+            data = resp.json()
+            body = data.get("response", {}).get("body", {})
+            total_count = int(body.get("totalCount", 0))
+            items = body.get("items", {})
+            item_list = []
+            if isinstance(items, dict):
+                item_list = items.get("item", [])
+            elif isinstance(items, list):
+                item_list = items
+            if isinstance(item_list, dict):
+                item_list = [item_list]
+            if not item_list:
+                break
+            # 근로자수 필터
+            for r in item_list:
+                jnngp = int(r.get("jnngpCnt", 0) or 0)
+                if jnngp >= min_jnngp:
+                    all_items.append(r)
+            if len(all_items) >= max_count or (page * per_page) >= total_count:
+                break
+            page += 1
+        except Exception:
+            break
+
+    return all_items[:max_count]
+
+
 def get_nps_detail(seq: str, service_key: str) -> dict:
     """
     순번(seq)을 기반으로 상세 정보를 조회 (V2)
