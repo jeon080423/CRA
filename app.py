@@ -942,8 +942,10 @@ def show_unified_business_search():
             except Exception as e:
                 pass
                 
+            st.info(f"💡 2단계 크롤링 탐색 완료: 총 {len(scraped_candidates_dict)}개 업체를 웹에서 추가 탐색했습니다. (행정망 교차 검증 전)")
+                
             # 3. 데이터 최종 병합
-            prog_s4.progress(70, text="3단계: 행정망 데이터와 크롤링 연락처 최종 병합 중...")
+            prog_s4.progress(70, text="3단계: 행정망 데이터와 크롤링 데이터 최종 병합 및 교차 검증 중...")
             final_results_list = []
             final_results_dict = {}
             
@@ -971,11 +973,14 @@ def show_unified_business_search():
                 base_addr = corp.get("주소", "주소 미확인")
                 base_brn = corp.get("사업자등록번호", "")
                 
-                # 3순위 크롤링 데이터 매칭 (이름 기반 연락처 보충)
+                # 3순위 크롤링 데이터 매칭 (이름 기반 연락처/주소 보충)
                 scraped_data = scraped_candidates_dict.get(cname, {})
                 final_addr = base_addr
                 sources = corp.get("출처", [])
                 
+                if scraped_data:
+                    scraped_data["_used"] = True  # NPS 매칭 완료 표시
+                    
                 if final_addr == "주소 미확인" and scraped_data.get("주소"):
                     final_addr = scraped_data.get("주소")
                     if "웹 크롤링" not in sources: sources.append("웹 크롤링")
@@ -1019,6 +1024,28 @@ def show_unified_business_search():
                     final_results_list.append(normalized_corp)
                     if k1: final_results_dict[k1] = idx_new
                     if k2: final_results_dict[k2] = idx_new
+                    
+            # 4. 행정망에 없는 남은 크롤링 데이터(미매칭) 그대로 추가
+            for cname, c_data in scraped_candidates_dict.items():
+                if not c_data.get("_used"):
+                    clean_tel = c_data.get("전화번호", "").replace("-", "").replace(" ", "") if c_data.get("전화번호") else ""
+                    k2 = f"{cname}_{clean_tel}" if clean_tel else None
+                    
+                    if k2 and k2 in final_results_dict:
+                        continue  # 이미 이름+전화번호로 들어간 경우 스킵
+                        
+                    final_results_list.append({
+                        "corp_name": cname,
+                        "industry": c_data.get("업종", "분류미상") or "분류미상",
+                        "address": c_data.get("주소", "주소 미확인") or "주소 미확인",
+                        "nps_subscriber": 0,
+                        "nhis_subscriber": 0,
+                        "tel": c_data.get("전화번호", "상세 정보 확인 필요") or "상세 정보 확인 필요",
+                        "corp_size": "미분류",
+                        "source": [c_data.get("출처", "웹 크롤링")],
+                        "bzowrRgstNo": "",
+                        "crno": ""
+                    })
                 
             prog_s4.progress(100, text="데이터 수집 완료!")
             

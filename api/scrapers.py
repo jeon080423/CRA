@@ -130,7 +130,8 @@ def scrape_naver_map(region_kw: str, industry_kw: str, max_count: int = 100) -> 
                         "주소": address,
                         "전화번호": tel,
                         "출처": "네이버 지도 크롤링",
-                        "검색키워드": query
+                        "검색키워드": query,
+                        "업종": it.get("category", "")
                     })
             
             if len(companies) >= max_count:
@@ -200,7 +201,8 @@ def scrape_kakao_map(region_kw: str, industry_kw: str, max_count: int = 100) -> 
                     "주소": address,
                     "전화번호": tel,
                     "출처": "카카오맵 크롤링",
-                    "검색키워드": query
+                    "검색키워드": query,
+                    "업종": it.get("cateName", "")
                 })
                 
         return companies[:max_count]
