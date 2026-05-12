@@ -817,43 +817,52 @@ def show_unified_business_search():
                 is_melted = "산업분류" in step1_df.columns and "사업체수" in step1_df.columns
                 
                 if not is_melted:
-                    # 원본 데이터 순회
-                    name_cols = [c for c in step1_df.columns if "사업장명" in c or "상호" in c or "회사명" in c]
-                    brn_cols = [c for c in step1_df.columns if "사업자" in c or "등록번호" in c]
-                    addr_cols = [c for c in step1_df.columns if "주소" in c or "addr" in c.lower()]
-                    ind_cols = [c for c in step1_df.columns if "업종" in c or "산업" in c]
-                    nhis_sub_cols = [c for c in step1_df.columns if "가입자" in c or "근로자" in c]
+                    # 원본 데이터 순회 (공백 제거 후 컬럼명 매칭)
+                    cols = step1_df.columns
+                    name_cols = [c for c in cols if any(k in c.replace(" ", "") for k in ["사업장명", "상호", "회사명", "사업체명"])]
+                    brn_cols = [c for c in cols if any(k in c.replace(" ", "") for k in ["사업자", "등록번호"])]
+                    addr_cols = [c for c in cols if "주소" in c.replace(" ", "") or "addr" in c.lower()]
+                    ind_cols = [c for c in cols if any(k in c.replace(" ", "") for k in ["업종", "산업", "종목"])]
+                    nhis_sub_cols = [c for c in cols if any(k in c.replace(" ", "") for k in ["가입자", "근로자", "종업원"])]
                     
-                    for _, row in step1_df.iterrows():
-                        cname = row[name_cols[0]] if name_cols else ""
-                        if pd.isna(cname) or not str(cname).strip(): continue
-                        
-                        brn = row[brn_cols[0]] if brn_cols else ""
-                        addr = row[addr_cols[0]] if addr_cols else ""
-                        ind = row[ind_cols[0]] if ind_cols else ""
-                        nhis_sub = row[nhis_sub_cols[0]] if nhis_sub_cols else 0
-                        
-                        # 업종 필터 적용
-                        if selected_industries:
-                            matched_ind = False
-                            for si in selected_industries:
-                                if si in str(ind) or si[:2] in str(ind):
-                                    matched_ind = True
-                                    break
-                            if not matched_ind:
-                                continue
-                                
-                        admin_candidates.append({
-                            "사업장명": str(cname).strip(),
-                            "사업자등록번호": str(brn).strip() if pd.notnull(brn) else "",
-                            "주소": str(addr).strip() if pd.notnull(addr) else "",
-                            "업종": str(ind).strip() if pd.notnull(ind) else "",
-                            "가입자수": int(nhis_sub) if pd.notnull(nhis_sub) else 0,
-                            "출처": "건강보험(NHIS)"
-                        })
+                    if name_cols:
+                        for _, row in step1_df.iterrows():
+                            cname = row[name_cols[0]]
+                            if pd.isna(cname) or not str(cname).strip(): continue
+                            
+                            brn = row[brn_cols[0]] if brn_cols else ""
+                            addr = row[addr_cols[0]] if addr_cols else ""
+                            ind = row[ind_cols[0]] if ind_cols else ""
+                            nhis_sub = row[nhis_sub_cols[0]] if nhis_sub_cols else 0
+                            
+                            # 업종 필터 적용
+                            if selected_industries:
+                                matched_ind = False
+                                for si in selected_industries:
+                                    if si in str(ind) or si[:2] in str(ind):
+                                        matched_ind = True
+                                        break
+                                if not matched_ind:
+                                    continue
+                                    
+                            admin_candidates.append({
+                                "사업장명": str(cname).strip(),
+                                "사업자등록번호": str(brn).strip() if pd.notnull(brn) else "",
+                                "주소": str(addr).strip() if pd.notnull(addr) else "",
+                                "업종": str(ind).strip() if pd.notnull(ind) else "",
+                                "가입자수": int(nhis_sub) if pd.notnull(nhis_sub) else 0,
+                                "출처": "건강보험(NHIS)"
+                            })
 
             if not admin_candidates:
-                st.warning(f"건강보험(NHIS) 원본 데이터에 '{target_sigg}' 지역의 해당 업종 명단이 없습니다. 데이터 형식을 확인해 주세요.")
+                if "biz_step1_df" in st.session_state:
+                    cols_str = ", ".join(list(st.session_state["biz_step1_df"].columns)[:10])
+                    msg = f"건강보험(NHIS) 원본 데이터에 '{target_sigg}' 지역의 해당 업종 명단이 없거나 데이터를 인식하지 못했습니다.\n\n"
+                    msg += f"- 업로드된 파일의 컬럼명: {cols_str}\n"
+                    msg += f"- 데이터가 통계용 표(피벗) 형식인지 확인해주세요." if is_melted else "- '사업장명' 등 필수 컬럼이 있는지 확인해주세요."
+                    st.warning(msg)
+                else:
+                    st.warning("건강보험(NHIS) 원본 데이터가 업로드되지 않았습니다.")
                 st.stop()
 
             st.info(f"💡 건강보험 원본에서 조건에 맞는 {len(admin_candidates)}개 업체를 1순위로 확보했습니다!")
