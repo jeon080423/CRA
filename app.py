@@ -893,6 +893,38 @@ def show_unified_business_search():
                 except:
                     pass
                     
+                # DART + G2B API 교차 조회를 통한 마스킹 해제 (10자리 사업자등록번호 복원)
+                try:
+                    from api.dart_api import get_dart_corp_info
+                    from api.constants import OPEN_DART_API_KEY
+                    
+                    dart_info = get_dart_corp_info(cname, OPEN_DART_API_KEY)
+                    if dart_info and dart_info.get("brn"):
+                        unmasked_brn = dart_info.get("brn").replace("-", "").strip()
+                        if len(unmasked_brn) == 10:
+                            bzowrRgstNo = unmasked_brn
+                            crno = dart_info.get("crno", crno)
+                            if "DART" not in sources:
+                                sources.append("DART")
+                            
+                            # G2B API 추가 조회를 통한 상세 프로필 보완
+                            try:
+                                from api.g2b_api import get_g2b_corp_info
+                                g2b_info = get_g2b_corp_info(unmasked_brn, SERVICE_KEY)
+                                if g2b_info:
+                                    if "G2B" not in sources:
+                                        sources.append("G2B")
+                                    if g2b_info.get("telno") and base_tel == "상세 정보 확인 필요":
+                                        base_tel = g2b_info.get("telno")
+                                    if g2b_info.get("corpSizeNm") and nps_size_str == "미분류":
+                                        nps_size_str = g2b_info.get("corpSizeNm")
+                                    if g2b_info.get("bizType") and base_ind == "분류미상":
+                                        base_ind = g2b_info.get("bizType")
+                            except:
+                                pass
+                except:
+                    pass
+                    
                 # 조건 필터 (가입자수 미달 시 스킵)
                 if min_jnngp > 0 and nps_sub < min_jnngp:
                     continue
