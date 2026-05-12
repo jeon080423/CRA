@@ -780,15 +780,15 @@ def show_unified_business_search():
             filter_type = st.radio("추출 기준 (라디오 버튼)", ["특정 산업분류 한정", "전체 업종"], horizontal=True)
             
             target_inds = []
-            subcol1, subcol2, subcol3 = st.columns(3)
+            subcol1, subcol2 = st.columns(2)
             with subcol1:
                 if filter_type == "특정 산업분류 한정":
-                    target_inds = st.multiselect("대상 산업분류 선택", options=industry_options, placeholder="복수 선택 가능")
+                    target_ind = st.radio("대상 산업분류 선택", options=industry_options)
+                    target_inds = [target_ind] if target_ind else []
             with subcol2:
                 min_jnngp = st.number_input("최소 근로자 수 (N명 이상)", min_value=0, value=0, step=1,
                                              help="NPS 가입자수 기준. 0이면 전체 포함")
-            with subcol3:
-                max_results = st.number_input("최대 수집 업체 수", min_value=10, max_value=500, value=100, step=10)
+            max_results = 999999  # 제한 없음
                 
             st.markdown('</div>', unsafe_allow_html=True)
         
@@ -799,7 +799,7 @@ def show_unified_business_search():
         filter_info = f"산업분류: {', '.join(selected_industries[:3])}{'...' if len(selected_industries) > 3 else ''}" if selected_industries else "전체 업종"
         if min_jnngp > 0:
             filter_info += f" / 근로자 {min_jnngp}명 이상"
-        st.caption(f"🎯 현재 추출 조건: **{sido_selected} {sigg_selected}** | {filter_info} | 최대 {max_results}건")
+        st.caption(f"🎯 현재 추출 조건: **{sido_selected} {sigg_selected}** | {filter_info} | 전체 수집(제한 없음)")
 
         if st.button("🚀 STEP 4. 자동 추출 시작 (G2B 지역검색 + NPS 연동)", type="primary", use_container_width=True):
             from api.g2b_api import search_g2b_by_region
@@ -807,9 +807,9 @@ def show_unified_business_search():
             
             target_sigg = sigg_selected if sigg_selected != "전체" else sido_selected
             
-            # 1. 민간 웹 크롤링(네이버 지도 & 사람인)에서 해당 지역 업체 1차 확보
-            prog_s4 = st.progress(0, text=f"지역 기반 탐색 중: 네이버 지도 및 사람인에서 '{target_sigg}' 업체 명단 확보 중...")
-            from api.scrapers import scrape_naver_map, scrape_saramin
+            # 1. 민간 웹 크롤링(네이버·카카오·사람인)에서 해당 지역 업체 1차 확보
+            prog_s4 = st.progress(0, text=f"지역 기반 탐색 중: 네이버/카카오/사람인에서 '{target_sigg}' 업체 명단 확보 중...")
+            from api.scrapers import scrape_naver_map, scrape_saramin, scrape_kakao_map
             
             scraped_candidates = []
             seen_names_scrape = set()
@@ -826,8 +826,17 @@ def show_unified_business_search():
                         seen_names_scrape.add(cname)
                         scraped_candidates.append(c)
                 
-                # 사람인 취업 포털 크롤링
-                prog_s4.progress(30, text=f"사람인 채용 포털 검색 중: {sido_selected} {target_sigg} {main_ind} ...")
+                # 2단계: 카카오맵 크롤링 추가 (v15.3)
+                prog_s4.progress(20, text=f"카카오맵 검색 중: {sido_selected} {target_sigg} {main_ind} ...")
+                kakao_comps = scrape_kakao_map(f"{sido_selected} {target_sigg}", main_ind, max_count=max_results)
+                for c in kakao_comps:
+                    cname = c["사업장명"].strip()
+                    if cname and cname not in seen_names_scrape:
+                        seen_names_scrape.add(cname)
+                        scraped_candidates.append(c)
+                
+                # 3단계: 사람인 채용 포털 크롤링
+                prog_s4.progress(40, text=f"사람인 채용 포털 검색 중: {sido_selected} {target_sigg} {main_ind} ...")
                 saramin_comps = scrape_saramin(f"{sido_selected} {target_sigg}", selected_industries, max_pages=3)
                 for c in saramin_comps:
                     cname = c["사업장명"].strip()
@@ -859,9 +868,9 @@ def show_unified_business_search():
                     nps_data_list = search_nps_by_name(corp['사업장명'], SERVICE_KEY)
                     
                     match_success = False
+                    best_nps = {}
                     if nps_data_list and isinstance(nps_data_list, list):
                         # 주소가 비슷한 결과를 우선 매칭
-                        best_nps = None
                         for nd in nps_data_list:
                             addr = nd.get("wkplRoadNmAddr", "") or nd.get("wkplAddr", "")
                             if target_sigg.replace("시","").replace("군","").replace("구","") in addr:
@@ -875,16 +884,25 @@ def show_unified_business_search():
                         if min_jnngp > 0 and jnngp < min_jnngp:
                             continue
                             
-                        # 조건 만족 시 최종 결과에 추가
                         match_success = True
                         corp.update(best_nps)
-                        brn = corp.get("bzowrRgstNo", "")
-                        if brn: 
-                            corp["사업자등록번호"] = brn + "****"
+
+                    # [v15.2] UI 표시용 데이터 정규화 (Normalization) - KeyError 방지
+                    normalized_corp = {
+                        "corp_name": corp.get("사업장명") or corp.get("wkplNm") or "알수없음",
+                        "industry": corp.get("vldtVlKrnNm") or corp.get("industry") or "분류미상",
+                        "address": corp.get("wkplRoadNmAddr") or corp.get("주소") or "주소 미확인",
+                        "nps_subscriber": int(corp.get("jnngpCnt", 0) or 0),
+                        "nhis_subscriber": 0, # NHIS는 현재 단계에서 미지원 (추후 확장)
+                        "tel": corp.get("전화번호") or "상세 정보 확인 필요",
+                        "corp_size": "법인" if str(corp.get("wkplStlDvCd")) == "1" else ("개인" if str(corp.get("wkplStlDvCd")) == "2" else "미분류"),
+                        "source": [corp.get("출처", "웹 크롤링")] + (["국민연금(NPS)"] if match_success else []),
+                        "bzowrRgstNo": corp.get("bzowrRgstNo", "")
+                    }
                             
                     # 매칭 여부와 관계없이 웹 크롤링 원본도 유의미하면 추가 (단, 근로자컷이 0인 경우에만)
                     if match_success or min_jnngp == 0:
-                        final_results.append(corp)
+                        final_results.append(normalized_corp)
 
                             
                 prog_s4.progress(100, text="완료")
@@ -925,14 +943,14 @@ def show_unified_business_search():
         for i, res in enumerate(results):
             display_data.append({
                 "선택": i in st.session_state["biz_selected_indices"],
-                "업체명": res["corp_name"],
-                "업종": res["industry"],
-                "주소": res["address"],
-                "가입자(NPS)": f"{res['nps_subscriber']:,}명",
-                "가입자(NHIS)": f"{res['nhis_subscriber']:,}명",
-                "전화번호": res["tel"],
-                "기업규모": res["corp_size"],
-                "데이터출처": ", ".join(res["source"])
+                "업체명": res.get("corp_name", res.get("사업장명", "알수없음")),
+                "업종": res.get("industry", res.get("업종", "분류미상")),
+                "주소": res.get("address", res.get("주소", "주소 미확인")),
+                "가입자(NPS)": f"{res.get('nps_subscriber', res.get('jnngpCnt', 0)):,}명",
+                "가입자(NHIS)": f"{res.get('nhis_subscriber', 0):,}명",
+                "전화번호": res.get("tel", res.get("전화번호", "상세 정보 확인 필요")),
+                "기업규모": res.get("corp_size", "미분류"),
+                "데이터출처": ", ".join(res.get("source", ["웹 크롤링"]))
             })
         
         df_display = pd.DataFrame(display_data)
