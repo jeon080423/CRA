@@ -594,17 +594,17 @@ def show_unified_business_search():
         <span class="qx-topbar-logo">사업체 명부 추출</span>
         <span class="qx-topbar-sep"></span>
         <span class="qx-topbar-title">단계별 업체 발굴 솔루션</span>
-        <span class="qx-topbar-badge">웹 크롤링 · 공공망 통합 추출</span>
+        <span class="qx-topbar-badge">크롤링 탐색 · 국민연금(NPS) 검증 추출</span>
     </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("📘 단계별 이용 안내 (4-Step Pipeline)", expanded=False):
+    with st.expander("📘 단계별 이용 안내 (행정망 중심 데이터 수집 파이프라인)", expanded=False):
         st.markdown("""
-        ### 🗺️ 파이프라인 단계
-        - **1단계 (지역 선택):** 시도 및 시군구를 지정하여 해당 지역 전체 사업장 기초 데이터를 수집합니다.
-        - **2단계 (현황 집계):** 선택한 지역 내 업체들의 업종분포와 근로자 수 규모를 한눈에 파악합니다.
-        - **3단계 (추출 기준 설정):** 집계된 통계를 바탕으로 타겟할 업종이나 근로자 수 스펙을 필터링합니다.
-        - **4단계 (상세 통합 추출):** 최종 선별된 타겟 업체들에 대해 웹 크롤링(포털, 구인망 등) 및 공공망(NPS/G2B)을 연동하여 실시간 전화번호, 상세 기업 정보를 조립 및 중복 제거(통합)하여 제공합니다.
+        ### 🗺️ 파이프라인 작동 원리
+        - **1단계 (통계 집계):** 시도 및 시군구를 지정하여 건강보험(NHIS) 연도별/업종별 '통계 현황'을 파악합니다.
+        - **2단계 (추출 기준 설정):** 집계된 통계를 바탕으로 타겟 업종과 타겟 규모(근로자 수)를 필터링합니다.
+        - **3단계 (지역 명단 탐색):** 카카오/네이버 지도를 통해 해당 지역+업종의 '사업장 명단(상호명)'을 1차로 싹쓸이 탐색합니다. (NHIS/NPS API는 지역 전체 조회가 불가능하기 때문입니다)
+        - **4단계 (국민연금 행정망 덮어쓰기):** 탐색된 상호명을 1순위로 국민연금(NPS) API에 실시간 대조하여, 공공데이터(정확한 근로자수, 주소, 법인번호)로 100% 덮어씁니다. 허위 업체는 걸러내고 신뢰도 높은 명단만 완성합니다.
         """)
 
     # --- 환경 데이터 로더 (사전 준비) ---
@@ -614,9 +614,9 @@ def show_unified_business_search():
     if nhis_loaded:
         st.success(f"✅ 전국 산업분야 기초 통계 {len(nhis_df):,}건 셋업 완료 \u2014 지역 현황 집계 버튼을 눌러주세요.", icon="🏛️")
     else:
-        st.warning("📊 **선행 작업:** 1~2단계 현황 집계를 보기 위해 건강보험 전국 통합 데이터를 먼저 불러와야 합니다. (이후 지역 검색에서 계속 재사용됩니다.)")
+        st.warning("📊 **선행 작업:** 1단계를 진행하기 위해 건강보험 연도별/업종별 '산업분포 통계 데이터'를 불러옵니다.")
         if st.button("🔽 [STEP 1-2 기초자료] 전국 산업분포 통계 불러오기 (최초 1회)", type="primary", use_container_width=True, key="nhis_download_btn"):
-            prog_bar = st.progress(0, text="건강보험 전국망 데이터를 수집 중입니다...")
+            prog_bar = st.progress(0, text="건강보험 전국망 통계 데이터를 수집 중입니다...")
             status_ph = st.empty()
 
             def nhis_dl_progress(page, total, msg):
@@ -636,8 +636,7 @@ def show_unified_business_search():
                 st.error("다운로드에 실패했습니다. API 키를 확인해 주세요.")
             else:
                 st.session_state["biz_nhis_dataset"] = dl_df
-                # 실제 컴럼명 확인 및 전시
-                st.success(f"✅ {len(dl_df):,}건 수집 완료! 컴럼: {list(dl_df.columns)[:8]}")
+                st.success(f"✅ 연도별/산업별 기초 통계 {len(dl_df):,}건 수집 완료!")
                 st.rerun()
 
     st.markdown("<hr>", unsafe_allow_html=True)
