@@ -802,33 +802,76 @@ def show_unified_business_search():
             filter_info += f" / 근로자 {min_jnngp}명 이상"
         st.caption(f"🎯 현재 추출 조건: **{sido_selected} {sigg_selected}** | {filter_info} | 전체 수집(제한 없음)")
 
-        if st.button("🚀 STEP 4. 자동 추출 시작 (G2B 지역검색 + NPS 연동)", type="primary", use_container_width=True):
-            from api.g2b_api import search_g2b_by_region
+        if st.button("🚀 STEP 4. 자동 추출 시작 (행정망 중심 데이터 수집)", type="primary", use_container_width=True):
             from api.nps_api import search_nps_by_name
+            from api.scrapers import scrape_naver_map, scrape_saramin, scrape_kakao_map
             
             target_sigg = sigg_selected if sigg_selected != "전체" else sido_selected
             
-            # 1. 민간 웹 크롤링(네이버·카카오·사람인)에서 해당 지역 업체 1차 확보
-            prog_s4 = st.progress(0, text=f"지역 기반 탐색 중: 네이버/카카오/사람인에서 '{target_sigg}' 업체 명단 확보 중...")
-            from api.scrapers import scrape_naver_map, scrape_saramin, scrape_kakao_map
+            # 1. 행정데이터 (건강보험/NHIS) 명단 추출
+            prog_s4 = st.progress(0, text=f"1단계: 건강보험(NHIS) 원본 데이터에서 '{target_sigg}' 지역 업체 명단 추출 중...")
             
+            admin_candidates = []
+            if "biz_step1_df" in st.session_state:
+                step1_df = st.session_state["biz_step1_df"]
+                is_melted = "산업분류" in step1_df.columns and "사업체수" in step1_df.columns
+                
+                if not is_melted:
+                    # 원본 데이터 순회
+                    name_cols = [c for c in step1_df.columns if "사업장명" in c or "상호" in c or "회사명" in c]
+                    brn_cols = [c for c in step1_df.columns if "사업자" in c or "등록번호" in c]
+                    addr_cols = [c for c in step1_df.columns if "주소" in c or "addr" in c.lower()]
+                    ind_cols = [c for c in step1_df.columns if "업종" in c or "산업" in c]
+                    nhis_sub_cols = [c for c in step1_df.columns if "가입자" in c or "근로자" in c]
+                    
+                    for _, row in step1_df.iterrows():
+                        cname = row[name_cols[0]] if name_cols else ""
+                        if pd.isna(cname) or not str(cname).strip(): continue
+                        
+                        brn = row[brn_cols[0]] if brn_cols else ""
+                        addr = row[addr_cols[0]] if addr_cols else ""
+                        ind = row[ind_cols[0]] if ind_cols else ""
+                        nhis_sub = row[nhis_sub_cols[0]] if nhis_sub_cols else 0
+                        
+                        # 업종 필터 적용
+                        if selected_industries:
+                            matched_ind = False
+                            for si in selected_industries:
+                                if si in str(ind) or si[:2] in str(ind):
+                                    matched_ind = True
+                                    break
+                            if not matched_ind:
+                                continue
+                                
+                        admin_candidates.append({
+                            "사업장명": str(cname).strip(),
+                            "사업자등록번호": str(brn).strip() if pd.notnull(brn) else "",
+                            "주소": str(addr).strip() if pd.notnull(addr) else "",
+                            "업종": str(ind).strip() if pd.notnull(ind) else "",
+                            "가입자수": int(nhis_sub) if pd.notnull(nhis_sub) else 0,
+                            "출처": "건강보험(NHIS)"
+                        })
+
+            if not admin_candidates:
+                st.warning(f"건강보험(NHIS) 원본 데이터에 '{target_sigg}' 지역의 해당 업종 명단이 없습니다. 데이터 형식을 확인해 주세요.")
+                st.stop()
+
+            st.info(f"💡 건강보험 원본에서 조건에 맞는 {len(admin_candidates)}개 업체를 1순위로 확보했습니다!")
+                
+            # 2. 크롤링 연락처 사전 구축 (보완용)
+            prog_s4.progress(10, text=f"2단계: 누락 정보 보완을 위한 웹 크롤링 사전 구축 중...")
             scraped_candidates_dict = {}
-            
             try:
                 search_inds = selected_industries if selected_industries else ["기업"]
-                
-                # 1단계: 카카오맵 크롤링 (전화번호/주소 수집율이 가장 높아 우선 배치)
                 for idx, ind in enumerate(search_inds):
-                    prog_s4.progress(10 + int(idx/len(search_inds)*10), text=f"카카오맵 검색 중: {sido_selected} {target_sigg} {ind} ...")
+                    # 카카오맵
                     kakao_comps = scrape_kakao_map(f"{sido_selected} {target_sigg}", ind, max_count=max_results)
                     for c in kakao_comps:
                         cname = c["사업장명"].strip()
                         if cname and cname not in scraped_candidates_dict:
                             scraped_candidates_dict[cname] = c
-                
-                # 2단계: 네이버 지도 크롤링 (누락분 보완)
-                for idx, ind in enumerate(search_inds):
-                    prog_s4.progress(20 + int(idx/len(search_inds)*10), text=f"네이버 지도 검색 중: {sido_selected} {target_sigg} {ind} ...")
+                            
+                    # 네이버 지도
                     naver_comps = scrape_naver_map(f"{sido_selected} {target_sigg}", ind, max_count=max_results)
                     for c in naver_comps:
                         cname = c["사업장명"].strip()
@@ -836,164 +879,119 @@ def show_unified_business_search():
                             if cname not in scraped_candidates_dict:
                                 scraped_candidates_dict[cname] = c
                             else:
-                                # 기존 데이터에 주소나 전화번호가 없으면 보완
                                 existing = scraped_candidates_dict[cname]
-                                if not existing.get("전화번호") and c.get("전화번호"):
-                                    existing["전화번호"] = c["전화번호"]
-                                if not existing.get("주소") and c.get("주소"):
-                                    existing["주소"] = c["주소"]
-                
-                # 3단계: 사람인 채용 포털 크롤링
-                prog_s4.progress(40, text=f"사람인 채용 포털 검색 중: {sido_selected} {target_sigg} (다중 업종) ...")
-                saramin_comps = scrape_saramin(f"{sido_selected} {target_sigg}", selected_industries, max_pages=3)
-                for c in saramin_comps:
-                    cname = c["사업장명"].strip()
-                    if cname and cname not in scraped_candidates_dict:
-                        scraped_candidates_dict[cname] = c
-                        
-                scraped_candidates = list(scraped_candidates_dict.values())
-                        
+                                if not existing.get("전화번호") and c.get("전화번호"): existing["전화번호"] = c["전화번호"]
+                                if not existing.get("주소") and c.get("주소"): existing["주소"] = c["주소"]
             except Exception as e:
-                st.error(f"웹 크롤링 오류: {e}")
+                pass
                 
-            if not scraped_candidates:
-                st.warning(f"웹 서비스(네이버 지도/사람인)에서 '{target_sigg}' 지역 매칭 업체를 찾지 못했습니다.")
-            else:
-                # 2. 확보된 명단을 바탕으로 NPS(국민연금)에서 상세 정보 및 근로자/업종 필터링
-                st.info(f"💡 웹 크롤링으로 {len(scraped_candidates)}개 업체 기초 명단 확보! 국민연금(NPS) 행정망 매칭을 시작합니다.")
-                prog_s4.progress(50, text="NPS 연동 및 조건(근로자 수, 업종) 정밀 매칭 중...")
+            # 3. NPS 연동 및 최종 매칭
+            prog_s4.progress(30, text="3단계: 국민연금(NPS) 행정망 매칭 및 연락처/주소 보완 중...")
+            final_results_list = []
+            final_results_dict = {}
+            
+            for idx, corp in enumerate(admin_candidates):
+                pct = 30 + int((idx / len(admin_candidates)) * 60)
+                prog_s4.progress(pct, text=f"[NPS/웹 병합] {corp.get('사업장명')} 처리 중 ...")
                 
-                final_results_list = []
-                final_results_dict = {}
+                # NPS 검색 (사업장명 + 사업자번호 앞 6자리)
+                cname = corp.get("사업장명", "")
+                brn_6 = corp.get("사업자등록번호", "").replace("-", "")[:6]
+                nps_data_list = search_nps_by_name(cname, SERVICE_KEY, brn_6)
                 
-                for idx, corp in enumerate(scraped_candidates):
-                    pct = 50 + int((idx / len(scraped_candidates)) * 50)
-                    prog_s4.progress(pct, text=f"[NPS 매칭 & 중복 제거] {corp.get('사업장명', '업체')} 검증 중 ...")
-                    
-                    # 크롤링은 사업자번호가 없으므로 상호명으로 NPS 검색
-                    nps_data_list = search_nps_by_name(corp.get('사업장명', ''), SERVICE_KEY)
-                    
-                    match_success = False
-                    best_nps = {}
-                    if nps_data_list and isinstance(nps_data_list, list):
-                        # 주소가 비슷한 결과를 우선 매칭
-                        for nd in nps_data_list:
-                            addr = nd.get("wkplRoadNmAddr", "") or nd.get("wkplAddr", "")
-                            if target_sigg.replace("시","").replace("군","").replace("구","") in addr:
-                                best_nps = nd
-                                break
-                        if not best_nps:
-                            best_nps = nps_data_list[0] # 없으면 첫번째
-                            
-                        # 조건 1: 최소 근로자 수 필터
-                        jnngp = int(best_nps.get("jnngpCnt", 0) or 0)
-                        if min_jnngp > 0 and jnngp < min_jnngp:
-                            continue
-                            
-                        match_success = True
-                    
-                    # 웹 크롤링 데이터 추출
-                    scraped_tel = str(corp.get("전화번호", "")).strip() if corp.get("전화번호") else ""
-                    scraped_addr = str(corp.get("주소", "")).strip() if corp.get("주소") else ""
-                    
-                    # NPS 데이터 추출
-                    nps_name = best_nps.get("wkplNm")
-                    nps_ind = best_nps.get("vldtVlKrnNm")
-                    nps_addr = best_nps.get("wkplRoadNmAddr") or best_nps.get("wkplAddr")
-                    nps_sub = int(best_nps.get("jnngpCnt", 0) or 0)
-                    nps_size = best_nps.get("wkplStlDvCd")
-                    nps_brn = best_nps.get("bzowrRgstNo", "")
-                    nps_crno = best_nps.get("ldepCprNo") or best_nps.get("crno") or best_nps.get("corpRgstNo", "")
-                    
-                    # 데이터 정규화 (행정데이터 기준)
-                    norm_name = nps_name if match_success and nps_name else corp.get("사업장명", "알수없음")
-                    norm_ind = nps_ind if match_success and nps_ind else corp.get("industry", "분류미상")
-                    
-                    normalized_corp = {
-                        "corp_name": norm_name,
-                        "industry": norm_ind,
-                        "address": nps_addr if match_success and nps_addr else (scraped_addr if scraped_addr else "주소 미확인"),
-                        "nps_subscriber": nps_sub,
-                        "nhis_subscriber": 0,
-                        "tel": scraped_tel if scraped_tel else "상세 정보 확인 필요",
-                        "corp_size": "법인" if match_success and str(nps_size) == "1" else ("개인" if match_success and str(nps_size) == "2" else "미분류"),
-                        "source": [corp.get("출처", "웹 크롤링")] + (["국민연금(NPS)"] if match_success else []),
-                        "bzowrRgstNo": nps_brn,
-                        "crno": nps_crno
-                    }
-                    
-                    if not match_success and min_jnngp > 0:
-                        continue
+                match_success = False
+                best_nps = {}
+                if nps_data_list and isinstance(nps_data_list, list):
+                    # 주소가 비슷한 결과를 우선 매칭
+                    for nd in nps_data_list:
+                        nps_addr = nd.get("wkplRoadNmAddr", "") or nd.get("wkplAddr", "")
+                        if target_sigg.replace("시","").replace("군","").replace("구","") in nps_addr:
+                            best_nps = nd
+                            break
+                    if not best_nps:
+                        best_nps = nps_data_list[0]
                         
-                    # 중복 제거 키 (1순위: 사업자번호, 2순위: 상호명+전화번호, 3순위: 전화번호)
-                    # 전화번호 정제 (공백, 하이픈 제거)
-                    clean_tel = normalized_corp["tel"].replace("-", "").replace(" ", "") if normalized_corp["tel"] != "상세 정보 확인 필요" else ""
-                    
-                    k1 = normalized_corp["bzowrRgstNo"] if normalized_corp["bzowrRgstNo"] else None
-                    k2 = f"{normalized_corp['corp_name']}_{clean_tel}" if normalized_corp["corp_name"] and clean_tel else None
-                    k3 = clean_tel if clean_tel else None
-                    
-                    existing_idx = None
-                    if k1 and k1 in final_results_dict:
-                        existing_idx = final_results_dict[k1]
-                    elif k2 and k2 in final_results_dict:
-                        existing_idx = final_results_dict[k2]
-                    elif k3 and k3 in final_results_dict:
-                        existing_idx = final_results_dict[k3]
-                        
-                    if existing_idx is not None:
-                        existing_corp = final_results_list[existing_idx]
-                        
-                        # 출처 누적
-                        for src in normalized_corp["source"]:
-                            if src not in existing_corp["source"]:
-                                existing_corp["source"].append(src)
-                                
-                        # 행정데이터가 없던 데이터에 행정데이터가 들어온 경우 (NPS 기준 갱신)
-                        if match_success and "국민연금(NPS)" not in existing_corp["source"]:
-                            existing_corp["nps_subscriber"] = normalized_corp["nps_subscriber"]
-                            existing_corp["bzowrRgstNo"] = normalized_corp["bzowrRgstNo"]
-                            if normalized_corp.get("crno"):
-                                existing_corp["crno"] = normalized_corp["crno"]
-                            existing_corp["corp_size"] = normalized_corp["corp_size"]
-                            existing_corp["industry"] = normalized_corp["industry"]
-                            existing_corp["corp_name"] = normalized_corp["corp_name"]
-                            if nps_addr:
-                                existing_corp["address"] = nps_addr
-                                
-                        # 전화번호 및 주소는 비어있을 때만 크롤링 데이터로 채우기 (행정데이터 우선 원칙)
-                        if scraped_tel and existing_corp["tel"] == "상세 정보 확인 필요":
-                            existing_corp["tel"] = scraped_tel
-                        if scraped_addr and existing_corp["address"] == "주소 미확인":
-                            existing_corp["address"] = scraped_addr
-                            
-                        # 갱신된 정보로 키 재매핑
-                        ex_clean_tel = existing_corp["tel"].replace("-", "").replace(" ", "") if existing_corp["tel"] != "상세 정보 확인 필요" else ""
-                        nk1 = existing_corp["bzowrRgstNo"] if existing_corp["bzowrRgstNo"] else None
-                        nk2 = f"{existing_corp['corp_name']}_{ex_clean_tel}" if existing_corp["corp_name"] and ex_clean_tel else None
-                        nk3 = ex_clean_tel if ex_clean_tel else None
-                        
-                        if nk1: final_results_dict[nk1] = existing_idx
-                        if nk2: final_results_dict[nk2] = existing_idx
-                        if nk3: final_results_dict[nk3] = existing_idx
-                    else:
-                        new_idx = len(final_results_list)
-                        final_results_list.append(normalized_corp)
-                        if k1: final_results_dict[k1] = new_idx
-                        if k2: final_results_dict[k2] = new_idx
-                        if k3: final_results_dict[k3] = new_idx
-
-                            
-                prog_s4.progress(100, text="완료")
-                prog_s4.empty()
+                    match_success = True
                 
-                final_results = final_results_list
-                if final_results:
-                    st.session_state["biz_step4_results"] = final_results
-                    st.success(f"✅ {len(final_results)}개 업체 발굴 완료! 아래 결과를 확인하세요.")
+                # NPS 데이터 추출
+                nps_name = best_nps.get("wkplNm", "")
+                nps_ind = best_nps.get("vldtVlKrnNm", "")
+                nps_addr = best_nps.get("wkplRoadNmAddr", "") or best_nps.get("wkplAddr", "")
+                nps_sub = int(best_nps.get("jnngpCnt", 0) or 0)
+                nps_size = best_nps.get("wkplStlDvCd", "")
+                nps_brn = best_nps.get("bzowrRgstNo", "")
+                nps_crno = best_nps.get("ldepCprNo") or best_nps.get("crno") or best_nps.get("corpRgstNo", "")
+                
+                # 근로자 수 필터 (NPS 가입자 기준 또는 NHIS 기준)
+                combined_sub = max(nps_sub, corp.get("가입자수", 0))
+                if min_jnngp > 0 and combined_sub < min_jnngp:
+                    continue
+                
+                # 병합: 행정데이터 1,2순위 조합
+                norm_name = nps_name if nps_name else cname
+                norm_ind = nps_ind if nps_ind else corp.get("업종", "분류미상")
+                base_addr = nps_addr if nps_addr else corp.get("주소", "주소 미확인")
+                base_brn = corp.get("사업자등록번호") if corp.get("사업자등록번호") else nps_brn
+                
+                sources = ["건강보험(NHIS)"]
+                if match_success: sources.append("국민연금(NPS)")
+                
+                # 3순위 크롤링 데이터 매칭 (이름 기반)
+                scraped_data = scraped_candidates_dict.get(cname, {})
+                final_addr = base_addr
+                if final_addr == "주소 미확인" and scraped_data.get("주소"):
+                    final_addr = scraped_data.get("주소")
+                    if "웹 크롤링" not in sources: sources.append("웹 크롤링")
+                    
+                final_tel = scraped_data.get("전화번호", "상세 정보 확인 필요")
+                if final_tel != "상세 정보 확인 필요":
+                    if "웹 크롤링" not in sources: sources.append("웹 크롤링")
+                
+                normalized_corp = {
+                    "corp_name": norm_name,
+                    "industry": norm_ind,
+                    "address": final_addr,
+                    "nps_subscriber": combined_sub,
+                    "nhis_subscriber": corp.get("가입자수", 0),
+                    "tel": final_tel,
+                    "corp_size": "법인" if str(nps_size) == "1" else ("개인" if str(nps_size) == "2" else "미분류"),
+                    "source": sources,
+                    "bzowrRgstNo": base_brn,
+                    "crno": nps_crno
+                }
+                
+                # 중복 제거 (1순위 사업자번호, 2순위 전화번호)
+                clean_tel = normalized_corp["tel"].replace("-", "").replace(" ", "") if normalized_corp["tel"] != "상세 정보 확인 필요" else ""
+                k1 = normalized_corp["bzowrRgstNo"] if normalized_corp["bzowrRgstNo"] else None
+                k2 = f"{normalized_corp['corp_name']}_{clean_tel}" if clean_tel else None
+                
+                existing_idx = None
+                if k1 and k1 in final_results_dict: existing_idx = final_results_dict[k1]
+                elif k2 and k2 in final_results_dict: existing_idx = final_results_dict[k2]
+                
+                if existing_idx is not None:
+                    existing_corp = final_results_list[existing_idx]
+                    for src in normalized_corp["source"]:
+                        if src not in existing_corp["source"]: existing_corp["source"].append(src)
+                        
+                    # 빈 정보 채우기
+                    if not existing_corp.get("bzowrRgstNo") and normalized_corp["bzowrRgstNo"]: existing_corp["bzowrRgstNo"] = normalized_corp["bzowrRgstNo"]
+                    if existing_corp["tel"] == "상세 정보 확인 필요" and normalized_corp["tel"] != "상세 정보 확인 필요": existing_corp["tel"] = normalized_corp["tel"]
+                    if existing_corp["address"] == "주소 미확인" and normalized_corp["address"] != "주소 미확인": existing_corp["address"] = normalized_corp["address"]
                 else:
-                    st.warning(f"명단은 확보했으나, 근로자 수({min_jnngp}명 이상) 또는 선택된 업종을 만족하는 업체가 없습니다.")
-
+                    idx_new = len(final_results_list)
+                    final_results_list.append(normalized_corp)
+                    if k1: final_results_dict[k1] = idx_new
+                    if k2: final_results_dict[k2] = idx_new
+                
+            prog_s4.progress(100, text="데이터 수집 완료!")
+            
+            final_results = final_results_list
+            if final_results:
+                st.session_state["biz_step4_results"] = final_results
+                st.success(f"✅ {len(final_results)}개 업체 발굴 완료! 아래 결과를 확인하세요.")
+            else:
+                st.warning(f"근로자 수({min_jnngp}명 이상) 조건을 만족하는 업체가 없습니다.")
 
 
     # 결과 표시
