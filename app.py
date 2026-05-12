@@ -811,7 +811,12 @@ def show_unified_business_search():
             prog_s4 = st.progress(0, text=f"1단계: 카카오/네이버 지도를 통해 '{sido_selected} {target_sigg}' 지역 사업장 명단을 탐색 중...")
             scraped_candidates_dict = {}
             try:
-                search_inds = selected_industries if selected_industries else ["기업", "제조업", "서비스업", "건설업", "도매업"]
+                search_inds = selected_industries if selected_industries else [
+                    "회사", "제조", "공장", "유통", "무역", 
+                    "건설", "상사", "정보통신", "시스템", "물류", 
+                    "에너지", "엔지니어링", "연구소", "테크", "코리아", 
+                    "산업", "종합"
+                ]
                 for idx, ind in enumerate(search_inds):
                     # 카카오맵
                     kakao_comps = scrape_kakao_map(f"{sido_selected} {target_sigg}", ind, max_count=max_results)

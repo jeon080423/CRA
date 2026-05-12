@@ -165,52 +165,64 @@ def scrape_kakao_map(region_kw: str, industry_kw: str, max_count: int = 100) -> 
         "Accept": "*/*",
     }
     
-    # 카카오맵은 한 페이지에 15개 정도씩 반환 (기본값)
-    # 실제 PC웹 호출 구조: https://search.map.kakao.com/mapsearch/map.daum?q=...&msFlag=A&sort=0
+    # 카카오맵은 한 페이지에 15개 반환
+    # max_count를 위해 최대 3페이지까지 페이징하여 명단 확대 수집
+    max_pages = min(3, max(1, (max_count + 14) // 15))
+    seen_names = set()
     
-    try:
-        # 1페이지만 우선 호출 (필요시 루프 확장 가능하나 안정성을 위해 1회성 대량 확보 시도)
-        url = f"https://search.map.kakao.com/mapsearch/map.daum?q={encoded_query}&msFlag=A&sort=0"
-        
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            return []
-            
-        # JSONP 대응 (괄호 제거 및 내부 JSON 추출)
-        raw_text = resp.text.strip()
-        # 순수 JSON 형식({ 또는 [)인지 우선 검사하여 불필요한 정규식에 의한 문자열 유실 방지
-        if raw_text.startswith('{') or raw_text.startswith('['):
-            json_data = json.loads(raw_text)
-        else:
-            json_match = re.search(r'^[^(]*\((.*)\)[^)]*$', raw_text, re.DOTALL)
-            if json_match:
-                json_data = json.loads(json_match.group(1))
-            else:
-                json_data = json.loads(raw_text)
-            
-        items = json_data.get("place", [])
-        if not items:
-            return []
-            
-        for it in items:
-            name = it.get("name", "")
-            # address 또는 new_address(도로명)
-            address = it.get("address", "") or it.get("new_address", "")
-            tel = it.get("tel", "")
-            
-            if name:
-                companies.append({
-                    "사업장명": name,
-                    "주소": address,
-                    "전화번호": tel,
-                    "출처": "카카오맵 크롤링",
-                    "검색키워드": query,
-                    "업종": it.get("cateName", "")
-                })
+    for page in range(1, max_pages + 1):
+        try:
+            url = f"https://search.map.kakao.com/mapsearch/map.daum?q={encoded_query}&msFlag=A&sort=0&page={page}"
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code != 200:
+                break
                 
-        return companies[:max_count]
-        
-    except Exception as e:
-        print(f"Kakao map scraping failed: {e}")
-        return []
+            raw_text = resp.text.strip()
+            # 순수 JSON 형식({ 또는 [)인지 우선 검사하여 불필요한 정규식에 의한 문자열 유실 방지
+            if raw_text.startswith('{') or raw_text.startswith('['):
+                json_data = json.loads(raw_text)
+            else:
+                json_match = re.search(r'^[^(]*\((.*)\)[^)]*$', raw_text, re.DOTALL)
+                if json_match:
+                    json_data = json.loads(json_match.group(1))
+                else:
+                    json_data = json.loads(raw_text)
+                
+            items = json_data.get("place", [])
+            if not items:
+                break
+                
+            page_added = 0
+            for it in items:
+                name = it.get("name", "")
+                address = it.get("address", "") or it.get("new_address", "")
+                tel = it.get("tel", "")
+                
+                if name and name not in seen_names:
+                    seen_names.add(name)
+                    companies.append({
+                        "사업장명": name,
+                        "주소": address,
+                        "전화번호": tel,
+                        "출처": "카카오맵 크롤링",
+                        "검색키워드": query,
+                        "업종": it.get("cateName", "")
+                    })
+                    page_added += 1
+            
+            if page_added == 0:
+                # 더 이상 새로운 결과가 없거나 오버플로우로 동일결과 반복인 경우 중단
+                break
+                
+            if len(companies) >= max_count:
+                break
+                
+            # 차단 방지를 위한 보수적인 sleep (1.0~2.0초)
+            time.sleep(random.uniform(1.0, 2.0))
+            
+        except Exception as e:
+            print(f"Kakao map scraping page {page} failed: {e}")
+            break
+            
+    return companies[:max_count]
 
