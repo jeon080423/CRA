@@ -812,12 +812,22 @@ def show_unified_business_search():
             scraped_candidates_dict = {}
             try:
                 search_inds = selected_industries if selected_industries else [
-                    "회사", "제조", "공장", "유통", "무역", 
-                    "건설", "상사", "정보통신", "시스템", "물류", 
-                    "에너지", "엔지니어링", "연구소", "테크", "코리아", 
-                    "산업", "종합"
+                    # IT, 과학, 미래기술군
+                    "테크", "코리아", "시스템", "정보통신", "소프트웨어", "디지털", "엔지니어링", "연구소", "과학", "전자", "전기", "정밀", "솔루션", "플랫폼",
+                    # 제조, 중공업, 에너지군
+                    "제조", "공장", "산업", "종합", "기계", "금속", "철강", "플라스틱", "화학", "바이오", "제약", "에너지", "건설", "건축", "엔지니어", "산업개발",
+                    # 무역, 상사, 유통, 물류군
+                    "유통", "무역", "상사", "물류", "운송", "창고", "패키지", "수입", "수출", "도매", "소매", "상업", "글로벌",
+                    # 서비스, 전문컨설팅, 미디어군
+                    "컨설팅", "광고", "디자인", "기획", "인쇄", "출판", "미디어", "콘텐츠", "엔터테인먼트", "여행", "관광", "렌트", "보안", "경비", "청소", "환경",
+                    # 금융, 부동산, 개발군
+                    "금융", "투자", "캐피탈", "부동산", "디벨롭", "하우징", "식품", "푸드"
                 ]
+                total_inds = len(search_inds)
                 for idx, ind in enumerate(search_inds):
+                    # 1단계 실시간 세부 게이지 업데이트 (0% ~ 38%)
+                    pct_s1 = int((idx / total_inds) * 38)
+                    prog_s4.progress(pct_s1, text=f"1단계: 지도를 통해 '{sido_selected} {target_sigg}' {ind} ({idx+1}/{total_inds}) 분야 탐색 중...")
                     # 카카오맵
                     kakao_comps = scrape_kakao_map(f"{sido_selected} {target_sigg}", ind, max_count=max_results)
                     for c in kakao_comps:
