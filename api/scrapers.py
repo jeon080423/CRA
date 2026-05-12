@@ -143,3 +143,67 @@ def scrape_naver_map(region_kw: str, industry_kw: str, max_count: int = 100) -> 
             
     return companies[:max_count]
 
+
+def scrape_kakao_map(region_kw: str, industry_kw: str, max_count: int = 100) -> list:
+    """
+    카카오맵(PC 웹) 검색 API를 활용하여 특정 지역의 업종을 크롤링합니다.
+    공식 API 키 없이 웹 서비스용 엔드포인트를 사용합니다.
+    """
+    import json
+    import re
+
+    companies = []
+    query = f"{region_kw} {industry_kw[:3]}"
+    encoded_query = urllib.parse.quote(query)
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://map.kakao.com/",
+        "Accept": "*/*",
+    }
+    
+    # 카카오맵은 한 페이지에 15개 정도씩 반환 (기본값)
+    # 실제 PC웹 호출 구조: https://search.map.kakao.com/mapsearch/map.daum?q=...&msFlag=A&sort=0
+    
+    try:
+        # 1페이지만 우선 호출 (필요시 루프 확장 가능하나 안정성을 위해 1회성 대량 확보 시도)
+        url = f"https://search.map.kakao.com/mapsearch/map.daum?q={encoded_query}&msFlag=A&sort=0"
+        
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return []
+            
+        # JSONP 대응 (괄호 제거 및 내부 JSON 추출)
+        raw_text = resp.text.strip()
+        # 보통 callback(...) 형태로 오거나 순수 JSON으로 올 수 있음
+        json_match = re.search(r'^[^(]*\((.*)\)[^)]*$', raw_text, re.DOTALL)
+        if json_match:
+            json_data = json.loads(json_match.group(1))
+        else:
+            json_data = json.loads(raw_text)
+            
+        items = json_data.get("place", [])
+        if not items:
+            return []
+            
+        for it in items:
+            name = it.get("name", "")
+            # address 또는 new_address(도로명)
+            address = it.get("address", "") or it.get("new_address", "")
+            tel = it.get("tel", "")
+            
+            if name:
+                companies.append({
+                    "사업장명": name,
+                    "주소": address,
+                    "전화번호": tel,
+                    "출처": "카카오맵 크롤링",
+                    "검색키워드": query
+                })
+                
+        return companies[:max_count]
+        
+    except Exception as e:
+        print(f"Kakao map scraping failed: {e}")
+        return []
+
