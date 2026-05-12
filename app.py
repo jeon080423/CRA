@@ -594,7 +594,7 @@ def show_unified_business_search():
         <span class="qx-topbar-logo">사업체 명부 추출</span>
         <span class="qx-topbar-sep"></span>
         <span class="qx-topbar-title">단계별 업체 발굴 솔루션</span>
-        <span class="qx-topbar-badge">G2B · NPS · NHIS 통합</span>
+        <span class="qx-topbar-badge">웹 크롤링 · 공공망 통합 추출</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -604,7 +604,7 @@ def show_unified_business_search():
         - **1단계 (지역 선택):** 시도 및 시군구를 지정하여 해당 지역 전체 사업장 기초 데이터를 수집합니다.
         - **2단계 (현황 집계):** 선택한 지역 내 업체들의 업종분포와 근로자 수 규모를 한눈에 파악합니다.
         - **3단계 (추출 기준 설정):** 집계된 통계를 바탕으로 타겟할 업종이나 근로자 수 스펙을 필터링합니다.
-        - **4단계 (상세 통합 추출):** 최종 선별된 타겟 업체들에 대해 공공망(NPS/G2B)을 찔러 실시간 전화번호, 상세 기업 정보를 조립해 냅니다.
+        - **4단계 (상세 통합 추출):** 최종 선별된 타겟 업체들에 대해 웹 크롤링(포털, 구인망 등) 및 공공망(NPS/G2B)을 연동하여 실시간 전화번호, 상세 기업 정보를 조립 및 중복 제거(통합)하여 제공합니다.
         """)
 
     # --- 환경 데이터 로더 (사전 준비) ---
@@ -783,7 +783,8 @@ def show_unified_business_search():
             subcol1, subcol2 = st.columns(2)
             with subcol1:
                 if filter_type == "특정 산업분류 한정":
-                    target_inds = st.multiselect("대상 산업분류 선택", options=industry_options, placeholder="복수 선택 가능")
+                    target_ind = st.radio("대상 산업분류 선택", options=industry_options)
+                    target_inds = [target_ind] if target_ind else []
             with subcol2:
                 min_jnngp = st.number_input("최소 근로자 수 (N명 이상)", min_value=0, value=0, step=1,
                                              help="NPS 가입자수 기준. 0이면 전체 포함")
@@ -794,6 +795,7 @@ def show_unified_business_search():
         st.markdown("<hr>", unsafe_allow_html=True)
         
         # --- Step 4 ---
+        st.info("ℹ️ 본 추출 시스템은 **웹 크롤링(네이버/카카오 지도, 사람인 등)**과 공공데이터(국민연금 등)를 융합하여 실사용 가능한 최신 주소/전화번호를 추출 및 중복 병합하여 제공합니다.")
         selected_industries = target_inds if filter_type == "특정 산업분류 한정" and target_inds else []
         filter_info = f"산업분류: {', '.join(selected_industries[:3])}{'...' if len(selected_industries) > 3 else ''}" if selected_industries else "전체 업종"
         if min_jnngp > 0:
@@ -855,18 +857,15 @@ def show_unified_business_search():
                 st.info(f"💡 웹 크롤링으로 {len(scraped_candidates)}개 업체 기초 명단 확보! 국민연금(NPS) 행정망 매칭을 시작합니다.")
                 prog_s4.progress(50, text="NPS 연동 및 조건(근로자 수, 업종) 정밀 매칭 중...")
                 
-                final_results = []
-                seen_brns = set()
+                final_results_list = []
+                final_results_dict = {}
                 
                 for idx, corp in enumerate(scraped_candidates):
-                    if len(final_results) >= max_results:
-                        break
-                        
                     pct = 50 + int((idx / len(scraped_candidates)) * 50)
-                    prog_s4.progress(pct, text=f"[NPS 매칭] {corp['사업장명']} 검증 중 ({len(final_results)}/{max_results}건 달성)...")
+                    prog_s4.progress(pct, text=f"[NPS 매칭 & 중복 제거] {corp.get('사업장명', '업체')} 검증 중 ...")
                     
                     # 크롤링은 사업자번호가 없으므로 상호명으로 NPS 검색
-                    nps_data_list = search_nps_by_name(corp['사업장명'], SERVICE_KEY)
+                    nps_data_list = search_nps_by_name(corp.get('사업장명', ''), SERVICE_KEY)
                     
                     match_success = False
                     best_nps = {}
@@ -886,29 +885,97 @@ def show_unified_business_search():
                             continue
                             
                         match_success = True
-                        corp.update(best_nps)
-
-                    # [v15.2] UI 표시용 데이터 정규화 (Normalization) - KeyError 방지
+                    
+                    # 웹 크롤링 데이터 추출
+                    scraped_tel = str(corp.get("전화번호", "")).strip() if corp.get("전화번호") else ""
+                    scraped_addr = str(corp.get("주소", "")).strip() if corp.get("주소") else ""
+                    
+                    # NPS 데이터 추출
+                    nps_name = best_nps.get("wkplNm")
+                    nps_ind = best_nps.get("vldtVlKrnNm")
+                    nps_addr = best_nps.get("wkplRoadNmAddr") or best_nps.get("wkplAddr")
+                    nps_sub = int(best_nps.get("jnngpCnt", 0) or 0)
+                    nps_size = best_nps.get("wkplStlDvCd")
+                    nps_brn = best_nps.get("bzowrRgstNo", "")
+                    
+                    # 데이터 정규화 (행정데이터 기준)
+                    norm_name = nps_name if match_success and nps_name else corp.get("사업장명", "알수없음")
+                    norm_ind = nps_ind if match_success and nps_ind else corp.get("industry", "분류미상")
+                    
                     normalized_corp = {
-                        "corp_name": corp.get("사업장명") or corp.get("wkplNm") or "알수없음",
-                        "industry": corp.get("vldtVlKrnNm") or corp.get("industry") or "분류미상",
-                        "address": corp.get("wkplRoadNmAddr") or corp.get("주소") or "주소 미확인",
-                        "nps_subscriber": int(corp.get("jnngpCnt", 0) or 0),
-                        "nhis_subscriber": 0, # NHIS는 현재 단계에서 미지원 (추후 확장)
-                        "tel": corp.get("전화번호") or "상세 정보 확인 필요",
-                        "corp_size": "법인" if str(corp.get("wkplStlDvCd")) == "1" else ("개인" if str(corp.get("wkplStlDvCd")) == "2" else "미분류"),
+                        "corp_name": norm_name,
+                        "industry": norm_ind,
+                        "address": scraped_addr if scraped_addr else (nps_addr if match_success and nps_addr else "주소 미확인"),
+                        "nps_subscriber": nps_sub,
+                        "nhis_subscriber": 0,
+                        "tel": scraped_tel if scraped_tel else "상세 정보 확인 필요",
+                        "corp_size": "법인" if match_success and str(nps_size) == "1" else ("개인" if match_success and str(nps_size) == "2" else "미분류"),
                         "source": [corp.get("출처", "웹 크롤링")] + (["국민연금(NPS)"] if match_success else []),
-                        "bzowrRgstNo": corp.get("bzowrRgstNo", "")
+                        "bzowrRgstNo": nps_brn
                     }
+                    
+                    if not match_success and min_jnngp > 0:
+                        continue
+                        
+                    # 중복 제거 키 (1순위: 사업자번호, 2순위: 상호명+전화번호, 3순위: 전화번호)
+                    # 전화번호 정제 (공백, 하이픈 제거)
+                    clean_tel = normalized_corp["tel"].replace("-", "").replace(" ", "") if normalized_corp["tel"] != "상세 정보 확인 필요" else ""
+                    
+                    k1 = normalized_corp["bzowrRgstNo"] if normalized_corp["bzowrRgstNo"] else None
+                    k2 = f"{normalized_corp['corp_name']}_{clean_tel}" if normalized_corp["corp_name"] and clean_tel else None
+                    k3 = clean_tel if clean_tel else None
+                    
+                    existing_idx = None
+                    if k1 and k1 in final_results_dict:
+                        existing_idx = final_results_dict[k1]
+                    elif k2 and k2 in final_results_dict:
+                        existing_idx = final_results_dict[k2]
+                    elif k3 and k3 in final_results_dict:
+                        existing_idx = final_results_dict[k3]
+                        
+                    if existing_idx is not None:
+                        existing_corp = final_results_list[existing_idx]
+                        
+                        # 출처 누적
+                        for src in normalized_corp["source"]:
+                            if src not in existing_corp["source"]:
+                                existing_corp["source"].append(src)
+                                
+                        # 전화번호 및 주소는 크롤링 데이터 우선 덮어쓰기
+                        if scraped_tel and existing_corp["tel"] == "상세 정보 확인 필요":
+                            existing_corp["tel"] = scraped_tel
+                        if scraped_addr and existing_corp["address"] == "주소 미확인":
+                            existing_corp["address"] = scraped_addr
                             
-                    # 매칭 여부와 관계없이 웹 크롤링 원본도 유의미하면 추가 (단, 근로자컷이 0인 경우에만)
-                    if match_success or min_jnngp == 0:
-                        final_results.append(normalized_corp)
+                        # 행정데이터가 없던 데이터에 행정데이터가 들어온 경우 (NPS 기준 갱신)
+                        if match_success and "국민연금(NPS)" not in existing_corp["source"]:
+                            existing_corp["nps_subscriber"] = normalized_corp["nps_subscriber"]
+                            existing_corp["bzowrRgstNo"] = normalized_corp["bzowrRgstNo"]
+                            existing_corp["corp_size"] = normalized_corp["corp_size"]
+                            existing_corp["industry"] = normalized_corp["industry"]
+                            existing_corp["corp_name"] = normalized_corp["corp_name"]
+                            
+                        # 갱신된 정보로 키 재매핑
+                        ex_clean_tel = existing_corp["tel"].replace("-", "").replace(" ", "") if existing_corp["tel"] != "상세 정보 확인 필요" else ""
+                        nk1 = existing_corp["bzowrRgstNo"] if existing_corp["bzowrRgstNo"] else None
+                        nk2 = f"{existing_corp['corp_name']}_{ex_clean_tel}" if existing_corp["corp_name"] and ex_clean_tel else None
+                        nk3 = ex_clean_tel if ex_clean_tel else None
+                        
+                        if nk1: final_results_dict[nk1] = existing_idx
+                        if nk2: final_results_dict[nk2] = existing_idx
+                        if nk3: final_results_dict[nk3] = existing_idx
+                    else:
+                        new_idx = len(final_results_list)
+                        final_results_list.append(normalized_corp)
+                        if k1: final_results_dict[k1] = new_idx
+                        if k2: final_results_dict[k2] = new_idx
+                        if k3: final_results_dict[k3] = new_idx
 
                             
                 prog_s4.progress(100, text="완료")
                 prog_s4.empty()
                 
+                final_results = final_results_list
                 if final_results:
                     st.session_state["biz_step4_results"] = final_results
                     st.success(f"✅ {len(final_results)}개 업체 발굴 완료! 아래 결과를 확인하세요.")
