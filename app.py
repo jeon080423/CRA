@@ -773,9 +773,9 @@ def show_unified_business_search():
             st.markdown('<div class="qx-section-label">STEP 3. 추출 기준 설정</div>', unsafe_allow_html=True)
             
             if is_melted:
-                industry_options = display_df["산업분류"].tolist()
+                industry_options = [ind for ind in display_df["산업분류"].tolist() if "합계" not in str(ind) and "총계" not in str(ind)]
             else:
-                industry_options = step1_df.get("업종코드", pd.Series()).unique().tolist()
+                industry_options = [ind for ind in step1_df.get("업종코드", pd.Series()).unique().tolist() if "합계" not in str(ind) and "총계" not in str(ind)]
             
             filter_type = st.radio("추출 기준 (라디오 버튼)", ["특정 산업분류 한정", "전체 업종"], horizontal=True)
             
