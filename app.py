@@ -905,7 +905,7 @@ def show_unified_business_search():
                     normalized_corp = {
                         "corp_name": norm_name,
                         "industry": norm_ind,
-                        "address": scraped_addr if scraped_addr else (nps_addr if match_success and nps_addr else "주소 미확인"),
+                        "address": nps_addr if match_success and nps_addr else (scraped_addr if scraped_addr else "주소 미확인"),
                         "nps_subscriber": nps_sub,
                         "nhis_subscriber": 0,
                         "tel": scraped_tel if scraped_tel else "상세 정보 확인 필요",
@@ -941,12 +941,6 @@ def show_unified_business_search():
                             if src not in existing_corp["source"]:
                                 existing_corp["source"].append(src)
                                 
-                        # 전화번호 및 주소는 크롤링 데이터 우선 덮어쓰기
-                        if scraped_tel and existing_corp["tel"] == "상세 정보 확인 필요":
-                            existing_corp["tel"] = scraped_tel
-                        if scraped_addr and existing_corp["address"] == "주소 미확인":
-                            existing_corp["address"] = scraped_addr
-                            
                         # 행정데이터가 없던 데이터에 행정데이터가 들어온 경우 (NPS 기준 갱신)
                         if match_success and "국민연금(NPS)" not in existing_corp["source"]:
                             existing_corp["nps_subscriber"] = normalized_corp["nps_subscriber"]
@@ -954,6 +948,14 @@ def show_unified_business_search():
                             existing_corp["corp_size"] = normalized_corp["corp_size"]
                             existing_corp["industry"] = normalized_corp["industry"]
                             existing_corp["corp_name"] = normalized_corp["corp_name"]
+                            if nps_addr:
+                                existing_corp["address"] = nps_addr
+                                
+                        # 전화번호 및 주소는 비어있을 때만 크롤링 데이터로 채우기 (행정데이터 우선 원칙)
+                        if scraped_tel and existing_corp["tel"] == "상세 정보 확인 필요":
+                            existing_corp["tel"] = scraped_tel
+                        if scraped_addr and existing_corp["address"] == "주소 미확인":
+                            existing_corp["address"] = scraped_addr
                             
                         # 갱신된 정보로 키 재매핑
                         ex_clean_tel = existing_corp["tel"].replace("-", "").replace(" ", "") if existing_corp["tel"] != "상세 정보 확인 필요" else ""
@@ -1012,6 +1014,7 @@ def show_unified_business_search():
             display_data.append({
                 "선택": i in st.session_state["biz_selected_indices"],
                 "업체명": res.get("corp_name", res.get("사업장명", "알수없음")),
+                "사업자등록번호": res.get("bzowrRgstNo", "-"),
                 "업종": res.get("industry", res.get("업종", "분류미상")),
                 "주소": res.get("address", res.get("주소", "주소 미확인")),
                 "가입자(NPS)": f"{res.get('nps_subscriber', res.get('jnngpCnt', 0)):,}명",
