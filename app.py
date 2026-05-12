@@ -812,40 +812,46 @@ def show_unified_business_search():
             prog_s4 = st.progress(0, text=f"지역 기반 탐색 중: 네이버/카카오/사람인에서 '{target_sigg}' 업체 명단 확보 중...")
             from api.scrapers import scrape_naver_map, scrape_saramin, scrape_kakao_map
             
-            scraped_candidates = []
-            seen_names_scrape = set()
+            scraped_candidates_dict = {}
             
             try:
                 search_inds = selected_industries if selected_industries else ["기업"]
                 
-                # 네이버 지도 크롤링 (모든 선택 업종 탐색)
+                # 1단계: 카카오맵 크롤링 (전화번호/주소 수집율이 가장 높아 우선 배치)
                 for idx, ind in enumerate(search_inds):
-                    prog_s4.progress(10 + int(idx/len(search_inds)*10), text=f"네이버 지도 검색 중: {sido_selected} {target_sigg} {ind} ...")
-                    naver_comps = scrape_naver_map(f"{sido_selected} {target_sigg}", ind, max_count=max_results)
-                    for c in naver_comps:
-                        cname = c["사업장명"].strip()
-                        if cname and cname not in seen_names_scrape:
-                            seen_names_scrape.add(cname)
-                            scraped_candidates.append(c)
-                
-                # 2단계: 카카오맵 크롤링 추가 (v15.3)
-                for idx, ind in enumerate(search_inds):
-                    prog_s4.progress(20 + int(idx/len(search_inds)*10), text=f"카카오맵 검색 중: {sido_selected} {target_sigg} {ind} ...")
+                    prog_s4.progress(10 + int(idx/len(search_inds)*10), text=f"카카오맵 검색 중: {sido_selected} {target_sigg} {ind} ...")
                     kakao_comps = scrape_kakao_map(f"{sido_selected} {target_sigg}", ind, max_count=max_results)
                     for c in kakao_comps:
                         cname = c["사업장명"].strip()
-                        if cname and cname not in seen_names_scrape:
-                            seen_names_scrape.add(cname)
-                            scraped_candidates.append(c)
+                        if cname and cname not in scraped_candidates_dict:
+                            scraped_candidates_dict[cname] = c
+                
+                # 2단계: 네이버 지도 크롤링 (누락분 보완)
+                for idx, ind in enumerate(search_inds):
+                    prog_s4.progress(20 + int(idx/len(search_inds)*10), text=f"네이버 지도 검색 중: {sido_selected} {target_sigg} {ind} ...")
+                    naver_comps = scrape_naver_map(f"{sido_selected} {target_sigg}", ind, max_count=max_results)
+                    for c in naver_comps:
+                        cname = c["사업장명"].strip()
+                        if cname:
+                            if cname not in scraped_candidates_dict:
+                                scraped_candidates_dict[cname] = c
+                            else:
+                                # 기존 데이터에 주소나 전화번호가 없으면 보완
+                                existing = scraped_candidates_dict[cname]
+                                if not existing.get("전화번호") and c.get("전화번호"):
+                                    existing["전화번호"] = c["전화번호"]
+                                if not existing.get("주소") and c.get("주소"):
+                                    existing["주소"] = c["주소"]
                 
                 # 3단계: 사람인 채용 포털 크롤링
                 prog_s4.progress(40, text=f"사람인 채용 포털 검색 중: {sido_selected} {target_sigg} (다중 업종) ...")
                 saramin_comps = scrape_saramin(f"{sido_selected} {target_sigg}", selected_industries, max_pages=3)
                 for c in saramin_comps:
                     cname = c["사업장명"].strip()
-                    if cname and cname not in seen_names_scrape:
-                        seen_names_scrape.add(cname)
-                        scraped_candidates.append(c)
+                    if cname and cname not in scraped_candidates_dict:
+                        scraped_candidates_dict[cname] = c
+                        
+                scraped_candidates = list(scraped_candidates_dict.values())
                         
             except Exception as e:
                 st.error(f"웹 크롤링 오류: {e}")

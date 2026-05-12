@@ -123,10 +123,12 @@ def scrape_naver_map(region_kw: str, industry_kw: str, max_count: int = 100) -> 
             for it in items:
                 name = it.get("name", "")
                 address = it.get("address", "") or it.get("roadAddress", "")
+                tel = it.get("tel", "")
                 if name:
                     companies.append({
                         "사업장명": name,
                         "주소": address,
+                        "전화번호": tel,
                         "출처": "네이버 지도 크롤링",
                         "검색키워드": query
                     })
