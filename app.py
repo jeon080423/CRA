@@ -897,6 +897,7 @@ def show_unified_business_search():
                     nps_sub = int(best_nps.get("jnngpCnt", 0) or 0)
                     nps_size = best_nps.get("wkplStlDvCd")
                     nps_brn = best_nps.get("bzowrRgstNo", "")
+                    nps_crno = best_nps.get("ldepCprNo") or best_nps.get("crno") or best_nps.get("corpRgstNo", "")
                     
                     # 데이터 정규화 (행정데이터 기준)
                     norm_name = nps_name if match_success and nps_name else corp.get("사업장명", "알수없음")
@@ -911,7 +912,8 @@ def show_unified_business_search():
                         "tel": scraped_tel if scraped_tel else "상세 정보 확인 필요",
                         "corp_size": "법인" if match_success and str(nps_size) == "1" else ("개인" if match_success and str(nps_size) == "2" else "미분류"),
                         "source": [corp.get("출처", "웹 크롤링")] + (["국민연금(NPS)"] if match_success else []),
-                        "bzowrRgstNo": nps_brn
+                        "bzowrRgstNo": nps_brn,
+                        "crno": nps_crno
                     }
                     
                     if not match_success and min_jnngp > 0:
@@ -945,6 +947,8 @@ def show_unified_business_search():
                         if match_success and "국민연금(NPS)" not in existing_corp["source"]:
                             existing_corp["nps_subscriber"] = normalized_corp["nps_subscriber"]
                             existing_corp["bzowrRgstNo"] = normalized_corp["bzowrRgstNo"]
+                            if normalized_corp.get("crno"):
+                                existing_corp["crno"] = normalized_corp["crno"]
                             existing_corp["corp_size"] = normalized_corp["corp_size"]
                             existing_corp["industry"] = normalized_corp["industry"]
                             existing_corp["corp_name"] = normalized_corp["corp_name"]
@@ -1015,6 +1019,7 @@ def show_unified_business_search():
                 "선택": i in st.session_state["biz_selected_indices"],
                 "업체명": res.get("corp_name", res.get("사업장명", "알수없음")),
                 "사업자등록번호": res.get("bzowrRgstNo", "-"),
+                "법인등록번호": res.get("crno", "-"),
                 "업종": res.get("industry", res.get("업종", "분류미상")),
                 "주소": res.get("address", res.get("주소", "주소 미확인")),
                 "가입자(NPS)": f"{res.get('nps_subscriber', res.get('jnngpCnt', 0)):,}명",
