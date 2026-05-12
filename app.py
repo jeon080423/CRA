@@ -614,8 +614,8 @@ def show_unified_business_search():
     if nhis_loaded:
         st.success(f"✅ 전국 산업분야 기초 통계 {len(nhis_df):,}건 셋업 완료 \u2014 지역 현황 집계 버튼을 눌러주세요.", icon="🏛️")
     else:
-        st.warning("📊 **선행 작업:** 1단계를 진행하기 위해 건강보험 연도별/업종별 '산업분포 통계 데이터'를 불러옵니다.")
-        if st.button("🔽 [STEP 1-2 기초자료] 전국 산업분포 통계 불러오기 (최초 1회)", type="primary", use_container_width=True, key="nhis_download_btn"):
+        st.warning("📊 **선행 작업:** 2단계(추출 기준 설정)에서 선택할 '산업분류 지표'를 구성하기 위해, 건강보험 전국 통계 데이터를 불러옵니다.")
+        if st.button("🔽 [기초자료] 전국 산업분포 통계 불러오기 (최초 1회)", type="primary", use_container_width=True, key="nhis_download_btn"):
             prog_bar = st.progress(0, text="건강보험 전국망 통계 데이터를 수집 중입니다...")
             status_ph = st.empty()
 
@@ -645,7 +645,7 @@ def show_unified_business_search():
     st.markdown('<div class="qx-section-label">STEP 1. 지역 탐색</div>', unsafe_allow_html=True)
     col_s1, col_sigg, col_btn1 = st.columns([1.5, 1.5, 1])
     with col_s1:
-        sido = st.selectbox("시도 선택", options=BIZ_SIDO_LIST, disabled=not nhis_loaded)
+        sido = st.selectbox("시도 선택", options=BIZ_SIDO_LIST)
     with col_sigg:
         SIGG_MAP = {
             "전체": ["전체"],
@@ -668,11 +668,11 @@ def show_unified_business_search():
             "제주특별자치도": ["전체", "서귀포시", "제주시"]
         }
         sigg_options = SIGG_MAP.get(sido, ["전체"])
-        sigg = st.selectbox("시/군/구 선택", options=sigg_options, disabled=not nhis_loaded)
+        sigg = st.selectbox("시/군/구 선택", options=sigg_options)
         
     with col_btn1:
         st.markdown("<div style='margin-top: 28px'></div>", unsafe_allow_html=True)
-        if st.button("📊 1단계: 지역 현황 집계", use_container_width=True, type="secondary", disabled=not nhis_loaded):
+        if st.button("📊 1단계: 산업 통계 지표 세팅", use_container_width=True, type="secondary", disabled=not nhis_loaded):
             if sido == "전체":
                 st.warning("전체 지역을 집계하기에는 데이터가 방대하므로 특정 시/도를 선택해 주시기 바랍니다.")
             else:
