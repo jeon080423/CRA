@@ -783,8 +783,7 @@ def show_unified_business_search():
             subcol1, subcol2 = st.columns(2)
             with subcol1:
                 if filter_type == "특정 산업분류 한정":
-                    target_ind = st.radio("대상 산업분류 선택", options=industry_options)
-                    target_inds = [target_ind] if target_ind else []
+                    target_inds = st.multiselect("대상 산업분류 선택", options=industry_options, placeholder="복수 선택 가능")
             with subcol2:
                 min_jnngp = st.number_input("최소 근로자 수 (N명 이상)", min_value=0, value=0, step=1,
                                              help="NPS 가입자수 기준. 0이면 전체 포함")
@@ -815,28 +814,30 @@ def show_unified_business_search():
             seen_names_scrape = set()
             
             try:
-                # 네이버 지도 크롤링 (주요 1개 업종 우선 탐색)
-                main_ind = selected_industries[0] if selected_industries else "기업"
-                prog_s4.progress(10, text=f"네이버 지도 검색 중: {sido_selected} {target_sigg} {main_ind} ...")
-                naver_comps = scrape_naver_map(f"{sido_selected} {target_sigg}", main_ind, max_count=max_results)
-                for c in naver_comps:
-                    # 마스킹이나 빈 값 정리
-                    cname = c["사업장명"].strip()
-                    if cname and cname not in seen_names_scrape:
-                        seen_names_scrape.add(cname)
-                        scraped_candidates.append(c)
+                search_inds = selected_industries if selected_industries else ["기업"]
+                
+                # 네이버 지도 크롤링 (모든 선택 업종 탐색)
+                for idx, ind in enumerate(search_inds):
+                    prog_s4.progress(10 + int(idx/len(search_inds)*10), text=f"네이버 지도 검색 중: {sido_selected} {target_sigg} {ind} ...")
+                    naver_comps = scrape_naver_map(f"{sido_selected} {target_sigg}", ind, max_count=max_results)
+                    for c in naver_comps:
+                        cname = c["사업장명"].strip()
+                        if cname and cname not in seen_names_scrape:
+                            seen_names_scrape.add(cname)
+                            scraped_candidates.append(c)
                 
                 # 2단계: 카카오맵 크롤링 추가 (v15.3)
-                prog_s4.progress(20, text=f"카카오맵 검색 중: {sido_selected} {target_sigg} {main_ind} ...")
-                kakao_comps = scrape_kakao_map(f"{sido_selected} {target_sigg}", main_ind, max_count=max_results)
-                for c in kakao_comps:
-                    cname = c["사업장명"].strip()
-                    if cname and cname not in seen_names_scrape:
-                        seen_names_scrape.add(cname)
-                        scraped_candidates.append(c)
+                for idx, ind in enumerate(search_inds):
+                    prog_s4.progress(20 + int(idx/len(search_inds)*10), text=f"카카오맵 검색 중: {sido_selected} {target_sigg} {ind} ...")
+                    kakao_comps = scrape_kakao_map(f"{sido_selected} {target_sigg}", ind, max_count=max_results)
+                    for c in kakao_comps:
+                        cname = c["사업장명"].strip()
+                        if cname and cname not in seen_names_scrape:
+                            seen_names_scrape.add(cname)
+                            scraped_candidates.append(c)
                 
                 # 3단계: 사람인 채용 포털 크롤링
-                prog_s4.progress(40, text=f"사람인 채용 포털 검색 중: {sido_selected} {target_sigg} {main_ind} ...")
+                prog_s4.progress(40, text=f"사람인 채용 포털 검색 중: {sido_selected} {target_sigg} (다중 업종) ...")
                 saramin_comps = scrape_saramin(f"{sido_selected} {target_sigg}", selected_industries, max_pages=3)
                 for c in saramin_comps:
                     cname = c["사업장명"].strip()
