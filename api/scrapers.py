@@ -178,12 +178,15 @@ def scrape_kakao_map(region_kw: str, industry_kw: str, max_count: int = 100) -> 
             
         # JSONP 대응 (괄호 제거 및 내부 JSON 추출)
         raw_text = resp.text.strip()
-        # 보통 callback(...) 형태로 오거나 순수 JSON으로 올 수 있음
-        json_match = re.search(r'^[^(]*\((.*)\)[^)]*$', raw_text, re.DOTALL)
-        if json_match:
-            json_data = json.loads(json_match.group(1))
-        else:
+        # 순수 JSON 형식({ 또는 [)인지 우선 검사하여 불필요한 정규식에 의한 문자열 유실 방지
+        if raw_text.startswith('{') or raw_text.startswith('['):
             json_data = json.loads(raw_text)
+        else:
+            json_match = re.search(r'^[^(]*\((.*)\)[^)]*$', raw_text, re.DOTALL)
+            if json_match:
+                json_data = json.loads(json_match.group(1))
+            else:
+                json_data = json.loads(raw_text)
             
         items = json_data.get("place", [])
         if not items:
